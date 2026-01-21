@@ -531,20 +531,35 @@ struct Installer {
             "ce-mcp"
         ])
 
+        var missing: [String] = []
+        var sources: [(name: String, url: URL)] = []
+
         for name in binaries {
             if name.hasPrefix("/") {
                 continue
             }
             guard let resourceURL = BundledBinaryLocator.url(for: name) else {
-                result.warnings.append("Missing bundled binary: \(name)")
+                missing.append(name)
                 continue
             }
+            sources.append((name: name, url: resourceURL))
+        }
 
-            let destination = paths.bin.appendingPathComponent(name)
+        if !missing.isEmpty {
+            let detail = missing.sorted().joined(separator: ", ")
+            throw NSError(
+                domain: "PruneInstaller",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing bundled binaries: \(detail)"]
+            )
+        }
+
+        for entry in sources {
+            let destination = paths.bin.appendingPathComponent(entry.name)
             if fileManager.fileExists(atPath: destination.path) {
                 try fileManager.removeItem(at: destination)
             }
-            try fileManager.copyItem(at: resourceURL, to: destination)
+            try fileManager.copyItem(at: entry.url, to: destination)
             try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
         }
 

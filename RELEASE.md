@@ -234,6 +234,11 @@ The “binaries to be installed” requirement is satisfied by:
 
 This avoids needing admin privileges and keeps the DMG clean.
 
+Build note:
+- `PruneApp/scripts/bundle-binaries.sh` enforces that **all required binaries** are present in the app bundle.
+- For release builds, missing binaries will fail the build (no partial DMG).
+- Provide a prebuilt bundle via `PRUNE_BUNDLE_BIN_DIR` or set `PRUNE_CLOUDFLARED_PATH`, or vendor `PruneApp/vendor/cloudflared`.
+
 ---
 
 ## 2.2 Signing & notarization (required for real users)

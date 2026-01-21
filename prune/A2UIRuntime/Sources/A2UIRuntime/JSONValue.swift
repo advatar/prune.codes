@@ -21,6 +21,10 @@ public enum JSONValueError: Error, CustomStringConvertible {
 }
 
 public extension JSONValue {
+    init(fromAny any: Any?) {
+        self = JSONValue.fromAny(any)
+    }
+
     init(jsonObject: Any) throws {
         if let dict = jsonObject as? [String: Any] {
             var obj: [String: JSONValue] = [:]
@@ -43,6 +47,39 @@ public extension JSONValue {
             self = .null
         } else {
             throw JSONValueError.invalidTopLevel
+        }
+    }
+
+    static func fromAny(_ any: Any?) -> JSONValue {
+        guard let any else { return .null }
+        switch any {
+        case is NSNull:
+            return .null
+        case let b as Bool:
+            return .bool(b)
+        case let i as Int:
+            return .number(Double(i))
+        case let d as Double:
+            return .number(d)
+        case let f as Float:
+            return .number(Double(f))
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() {
+                return .bool(n.boolValue)
+            }
+            return .number(n.doubleValue)
+        case let s as String:
+            return .string(s)
+        case let a as [Any]:
+            return .array(a.map { JSONValue.fromAny($0) })
+        case let o as [String: Any]:
+            var out: [String: JSONValue] = [:]
+            for (key, value) in o {
+                out[key] = JSONValue.fromAny(value)
+            }
+            return .object(out)
+        default:
+            return .string(String(describing: any))
         }
     }
 

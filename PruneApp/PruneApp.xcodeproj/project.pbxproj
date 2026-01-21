@@ -250,6 +250,8 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/scripts/bundle-binaries.sh",
+				"$(SRCROOT)/..",
 			);
 			name = "Bundle Prune Binaries";
 			outputFileListPaths = (
@@ -263,7 +265,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nif [ -f \"${HOME}/.cargo/env\" ]; then\n  . \"${HOME}/.cargo/env\"\nfi\nexport PATH=\"${HOME}/.cargo/bin:${PATH}\"\nREPO_ROOT=\"${SRCROOT}/..\"\nPRUNE_ROOT=\"${REPO_ROOT}/prune\"\nif [ -f \"${REPO_ROOT}/Cargo.toml\" ] && [ -d \"${REPO_ROOT}/crates\" ]; then\n  PRUNE_ROOT=\"${REPO_ROOT}\"\nelif [ ! -f \"${PRUNE_ROOT}/Cargo.toml\" ]; then\n  echo \"error: could not find prune Cargo.toml from ${SRCROOT}\" >&2\n  exit 1\nfi\nBIN_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nmkdir -p \"${BIN_DIR}\"\nPROFILE_DIR=debug\nBUILD_FLAG=\"\"\nif [ \"${CONFIGURATION}\" != \"Debug\" ]; then\n  PROFILE_DIR=release\n  BUILD_FLAG=\"--release\"\nfi\nCARGO_BIN=\"${CARGO:-cargo}\"\nCARGO_TARGET_DIR=\"${TARGET_TEMP_DIR}/cargo-target\"\n\"${CARGO_BIN}\" build ${BUILD_FLAG} --target-dir \"${CARGO_TARGET_DIR}\" --manifest-path \"${PRUNE_ROOT}/Cargo.toml\" -p ce-cli --bin ce\n\"${CARGO_BIN}\" build ${BUILD_FLAG} --target-dir \"${CARGO_TARGET_DIR}\" --manifest-path \"${PRUNE_ROOT}/Cargo.toml\" -p ce-mcp --bin ce-mcp\n\"${CARGO_BIN}\" build ${BUILD_FLAG} --target-dir \"${CARGO_TARGET_DIR}\" --manifest-path \"${PRUNE_ROOT}/Cargo.toml\" -p prune-mcp --bin prune-mcp\n\"${CARGO_BIN}\" build ${BUILD_FLAG} --target-dir \"${CARGO_TARGET_DIR}\" --manifest-path \"${PRUNE_ROOT}/Cargo.toml\" -p prune-sync --bin prune-sync\ncp \"${CARGO_TARGET_DIR}/${PROFILE_DIR}/ce\" \"${BIN_DIR}/\"\ncp \"${CARGO_TARGET_DIR}/${PROFILE_DIR}/ce-mcp\" \"${BIN_DIR}/\"\ncp \"${CARGO_TARGET_DIR}/${PROFILE_DIR}/prune-mcp\" \"${BIN_DIR}/\"\ncp \"${CARGO_TARGET_DIR}/${PROFILE_DIR}/prune-sync\" \"${BIN_DIR}/\"\nCLOUDFLARED_SOURCE=\"${REPO_ROOT}/../iCodex/bridge/vendor/cloudflared\"\nif [ -f \"${CLOUDFLARED_SOURCE}\" ]; then\n  cp \"${CLOUDFLARED_SOURCE}\" \"${BIN_DIR}/cloudflared\"\nelse\n  echo \"warning: cloudflared not found at ${CLOUDFLARED_SOURCE}\"\nfi\nchmod +x \"${BIN_DIR}/ce\" \"${BIN_DIR}/ce-mcp\" \"${BIN_DIR}/prune-mcp\" \"${BIN_DIR}/prune-sync\" 2>/dev/null || true\nif [ -f \"${BIN_DIR}/cloudflared\" ]; then\n  chmod +x \"${BIN_DIR}/cloudflared\"\nfi\n";
+			shellScript = "bash \"${SRCROOT}/scripts/bundle-binaries.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

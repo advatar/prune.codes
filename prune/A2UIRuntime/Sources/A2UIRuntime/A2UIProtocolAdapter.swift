@@ -211,23 +211,13 @@ public struct A2UIProtocolAdapter: Sendable {
     }
 
     private func normalizeComponent(id: String, kind: String, props: [String: JSONValue]) -> NormalizedComponent {
-        var mutableProps = props
-
-        var childrenRefs: [String] = []
-        if let children = mutableProps["children"]?.arrayValue {
-            childrenRefs = children.compactMap { $0.stringValue }
-            mutableProps.removeValue(forKey: "children")
-        }
-
-        let childRef = mutableProps["child"]?.stringValue
-        if childRef != nil {
-            mutableProps.removeValue(forKey: "child")
-        }
+        let childrenRefs = props["children"]?.arrayValue?.compactMap { $0.stringValue } ?? []
+        let childRef = props["child"]?.stringValue
 
         return NormalizedComponent(
             id: id,
             kind: kind,
-            props: mutableProps,
+            props: props,
             childrenRefs: childrenRefs,
             childRef: childRef
         )

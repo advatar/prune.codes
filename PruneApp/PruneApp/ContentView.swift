@@ -271,77 +271,78 @@ struct InceptionView: View {
                 if let repoFullName = appModel.normalizedRepoFullName() {
                     let mirror = appModel.paths.mirrorDirectory(repoFullName: repoFullName)
 
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Workspace")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                    Group {
+                        GroupBox {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Workspace")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
 
-                            Text(repoFullName)
-                                .font(.body)
+                                Text(repoFullName)
+                                    .font(.body)
 
-                            Text(mirror.path)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-
-                            HStack {
-                                Button("Open Mirror") {
-                                    NSWorkspace.shared.open(mirror)
-                                }
-
-                                Spacer()
-
-                                Button("Start A2UI Interview") {
-                                    lastError = nil
-                                    showInterview = true
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Template")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            Picker("Project template", selection: $template) {
-                                ForEach(InceptionTemplate.allCases) { t in
-                                    Text(t.title).tag(t)
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Toggle("Treat this as a CLI-style repo", isOn: $cliSubtype)
-                                .help("Enables the 'cli' subtype in Prune preferences and bootstraps CLI-focused docs.")
-
-                            Text("This selects the default Prune onboarding, golden paths, and strategy kit. You can refine everything in the interview before bootstrapping.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if let err = lastError {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    }
-
-                    if !lastOutput.isEmpty {
-                        GroupBox("Last output") {
-                            ScrollView {
-                                Text(lastOutput)
-                                    .font(.system(.caption, design: .monospaced))
+                                Text(mirror.path)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                HStack {
+                                    Button("Open Mirror") {
+                                        NSWorkspace.shared.open(mirror)
+                                    }
+
+                                    Spacer()
+
+                                    Button("Start A2UI Interview") {
+                                        lastError = nil
+                                        showInterview = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
                             }
-                            .frame(maxHeight: 240)
+                        }
+
+                        GroupBox {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Template")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                Picker("Project template", selection: $template) {
+                                    ForEach(InceptionTemplate.allCases) { t in
+                                        Text(t.title).tag(t)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+
+                                Toggle("Treat this as a CLI-style repo", isOn: $cliSubtype)
+                                    .help("Enables the 'cli' subtype in Prune preferences and bootstraps CLI-focused docs.")
+
+                                Text("This selects the default Prune onboarding, golden paths, and strategy kit. You can refine everything in the interview before bootstrapping.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if let err = lastError {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .textSelection(.enabled)
+                        }
+
+                        if !lastOutput.isEmpty {
+                            GroupBox("Last output") {
+                                ScrollView {
+                                    Text(lastOutput)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: 240)
+                            }
                         }
                     }
-
                     // Sheet lives here so it has access to the same appModel + state.
                     .sheet(isPresented: $showInterview) {
                         InceptionInterviewSheet(
@@ -577,10 +578,17 @@ private struct InceptionInterviewSheet: View {
             NormalizedComponent(id: followupsContainerId, type: "Column", props: ["children": .array([])]),
         ]
 
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.inception",
+            rootComponentId: "root",
+            protocolVersion: .v09
+        )
+
         return [
-            .createSurface(surfaceId: surfaceId, catalogId: "prune.inception", rootComponentId: "root"),
+            .createSurface(info),
             .updateComponents(surfaceId: surfaceId, components: components),
-            .updateDataModel(surfaceId: surfaceId, updates: [(path: "/", value: initialModel)])
+            .updateDataModel(surfaceId: surfaceId, updates: [NormalizedDataUpdate(path: "/", value: initialModel)])
         ]
     }
 
@@ -692,10 +700,17 @@ private struct InceptionInterviewSheet: View {
             }
 
             // Update container children
-            if var container = store.component(surfaceId: surfaceId, componentId: followupsContainerId) {
+            if let container = store.component(surfaceId: surfaceId, componentId: followupsContainerId) {
                 let existing = (container.props["children"]?.arrayValue ?? [])
-                container.props["children"] = .array(existing + newChildren)
-                newComponents.append(container)
+                var props = container.props
+                props["children"] = .array(existing + newChildren)
+                newComponents.append(NormalizedComponent(
+                    id: container.id,
+                    kind: container.kind,
+                    props: props,
+                    childrenRefs: container.childrenRefs,
+                    childRef: container.childRef
+                ))
             }
 
             store.apply(.updateComponents(surfaceId: surfaceId, components: newComponents))
@@ -772,70 +787,77 @@ private struct A2UISurfaceView: View {
         }
     }
 
-    @ViewBuilder
-    private func render(componentId: String) -> some View {
+    private func render(componentId: String) -> AnyView {
         guard let component = store.component(surfaceId: surfaceId, componentId: componentId) else {
-            EmptyView()
-            return
+            return AnyView(EmptyView())
         }
 
-        let resolved = store.resolvedProps(surfaceId: surfaceId, componentId: componentId)
+        let resolved = store.resolvedProps(surfaceId: surfaceId, componentId: componentId) ?? [:]
 
         switch component.type {
         case "Column":
             let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(children, id: \.self) { cid in
-                    render(componentId: cid)
+            return AnyView(
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(children, id: \.self) { cid in
+                        render(componentId: cid)
+                    }
                 }
-            }
+            )
 
         case "Row":
             let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(children, id: \.self) { cid in
-                    render(componentId: cid)
+            return AnyView(
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(children, id: \.self) { cid in
+                        render(componentId: cid)
+                    }
                 }
-            }
+            )
 
         case "Divider":
-            Divider()
+            return AnyView(Divider())
 
         case "Text":
             let text = resolved["text"]?.stringValue ?? ""
-            Text(text)
+            return AnyView(Text(text))
 
         case "TextField":
             let label = resolved["label"]?.stringValue ?? ""
             let isMultiline = (component.props["multiline"]?.boolValue) ?? false
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             if isMultiline {
-                VStack(alignment: .leading, spacing: 6) {
-                    if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
-                    TextEditor(text: Binding(
-                        get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                        set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
-                    ))
-                    .frame(minHeight: 72)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
-                    )
-                }
-            } else {
+                return AnyView(
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
+                        TextEditor(text: Binding(
+                            get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                            set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                        ))
+                        .frame(minHeight: 72)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                )
+            }
+            return AnyView(
                 TextField(label, text: Binding(
                     get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
                     set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
                 ))
-            }
+            )
 
         case "Toggle":
             let label = resolved["label"]?.stringValue ?? ""
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
-            Toggle(label, isOn: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
-            ))
+            return AnyView(
+                Toggle(label, isOn: Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
+                ))
+            )
 
         case "Select":
             let label = resolved["label"]?.stringValue ?? ""
@@ -848,22 +870,26 @@ private struct A2UISurfaceView: View {
                 return nil
             }
 
-            Picker(label, selection: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
-            )) {
-                ForEach(options, id: \.1) { (lbl, val) in
-                    Text(lbl).tag(val)
+            return AnyView(
+                Picker(label, selection: Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                )) {
+                    ForEach(options, id: \.1) { (lbl, val) in
+                        Text(lbl).tag(val)
+                    }
                 }
-            }
-            .pickerStyle(.menu)
+                .pickerStyle(.menu)
+            )
 
         default:
             // Unknown component in this minimal renderer.
             let fallback = "[Unsupported component: \(component.type)]"
-            Text(fallback)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            return AnyView(
+                Text(fallback)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            )
         }
     }
 }

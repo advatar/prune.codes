@@ -1,12 +1,8 @@
 # Status
 
 ## Current Task
-- Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
-- Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
-- Add coverage runner + baseline report and expand tests (ce-store + ce-mcp JSON-RPC + MCP smoke).
-- Extend PruneApp A2UI diagnostics to support v0.8 fixtures, JSONL load, and live stream ingestion.
-- Update `.gitignore` to ignore PruneApp Xcode build artifacts (DerivedData and related outputs).
-- Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
+- Unify A2UIRuntime types to resolve duplicate definitions and restore Xcode builds.
+- Ensure PruneApp DMG bundles all required binaries for offline install.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -14,9 +10,12 @@
 - Made Surreal pack/search/eval resolve repo-root paths and error when the store path is missing.
 - Stabilized fragment IDs across files (path+span+content hash) to prevent collisions in embedded Surreal indexes.
 - Cleaned build warnings in ce-cli/ce-store/ce-lang-* and verified Surreal smoke tests.
+- DMG bundling now enforces required binaries and fails fast if any dependency is missing.
 - Triaged Xcode build failure: `cargo` missing in build phase PATH; adding explicit cargo discovery and error messaging.
 - Fixed `ce-cli` integration template include paths and rebuilt `cargo build -p ce-cli` (warnings remain).
 - Updated Bundle Prune Binaries script to resolve the prune repo root and ran `xcodebuild` (warnings remain).
+- Identified A2UIRuntime duplicate type definitions causing Swift compile failures.
+- Unified A2UIRuntime model + helpers, fixed ContentView rendering, and restored Debug Xcode build with bundled binaries (cloudflared still required for Release DMG).
 - GitHub issues created: CR-01..CR-05 + Epic (advatar/prune).
 - Added signal extraction, support-closure metrics, connected-subgraph selection, TSX/SwiftUI skeletonization, and recipe memory plumbing across `ce-core`, `ce-store`, `ce-cli`, and `ce-mcp`.
 - Added recipe persistence schema + DB methods and wired pack rendering to include recipe excerpts and metrics.

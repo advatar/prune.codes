@@ -1,8 +1,8 @@
 import Foundation
 
-public enum A2UIProtocolVersion: String, Sendable {
-    case v08
-    case v09
+public enum A2UIProtocolVersion: String, Sendable, Codable, CaseIterable {
+    case v08 = "0.8"
+    case v09 = "0.9"
 }
 
 public struct NormalizedComponent: Sendable, Equatable {
@@ -16,8 +16,8 @@ public struct NormalizedComponent: Sendable, Equatable {
         id: String,
         kind: String,
         props: [String: JSONValue],
-        childrenRefs: [String],
-        childRef: String?
+        childrenRefs: [String] = [],
+        childRef: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -25,6 +25,12 @@ public struct NormalizedComponent: Sendable, Equatable {
         self.childrenRefs = childrenRefs
         self.childRef = childRef
     }
+
+    public init(id: String, type: String, props: [String: JSONValue] = [:]) {
+        self.init(id: id, kind: type, props: props, childrenRefs: [], childRef: nil)
+    }
+
+    public var type: String { kind }
 }
 
 public struct NormalizedDataUpdate: Sendable, Equatable {
@@ -122,6 +128,11 @@ public final class NormalizedSurfaceStore: ObservableObject {
         }
     }
 
+    public func reset() {
+        surfaces = [:]
+        lastError = nil
+    }
+
     public func apply(_ messages: [NormalizedMsg]) {
         for message in messages {
             apply(message)
@@ -148,12 +159,42 @@ public final class NormalizedSurfaceStore: ObservableObject {
         return allIds.sorted().first
     }
 
+    public func component(surfaceId: String, componentId: String) -> NormalizedComponent? {
+        surfaces[surfaceId]?.components[componentId]
+    }
+
+    public func dataModelValue(surfaceId: String, path: String) -> JSONValue? {
+        guard let surface = surfaces[surfaceId] else { return nil }
+        return surface.dataModel.value(at: path)
+    }
+
+    public func setDataModelValue(surfaceId: String, path: String, value: JSONValue) {
+        var surface = surfaces[surfaceId] ?? Surface(info: NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: nil,
+            rootComponentId: nil,
+            protocolVersion: nil
+        ))
+        var model = surface.dataModel
+        model.setValue(value, at: path)
+        surface.dataModel = model
+        surfaces[surfaceId] = surface
+    }
+
     public func resolvedProps(surfaceId: String, componentId: String) -> [String: JSONValue]? {
         guard let surface = surfaces[surfaceId],
               let component = surface.components[componentId] else {
             return nil
         }
         return NormalizedValueResolver.resolveBindings(in: component.props, dataModel: surface.dataModel)
+    }
+
+    public func rawProps(surfaceId: String, componentId: String) -> [String: JSONValue]? {
+        guard let surface = surfaces[surfaceId],
+              let component = surface.components[componentId] else {
+            return nil
+        }
+        return component.props
     }
 
     public func resolveDynamicValue(surfaceId: String, value: JSONValue) -> JSONValue? {

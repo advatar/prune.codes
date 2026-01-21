@@ -19,6 +19,20 @@ if [ ! -d "${APP_PATH}" ]; then
   exit 1
 fi
 
+BIN_DIR="${APP_PATH}/Contents/Resources/bin"
+REQUIRED_BINS=(ce ce-mcp prune-mcp prune-sync cloudflared)
+missing=()
+for name in "${REQUIRED_BINS[@]}"; do
+  if [ ! -x "${BIN_DIR}/${name}" ]; then
+    missing+=("${name}")
+  fi
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo "error: missing bundled binaries in app bundle: ${missing[*]}" >&2
+  echo "hint: ensure PruneApp/scripts/bundle-binaries.sh can locate the required binaries." >&2
+  exit 1
+fi
+
 VERSION="$(defaults read "${APP_PATH}/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || true)"
 if [ -z "${VERSION}" ]; then
   VERSION="dev"
