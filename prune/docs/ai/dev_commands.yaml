@@ -6,6 +6,18 @@ commands:
   - name: coverage
     command: ./scripts/codex/coverage.sh
     description: Generate an llvm-cov summary for the workspace (requires cargo-llvm-cov).
+  - name: surreal-tests
+    command: cargo test -p ce-store-surreal --features surreal
+    description: Run Surreal store tests (mem engine).
+  - name: surreal-build-ce-cli
+    command: cargo build -p ce-cli --features surreal
+    description: Build ce-cli with Surreal backend enabled.
+  - name: surreal-build-ce-mcp
+    command: cargo build -p ce-mcp --features surreal
+    description: Build ce-mcp with Surreal backend enabled.
+  - name: surreal-bench-index
+    command: cargo run -p ce-cli --features surreal -- bench --repo . --store surreal --workload index
+    description: Run the Surreal index benchmark for the current repo.
   - name: a2ui-tests
     command: cd A2UIRuntime && swift test
     description: Run A2UIRuntime Swift package tests.

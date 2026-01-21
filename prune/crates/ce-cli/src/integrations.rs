@@ -16,6 +16,11 @@ pub enum Agent {
     All,
 }
 
+pub enum DoctorStore {
+    Sqlite { db_path: PathBuf, hnsw_path: PathBuf },
+    Surreal { engine: String, path: PathBuf, persistent: bool },
+}
+
 const TEMPLATE_AGENTS: &str = include_str!("../../../integrations/templates/AGENTS.md");
 const TEMPLATE_CLAUDE: &str = include_str!("../../../integrations/templates/CLAUDE.md");
 const TEMPLATE_SKILL: &str = include_str!("../../../integrations/skills/prune-context/SKILL.md");
@@ -39,21 +44,51 @@ pub fn cmd_integrate(repo: &str, agent: Agent, write_global: bool, dry_run: bool
     }
 }
 
-pub fn cmd_doctor(repo: &str, agent: Agent) -> Result<()> {
+pub fn cmd_doctor(repo: &str, agent: Agent, store: DoctorStore) -> Result<()> {
     let repo_path = PathBuf::from(repo);
     if !repo_path.exists() {
         return Err(anyhow!("repo not found: {repo}"));
     }
 
     let mut problems: Vec<String> = Vec::new();
-    let ce_dir = repo_path.join(".ce");
-    let db = ce_dir.join("index.sqlite");
-    let hnsw = ce_dir.join("hnsw");
-    if !db.exists() {
-        problems.push("Missing .ce/index.sqlite (run: ce index --repo . --db .ce/index.sqlite --hnsw-dir .ce/hnsw)".into());
-    }
-    if !hnsw.exists() {
-        problems.push("Missing .ce/hnsw (run: ce index --repo . --db .ce/index.sqlite --hnsw-dir .ce/hnsw)".into());
+    match &store {
+        DoctorStore::Sqlite { db_path, hnsw_path } => {
+            println!(
+                "store: sqlite (db: {}, hnsw: {})",
+                db_path.display(),
+                hnsw_path.display()
+            );
+            if !db_path.exists() {
+                problems.push(format!(
+                    "Missing sqlite db at {} (run: ce index --repo . --db {} --hnsw-dir {})",
+                    db_path.display(),
+                    db_path.display(),
+                    hnsw_path.display()
+                ));
+            }
+            if !hnsw_path.exists() {
+                problems.push(format!(
+                    "Missing HNSW directory at {} (run: ce index --repo . --db {} --hnsw-dir {})",
+                    hnsw_path.display(),
+                    db_path.display(),
+                    hnsw_path.display()
+                ));
+            }
+        }
+        DoctorStore::Surreal { engine, path, persistent } => {
+            if *persistent {
+                println!("store: surreal (engine: {engine}, path: {})", path.display());
+                if !path.exists() {
+                    problems.push(format!(
+                        "Missing Surreal store at {} (run: ce index --repo . --store surreal --surreal-path {})",
+                        path.display(),
+                        path.display()
+                    ));
+                }
+            } else {
+                println!("store: surreal (engine: {engine}, path: in-memory)");
+            }
+        }
     }
 
     let check_codex = agent == Agent::Codex || agent == Agent::All;

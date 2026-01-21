@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::tokenizer::TokenCounter;
@@ -8,17 +8,24 @@ use ce_core::snippet;
 use ce_lang_rust::RustAdapter;
 use ce_store::{Db, Embedder};
 use ce_store::query;
+use ce_store_core::{file_id_for_path, CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use serde_json as json;
 
 mod tasks;
 mod inception;
 use ce_cli::integrations;
+
+#[cfg(feature = "surreal")]
+use ce_store_surreal::{SurrealConfig, SurrealEngine, SurrealStore};
+#[cfg(feature = "surreal")]
+use surrealdb::sql::Thing;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum PackFormat {
@@ -27,10 +34,90 @@ enum PackFormat {
     Both,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum StoreKind {
+    Sqlite,
+    Surreal,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SurrealEngineArg {
+    Surrealkv,
+    Mem,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FtsMode {
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum HybridMode {
+    Rrf,
+    Client,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BenchWorkload {
+    Index,
+    Search,
+    Pack,
+}
+
+#[derive(Debug, Clone, Args)]
+struct StoreArgs {
+    /// Store backend (sqlite or surreal).
+    #[arg(long, value_enum, default_value_t = StoreKind::Sqlite)]
+    store: StoreKind,
+
+    /// SQLite db path (sqlite only).
+    #[arg(long)]
+    db: Option<String>,
+
+    /// HNSW directory (sqlite only).
+    #[arg(long)]
+    hnsw_dir: Option<String>,
+
+    /// SurrealDB storage directory (surrealkv engine).
+    #[arg(long, default_value = ".ce/surreal")]
+    surreal_path: String,
+
+    /// SurrealDB engine (surrealkv or mem).
+    #[arg(long, value_enum, default_value_t = SurrealEngineArg::Surrealkv)]
+    surreal_engine: SurrealEngineArg,
+
+    /// Use SurrealKV versioned mode.
+    #[arg(long, default_value_t = false)]
+    surreal_versioned: bool,
+
+    /// SurrealDB namespace.
+    #[arg(long, default_value = "prune")]
+    surreal_ns: String,
+
+    /// SurrealDB database.
+    #[arg(long, default_value = "main")]
+    surreal_db: String,
+
+    /// Embedding dimension (defaults to embedder dim).
+    #[arg(long)]
+    embedding_dim: Option<usize>,
+
+    /// Full-text search mode for SurrealDB.
+    #[arg(long, value_enum, default_value_t = FtsMode::On)]
+    fts: FtsMode,
+
+    /// Hybrid retrieval mode (rrf or client blend).
+    #[arg(long, value_enum, default_value_t = HybridMode::Client)]
+    hybrid: HybridMode,
+}
+
+const SURREAL_REPO_ID: &str = "default";
+
 #[derive(Parser, Debug)]
 #[command(name = "ce")]
 #[command(about = "Context Engine CLI (index/search/pack)")]
-struct Args {
+struct CliArgs {
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -41,10 +128,8 @@ enum Cmd {
     Index {
         #[arg(long)]
         repo: String,
-        #[arg(long)]
-        db: String,
-        #[arg(long)]
-        hnsw_dir: String,
+        #[command(flatten)]
+        store: StoreArgs,
         /// Reindex all files even if unchanged.
         #[arg(long, default_value_t = false)]
         full: bool,
@@ -66,6 +151,8 @@ enum Cmd {
     Bootstrap {
         #[arg(long)]
         repo: String,
+        #[command(flatten)]
+        store: StoreArgs,
 
         /// Template name: `web`, `mobile`, or `rust`.
         #[arg(long)]
@@ -110,10 +197,8 @@ enum Cmd {
 
     /// Hybrid search over the repo index.
     Search {
-        #[arg(long)]
-        db: String,
-        #[arg(long)]
-        hnsw_dir: String,
+        #[command(flatten)]
+        store: StoreArgs,
         #[arg(long)]
         query: String,
         #[arg(long, default_value_t = 8)]
@@ -124,10 +209,8 @@ enum Cmd {
 
     /// Build a minimal context pack for a task.
     Pack {
-        #[arg(long)]
-        db: String,
-        #[arg(long)]
-        hnsw_dir: String,
+        #[command(flatten)]
+        store: StoreArgs,
         #[arg(long)]
         task: String,
         /// Optional strategy id stored in the DB.
@@ -176,10 +259,8 @@ enum Cmd {
     /// This does NOT run an LLM. It scores the Context Engine based on whether
     /// expected paths/symbols appear in the produced context pack.
     Eval {
-        #[arg(long)]
-        db: String,
-        #[arg(long)]
-        hnsw_dir: String,
+        #[command(flatten)]
+        store: StoreArgs,
         /// Path to a JSONL file where each line is a task spec.
         #[arg(long)]
         tasks: String,
@@ -202,6 +283,27 @@ enum Cmd {
         limit: usize,
 
         /// Optional output path for per-task results (JSONL).
+        #[arg(long)]
+        out: Option<String>,
+    },
+
+    /// Benchmark store operations (index/search/pack).
+    Bench {
+        #[command(flatten)]
+        store: StoreArgs,
+        /// Repo root (used for index + default paths).
+        #[arg(long)]
+        repo: String,
+        /// Workload to benchmark.
+        #[arg(long, value_enum, default_value_t = BenchWorkload::Index)]
+        workload: BenchWorkload,
+        /// Query text (required for search/pack workloads).
+        #[arg(long)]
+        query: Option<String>,
+        /// Top-k for search/pack.
+        #[arg(long, default_value_t = 8)]
+        k: usize,
+        /// Optional output path (JSON report; markdown uses .md suffix).
         #[arg(long)]
         out: Option<String>,
     },
@@ -245,6 +347,8 @@ enum Cmd {
     Doctor {
         #[arg(long)]
         repo: String,
+        #[command(flatten)]
+        store: StoreArgs,
         #[arg(long, value_enum, default_value_t = integrations::Agent::All)]
         agent: integrations::Agent,
     },
@@ -262,12 +366,8 @@ enum McpCmd {
     Serve {
         #[arg(long)]
         repo: String,
-        /// Path to sqlite db (defaults to <repo>/.ce/index.sqlite)
-        #[arg(long)]
-        db: Option<String>,
-        /// Directory for HNSW dumps (defaults to <repo>/.ce/hnsw)
-        #[arg(long)]
-        hnsw_dir: Option<String>,
+        #[command(flatten)]
+        store: StoreArgs,
         /// Path to ce-mcp binary (defaults to `ce-mcp` in PATH).
         #[arg(long)]
         ce_mcp_path: Option<String>,
@@ -446,19 +546,24 @@ enum StrategyCmd {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let args = CliArgs::parse();
     match args.cmd {
-        Cmd::Index { repo, db, hnsw_dir, full, prune, skip_edges, max_files } => cmd_index(&repo, &db, &hnsw_dir, full, prune, skip_edges, max_files),
-        Cmd::Bootstrap { repo, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths } => {
-            cmd_bootstrap(&repo, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths)
+        Cmd::Index { repo, store, full, prune, skip_edges, max_files } => {
+            cmd_index(&repo, &store, full, prune, skip_edges, max_files)
+        }
+        Cmd::Bootstrap { repo, store, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths } => {
+            cmd_bootstrap(&repo, &store, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths)
         },
-        Cmd::Search { db, hnsw_dir, query, k, alpha } => cmd_search(&db, &hnsw_dir, &query, k, alpha),
-        Cmd::Pack { db, hnsw_dir, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
-            cmd_pack(&db, &hnsw_dir, &task, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), budget_chars, budget_tokens, tokenizer.as_deref(), max_bodies, alpha, format)
+        Cmd::Search { store, query, k, alpha } => cmd_search(&store, &query, k, alpha),
+        Cmd::Pack { store, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
+            cmd_pack(&store, &task, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), budget_chars, budget_tokens, tokenizer.as_deref(), max_bodies, alpha, format)
         }
 
-        Cmd::Eval { db, hnsw_dir, tasks, strategy_id, strategy_file, strategy_json, strategy_toml, limit, out } => {
-            cmd_eval(&db, &hnsw_dir, &tasks, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), limit, out.as_deref())
+        Cmd::Eval { store, tasks, strategy_id, strategy_file, strategy_json, strategy_toml, limit, out } => {
+            cmd_eval(&store, &tasks, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), limit, out.as_deref())
+        }
+        Cmd::Bench { store, repo, workload, query, k, out } => {
+            cmd_bench(&store, &repo, workload, query.as_deref(), k, out.as_deref())
         }
 
         Cmd::Recipe { cmd } => cmd_recipe(cmd),
@@ -468,52 +573,84 @@ fn main() -> Result<()> {
         Cmd::Integrate { repo, agent, write_global, dry_run } => {
             integrations::cmd_integrate(&repo, agent, write_global, dry_run)
         }
-        Cmd::Doctor { repo, agent } => integrations::cmd_doctor(&repo, agent),
+        Cmd::Doctor { repo, store, agent } => cmd_doctor(&repo, &store, agent),
         Cmd::Mcp { cmd } => match cmd {
-            McpCmd::Serve { repo, db, hnsw_dir, ce_mcp_path, auto_index } => {
-                cmd_mcp_serve(&repo, db.as_deref(), hnsw_dir.as_deref(), ce_mcp_path.as_deref(), auto_index)
+            McpCmd::Serve { repo, store, ce_mcp_path, auto_index } => {
+                cmd_mcp_serve(&repo, &store, ce_mcp_path.as_deref(), auto_index)
             }
         },
     }
 }
 
-fn cmd_mcp_serve(repo: &str, db: Option<&str>, hnsw_dir: Option<&str>, ce_mcp_path: Option<&str>, auto_index: bool) -> Result<()> {
+fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_index: bool) -> Result<()> {
     let repo_path = PathBuf::from(repo);
     if !repo_path.exists() {
         return Err(anyhow!("repo not found: {repo}"));
     }
 
-    let db_path = db
-        .map(PathBuf::from)
-        .unwrap_or_else(|| repo_path.join(".ce").join("index.sqlite"));
-    let hnsw_path = hnsw_dir
-        .map(PathBuf::from)
-        .unwrap_or_else(|| repo_path.join(".ce").join("hnsw"));
+    let bin = ce_mcp_path.unwrap_or("ce-mcp");
+    let mut cmd = std::process::Command::new(bin);
 
-    if auto_index {
-        let needs_index = !db_path.exists() || !hnsw_path.exists();
-        if needs_index {
-            println!("Index missing; building index before starting MCP server...");
-            fs::create_dir_all(repo_path.join(".ce"))?;
-            cmd_index(
-                repo_path.to_string_lossy().as_ref(),
-                db_path.to_string_lossy().as_ref(),
-                hnsw_path.to_string_lossy().as_ref(),
-                false,
-                true,
-                false,
-                20000,
-            )?;
+    match store.store {
+        StoreKind::Sqlite => {
+            let (db_path, hnsw_path) = sqlite_paths_for_repo(&repo_path, store);
+            if auto_index {
+                let needs_index = !db_path.exists() || !hnsw_path.exists();
+                if needs_index {
+                    println!("Index missing; building index before starting MCP server...");
+                    fs::create_dir_all(repo_path.join(".ce"))?;
+                    cmd_index(
+                        repo_path.to_string_lossy().as_ref(),
+                        store,
+                        false,
+                        true,
+                        false,
+                        20000,
+                    )?;
+                }
+            }
+            cmd.arg("--store").arg("sqlite");
+            cmd.arg("--db").arg(db_path);
+            cmd.arg("--hnsw-dir").arg(hnsw_path);
+        }
+        StoreKind::Surreal => {
+            if auto_index {
+                let needs_index = !surreal_path_for_repo(&repo_path, store).exists();
+                if needs_index {
+                    println!("Surreal index missing; building index before starting MCP server...");
+                    fs::create_dir_all(repo_path.join(".ce"))?;
+                    cmd_index(
+                        repo_path.to_string_lossy().as_ref(),
+                        store,
+                        false,
+                        true,
+                        false,
+                        20000,
+                    )?;
+                }
+            }
+            cmd.arg("--store").arg("surreal");
+            cmd.arg("--surreal-path").arg(surreal_path_for_repo(&repo_path, store));
+            cmd.arg("--surreal-engine").arg(match store.surreal_engine {
+                SurrealEngineArg::Surrealkv => "surrealkv",
+                SurrealEngineArg::Mem => "mem",
+            });
+            if store.surreal_versioned {
+                cmd.arg("--surreal-versioned");
+            }
+            cmd.arg("--surreal-ns").arg(&store.surreal_ns);
+            cmd.arg("--surreal-db").arg(&store.surreal_db);
+            cmd.arg("--fts").arg(match store.fts {
+                FtsMode::On => "on",
+                FtsMode::Off => "off",
+            });
+            if let Some(dim) = store.embedding_dim {
+                cmd.arg("--embedding-dim").arg(dim.to_string());
+            }
         }
     }
 
-    let bin = ce_mcp_path.unwrap_or("ce-mcp");
-    let status = std::process::Command::new(bin)
-        .arg("--db")
-        .arg(db_path)
-        .arg("--hnsw-dir")
-        .arg(hnsw_path)
-        .status();
+    let status = cmd.status();
 
     match status {
         Ok(st) if st.success() => Ok(()),
@@ -522,7 +659,81 @@ fn cmd_mcp_serve(repo: &str, db: Option<&str>, hnsw_dir: Option<&str>, ce_mcp_pa
     }
 }
 
-fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+fn cmd_doctor(repo: &str, store: &StoreArgs, agent: integrations::Agent) -> Result<()> {
+    let repo_path = PathBuf::from(repo);
+    let store_info = doctor_store_for_repo(&repo_path, store);
+    integrations::cmd_doctor(repo, agent, store_info)
+}
+
+fn doctor_store_for_repo(repo_path: &Path, store: &StoreArgs) -> integrations::DoctorStore {
+    match store.store {
+        StoreKind::Sqlite => {
+            let (db_path, hnsw_path) = sqlite_paths_for_repo(repo_path, store);
+            integrations::DoctorStore::Sqlite { db_path, hnsw_path }
+        }
+        StoreKind::Surreal => {
+            let path = surreal_path_for_repo(repo_path, store);
+            let engine = match store.surreal_engine {
+                SurrealEngineArg::Surrealkv => "surrealkv",
+                SurrealEngineArg::Mem => "mem",
+            };
+            let persistent = matches!(store.surreal_engine, SurrealEngineArg::Surrealkv);
+            integrations::DoctorStore::Surreal {
+                engine: engine.to_string(),
+                path,
+                persistent,
+            }
+        }
+    }
+}
+
+fn cmd_index(repo: &str, store: &StoreArgs, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+    match store.store {
+        StoreKind::Sqlite => {
+            let repo_path = PathBuf::from(repo);
+            let (db_path, hnsw_dir) = sqlite_paths_for_repo(&repo_path, store);
+            cmd_index_sqlite(repo, &db_path, &hnsw_dir, full, prune, skip_edges, max_files)
+        }
+        StoreKind::Surreal => cmd_index_surreal(repo, store, full, prune, skip_edges, max_files),
+    }
+}
+
+fn sqlite_paths_for_repo(repo_path: &Path, store: &StoreArgs) -> (PathBuf, PathBuf) {
+    let db_path = store
+        .db
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo_path.join(".ce").join("index.sqlite"));
+    let hnsw_path = store
+        .hnsw_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo_path.join(".ce").join("hnsw"));
+    (db_path, hnsw_path)
+}
+
+fn require_sqlite_paths(store: &StoreArgs) -> Result<(PathBuf, PathBuf)> {
+    let db_path = store
+        .db
+        .as_ref()
+        .ok_or_else(|| anyhow!("--db is required for sqlite store"))?;
+    let hnsw_path = store
+        .hnsw_dir
+        .as_ref()
+        .ok_or_else(|| anyhow!("--hnsw-dir is required for sqlite store"))?;
+    Ok((PathBuf::from(db_path), PathBuf::from(hnsw_path)))
+}
+
+fn surreal_path_for_repo(repo_path: &Path, store: &StoreArgs) -> PathBuf {
+    let path = PathBuf::from(&store.surreal_path);
+    if path.is_absolute() {
+        path
+    } else {
+        repo_path.join(path)
+    }
+}
+
+fn cmd_index_sqlite(repo: &str, db_path: &Path, hnsw_dir: &Path, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
     use ce_lang_swift::SwiftAdapter;
     use ce_lang_tsreact::TsReactAdapter;
 
@@ -531,7 +742,7 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
         return Err(anyhow!("repo not found: {repo}"));
     }
 
-    fs::create_dir_all(Path::new(hnsw_dir))?;
+    fs::create_dir_all(hnsw_dir)?;
 
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
@@ -820,7 +1031,7 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
 
     let (vec_index, _map) = query::build_hnsw_from_db(&db)?;
     let dump_base = "fragments";
-    let dump_path = vec_index.dump(Path::new(hnsw_dir), dump_base)?;
+    let dump_path = vec_index.dump(hnsw_dir, dump_base)?;
     println!("HNSW dumped at base path: {dump_path}");
 
     // Record dump metadata in DB meta table (model/dim/hash).
@@ -836,12 +1047,470 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
     Ok(())
 }
 
-fn cmd_search(db_path: &str, hnsw_dir: &str, query: &str, k: usize, alpha: f32) -> Result<()> {
+#[cfg(feature = "surreal")]
+fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+    use ce_lang_swift::SwiftAdapter;
+    use ce_lang_tsreact::TsReactAdapter;
+
+    let repo_path = PathBuf::from(repo);
+    if !repo_path.exists() {
+        return Err(anyhow!("repo not found: {repo}"));
+    }
+
+    let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+    let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+
+    let surreal_path = surreal_path_for_repo(&repo_path, store);
+    if matches!(store.surreal_engine, SurrealEngineArg::Surrealkv) {
+        fs::create_dir_all(&surreal_path)?;
+    }
+
+    let engine = match store.surreal_engine {
+        SurrealEngineArg::Mem => SurrealEngine::Mem,
+        SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
+            path: surreal_path.to_string_lossy().to_string(),
+            versioned: store.surreal_versioned,
+        },
+    };
+    let cfg = SurrealConfig {
+        ns: store.surreal_ns.clone(),
+        db: store.surreal_db.clone(),
+        engine,
+        embedding_dim: embed_dim,
+        fts_enabled: matches!(store.fts, FtsMode::On),
+    };
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let store = rt.block_on(SurrealStore::connect(cfg))?;
+
+    let repo_ident = RepoIdentity {
+        repo_id: SURREAL_REPO_ID.to_string(),
+        root_path: repo_path.to_string_lossy().to_string(),
+        default_branch: None,
+    };
+    rt.block_on(store.init_repo(&repo_ident))?;
+
+    // Ensure tree-sitter grammars load (fail fast on missing grammars)
+    let _ = RustAdapter::new()?;
+    let _ = SwiftAdapter::new()?;
+    let _ = TsReactAdapter::new_ts()?;
+    let _ = TsReactAdapter::new_tsx()?;
+
+    #[derive(Clone)]
+    struct CandidateFile {
+        disk_path: PathBuf,
+        language: String,
+    }
+
+    let mut files: Vec<CandidateFile> = Vec::new();
+    let mut truncated = false;
+    let walker = WalkBuilder::new(&repo_path)
+        .hidden(false)
+        .git_ignore(true)
+        .git_exclude(true)
+        .ignore(true)
+        .build();
+
+    for entry in walker.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let path_str = path.to_string_lossy();
+        if path_str.contains("/.ce/") || path_str.contains("/.prune/") {
+            continue;
+        }
+
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let lang: Option<&str> = match ext {
+                "rs" => Some("rust"),
+                "swift" => Some("swift"),
+                "ts" | "mts" | "cts" | "js" => Some("ts"),
+                "tsx" | "jsx" => Some("tsx"),
+                _ => None,
+            };
+
+            if let Some(lang) = lang {
+                files.push(CandidateFile {
+                    disk_path: path.to_path_buf(),
+                    language: lang.to_string(),
+                });
+                if files.len() >= max_files {
+                    truncated = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    let n_rust = files.iter().filter(|f| f.language == "rust").count();
+    let n_swift = files.iter().filter(|f| f.language == "swift").count();
+    let n_ts = files.iter().filter(|f| f.language == "ts").count();
+    let n_tsx = files.iter().filter(|f| f.language == "tsx").count();
+    println!(
+        "Indexing {} files (rust={}, swift={}, ts={}, tsx={})…",
+        files.len(),
+        n_rust,
+        n_swift,
+        n_ts,
+        n_tsx
+    );
+
+    #[derive(Clone)]
+    struct FileInfo {
+        disk_path: PathBuf,
+        index_path: PathBuf,
+        index_path_str: String,
+        language: String,
+        src: String,
+        size_bytes: i64,
+        mtime_ms: i64,
+        content_hash: String,
+    }
+
+    let file_infos: Vec<FileInfo> = files
+        .par_iter()
+        .filter_map(|p| {
+            let disk_path = p.disk_path.clone();
+            let language = p.language.clone();
+
+            let rel = disk_path.strip_prefix(&repo_path).unwrap_or(disk_path.as_path());
+            let index_path_str = rel.to_string_lossy().to_string().replace('\\', "/");
+            let index_path = PathBuf::from(&index_path_str);
+
+            let src = fs::read_to_string(&disk_path).ok()?;
+            let size_bytes = src.len() as i64;
+
+            let mtime_ms = fs::metadata(&disk_path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+
+            let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
+
+            Some(FileInfo {
+                disk_path,
+                index_path,
+                index_path_str,
+                language,
+                src,
+                size_bytes,
+                mtime_ms,
+                content_hash,
+            })
+        })
+        .collect();
+
+    let existing_files = rt.block_on(store.list_files(SURREAL_REPO_ID))?;
+    let mut existing_by_path: HashMap<String, FileRecord> = HashMap::new();
+    for f in existing_files {
+        existing_by_path.insert(f.path.clone(), f);
+    }
+
+    let mut scanned: HashSet<String> = HashSet::new();
+    let mut to_index: Vec<FileInfo> = Vec::new();
+
+    for fi in file_infos {
+        scanned.insert(fi.index_path_str.clone());
+        if full {
+            to_index.push(fi);
+            continue;
+        }
+        if let Some(existing) = existing_by_path.get(&fi.index_path_str) {
+            if existing.content_hash == fi.content_hash {
+                continue;
+            }
+        }
+        to_index.push(fi);
+    }
+
+    println!(
+        "Files to (re)index: {} (full={}, prune={})",
+        to_index.len(),
+        full,
+        prune
+    );
+
+    let parsed: Vec<(FileInfo, Vec<ce_core::model::Fragment>)> = to_index
+        .par_iter()
+        .filter_map(|fi| {
+            let lang = fi.language.as_str();
+
+            let mut frags: Vec<ce_core::model::Fragment> = match lang {
+                "rust" => {
+                    let mut adapter = RustAdapter::new().ok()?;
+                    let tree = adapter.parse(&fi.src).ok()?;
+                    adapter.extract_fragments(&fi.index_path, &fi.src, &tree)
+                }
+                "swift" => {
+                    let mut adapter = SwiftAdapter::new().ok()?;
+                    let tree = adapter.parse(&fi.src).ok()?;
+                    adapter.extract_fragments(&fi.index_path, &fi.src, &tree)
+                }
+                "ts" => {
+                    let mut adapter = TsReactAdapter::new_ts().ok()?;
+                    let tree = adapter.parse(&fi.src).ok()?;
+                    adapter.extract_fragments(&fi.index_path, &fi.src, &tree)
+                }
+                "tsx" => {
+                    let mut adapter = TsReactAdapter::new_tsx().ok()?;
+                    let tree = adapter.parse(&fi.src).ok()?;
+                    adapter.extract_fragments(&fi.index_path, &fi.src, &tree)
+                }
+                _ => return None,
+            };
+
+            let file_refs: Vec<String> = match lang {
+                "rust" => ce_lang_rust::collect_file_level_refs(&fi.src),
+                "swift" => ce_lang_swift::collect_file_level_refs(&fi.src),
+                "ts" | "tsx" => ce_lang_tsreact::collect_file_level_refs(&fi.src),
+                _ => Vec::new(),
+            };
+
+            if let Some(api) = ce_core::api_summary::build_api_summary(
+                &fi.index_path,
+                lang,
+                &fi.src,
+                &frags,
+                &file_refs,
+                &ce_core::api_summary::ApiSummaryOptions::default(),
+            ) {
+                frags.push(api);
+            }
+
+            Some((fi.clone(), frags))
+        })
+        .collect();
+
+    let mut file_records: Vec<FileRecord> = Vec::new();
+    let mut frag_records: Vec<FragmentRecord> = Vec::new();
+
+    for (fi, frags) in parsed {
+        let file_id = file_id_for_path(SURREAL_REPO_ID, &fi.index_path_str);
+        let sql = "DELETE frag WHERE repo_id = $repo_id AND file_id = $file_id";
+        let _ = rt.block_on(async {
+            store
+                .db
+                .query(sql)
+                .bind(("repo_id", SURREAL_REPO_ID))
+                .bind(("file_id", file_id.clone()))
+                .await
+        })?;
+        file_records.push(FileRecord {
+            file_id: file_id.clone(),
+            repo_id: SURREAL_REPO_ID.to_string(),
+            path: fi.index_path_str.clone(),
+            lang: fi.language.clone(),
+            size_bytes: fi.size_bytes,
+            mtime_ms: fi.mtime_ms,
+            content_hash: fi.content_hash.clone(),
+        });
+
+        let texts: Vec<String> = frags.iter().map(|f| f.retrieval_text.clone()).collect();
+        let vectors = if texts.is_empty() {
+            vec![]
+        } else {
+            embedder.embed_passages(&texts)?
+        };
+
+        for (frag, vec) in frags.into_iter().zip(vectors.into_iter()) {
+            frag_records.push(FragmentRecord::from_fragment(
+                SURREAL_REPO_ID.to_string(),
+                file_id.clone(),
+                fi.index_path_str.clone(),
+                fi.language.clone(),
+                &frag,
+                Some(vec),
+                None,
+            ));
+        }
+    }
+
+    if !file_records.is_empty() {
+        rt.block_on(store.upsert_files(&file_records))?;
+    }
+
+    if !frag_records.is_empty() {
+        let mut start = 0usize;
+        let batch = 200usize;
+        while start < frag_records.len() {
+            let end = (start + batch).min(frag_records.len());
+            rt.block_on(store.upsert_fragments(&frag_records[start..end]))?;
+            start = end;
+        }
+    }
+
+    if !skip_edges {
+        let sql = "DELETE edge WHERE repo_id = $repo_id";
+        let _ = rt.block_on(async {
+            store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await
+        })?;
+
+        let sql = "SELECT id, symbol, refs FROM frag WHERE repo_id = $repo_id";
+        let mut res = rt.block_on(async {
+            store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await
+        })?;
+        #[derive(serde::Deserialize)]
+        struct FragRow {
+            id: Thing,
+            symbol: Option<String>,
+            refs: Option<Vec<String>>,
+        }
+        let rows: Vec<FragRow> = res.take(0)?;
+        let mut symbol_map: HashMap<String, Vec<String>> = HashMap::new();
+        for row in &rows {
+            let frag_id = row
+                .id
+                .to_string()
+                .trim_start_matches("frag:")
+                .trim_matches('"')
+                .to_string();
+            if let Some(sym) = &row.symbol {
+                symbol_map.entry(sym.clone()).or_default().push(frag_id.clone());
+                if let Some((_, tail)) = sym.rsplit_once("::") {
+                    let tail = tail.trim();
+                    if !tail.is_empty() && tail != sym {
+                        symbol_map.entry(tail.to_string()).or_default().push(frag_id.clone());
+                    }
+                }
+            }
+        }
+
+        let mut edges: Vec<ce_store_core::EdgeRecord> = Vec::new();
+        let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+        let max_refs_per_fragment = 64usize;
+        let max_defs_per_ref = 4usize;
+
+        for row in rows {
+            let from_id = row
+                .id
+                .to_string()
+                .trim_start_matches("frag:")
+                .trim_matches('"')
+                .to_string();
+            let refs = row.refs.unwrap_or_default();
+            let mut good_refs: Vec<String> = refs.into_iter().filter(|r| is_good_ref(r)).collect();
+            good_refs.sort();
+            good_refs.dedup();
+            good_refs.truncate(max_refs_per_fragment);
+
+            for r in good_refs {
+                if let Some(defs) = symbol_map.get(&r) {
+                    for def_id in defs.iter().take(max_defs_per_ref) {
+                        if def_id == &from_id {
+                            continue;
+                        }
+                        let key = (from_id.clone(), "refers".to_string(), def_id.clone());
+                        if !seen_edges.insert(key) {
+                            continue;
+                        }
+                        edges.push(ce_store_core::EdgeRecord {
+                            repo_id: SURREAL_REPO_ID.to_string(),
+                            from_id: from_id.clone(),
+                            edge_type: "refers".to_string(),
+                            to_id: def_id.clone(),
+                            weight: 1.0,
+                            meta: json::json!({ "ref": r }),
+                        });
+                    }
+                }
+            }
+        }
+
+        if !edges.is_empty() {
+            let mut start = 0usize;
+            let batch = 500usize;
+            while start < edges.len() {
+                let end = (start + batch).min(edges.len());
+                rt.block_on(store.upsert_edges(&edges[start..end]))?;
+                start = end;
+            }
+        }
+    } else {
+        println!("Skipped edge rebuild (--skip-edges)");
+    }
+
+    if prune {
+        if truncated {
+            eprintln!(
+                "warning: --prune was requested but file scan was truncated by --max-files; skipping prune to avoid deleting valid entries.",
+            );
+        } else {
+            let mut keep_file_ids: Vec<String> = Vec::new();
+            for path in &scanned {
+                keep_file_ids.push(file_id_for_path(SURREAL_REPO_ID, path));
+            }
+            let removed = rt.block_on(store.delete_missing_files(SURREAL_REPO_ID, &keep_file_ids))?;
+            if removed > 0 {
+                println!("Pruned {removed} stale files from Surreal index.");
+            }
+        }
+    }
+
+    println!("Done. Inserted/updated fragments: {}", frag_records.len());
+    Ok(())
+}
+
+#[cfg(not(feature = "surreal"))]
+fn cmd_index_surreal(_repo: &str, _store: &StoreArgs, _full: bool, _prune: bool, _skip_edges: bool, _max_files: usize) -> Result<()> {
+    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+}
+
+fn is_stop_ref(s: &str) -> bool {
+    matches!(
+        s,
+        "self" | "Self" | "super" | "crate" | "std" | "core" | "alloc" |
+        "new" | "default" | "len" | "iter" | "into_iter" | "as_ref" | "as_mut" |
+        "Ok" | "Err" | "Some" | "None" |
+        "Result" | "Option" | "Vec" | "String" |
+        "str" | "bool" | "char" |
+        "u8" | "u16" | "u32" | "u64" | "usize" |
+        "i8" | "i16" | "i32" | "i64" | "isize" |
+        "f32" | "f64" |
+        "Clone" | "Copy" | "Debug" | "Default" | "Send" | "Sync" |
+        "Into" | "From" | "TryFrom" | "Iterator" | "IntoIterator" |
+        "HashMap" | "HashSet"
+    )
+}
+
+fn is_good_ref(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    if s.len() < 2 || s.len() > 80 {
+        return false;
+    }
+    if is_stop_ref(s) {
+        return false;
+    }
+    if s.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    if s.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    true
+}
+
+fn cmd_search(store: &StoreArgs, query: &str, k: usize, alpha: f32) -> Result<()> {
+    match store.store {
+        StoreKind::Sqlite => {
+            let (db_path, hnsw_dir) = require_sqlite_paths(store)?;
+            cmd_search_sqlite(&db_path, &hnsw_dir, query, k, alpha)
+        }
+        StoreKind::Surreal => cmd_search_surreal(store, query, k),
+    }
+}
+
+fn cmd_search_sqlite(db_path: &Path, hnsw_dir: &Path, query: &str, k: usize, alpha: f32) -> Result<()> {
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
 
-    // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
     let hits = query::hybrid_search_with_index(&db, &embedder, Some(&vec_index), query, 50, 50, k, alpha)?;
     for h in hits {
@@ -855,9 +1524,101 @@ fn cmd_search(db_path: &str, hnsw_dir: &str, query: &str, k: usize, alpha: f32) 
     Ok(())
 }
 
+#[cfg(feature = "surreal")]
+fn cmd_search_surreal(store: &StoreArgs, query: &str, k: usize) -> Result<()> {
+    let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+    let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let engine = match store.surreal_engine {
+        SurrealEngineArg::Mem => SurrealEngine::Mem,
+        SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
+            path: store.surreal_path.clone(),
+            versioned: store.surreal_versioned,
+        },
+    };
+    let cfg = SurrealConfig {
+        ns: store.surreal_ns.clone(),
+        db: store.surreal_db.clone(),
+        engine,
+        embedding_dim: embed_dim,
+        fts_enabled: matches!(store.fts, FtsMode::On),
+    };
+    let rt = tokio::runtime::Runtime::new()?;
+    let surreal = rt.block_on(SurrealStore::connect(cfg))?;
+
+    let qvec = embedder.embed_query(query)?;
+    let hits = match store.hybrid {
+        HybridMode::Rrf | HybridMode::Client => {
+            rt.block_on(surreal.hybrid_search_rrf(SURREAL_REPO_ID, query, &qvec, k))?
+        }
+    };
+    for h in hits {
+        println!("\n[{:.3}] {} {:?} {}", h.score, h.frag_id, h.kind, h.path);
+        if let Some(sym) = &h.symbol {
+            println!("  symbol: {sym}");
+        }
+        println!("  {}", indent(&h.signature.trim(), 2));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "surreal"))]
+fn cmd_search_surreal(_store: &StoreArgs, _query: &str, _k: usize) -> Result<()> {
+    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+}
+
 fn cmd_pack(
-    db_path: &str,
-    hnsw_dir: &str,
+    store: &StoreArgs,
+    task: &str,
+    strategy_id: Option<&str>,
+    strategy_file: Option<&str>,
+    strategy_json: Option<&str>,
+    strategy_toml: Option<&str>,
+    budget_chars: Option<usize>,
+    budget_tokens: Option<usize>,
+    tokenizer: Option<&str>,
+    max_bodies: Option<usize>,
+    alpha: Option<f32>,
+    format: PackFormat,
+) -> Result<()> {
+    match store.store {
+        StoreKind::Sqlite => {
+            let (db_path, hnsw_dir) = require_sqlite_paths(store)?;
+            cmd_pack_sqlite(
+                &db_path,
+                &hnsw_dir,
+                task,
+                strategy_id,
+                strategy_file,
+                strategy_json,
+                strategy_toml,
+                budget_chars,
+                budget_tokens,
+                tokenizer,
+                max_bodies,
+                alpha,
+                format,
+            )
+        }
+        StoreKind::Surreal => cmd_pack_surreal(
+            store,
+            task,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            budget_chars,
+            budget_tokens,
+            tokenizer,
+            max_bodies,
+            alpha,
+            format,
+        ),
+    }
+}
+
+fn cmd_pack_sqlite(
+    db_path: &Path,
+    hnsw_dir: &Path,
     task: &str,
     strategy_id: Option<&str>,
     strategy_file: Option<&str>,
@@ -875,7 +1636,6 @@ fn cmd_pack(
 
     let mut strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
 
-    // Apply per-invocation overrides (if provided)
     if let Some(b) = budget_chars {
         strategy.budget_chars = b;
     }
@@ -892,36 +1652,166 @@ fn cmd_pack(
         strategy.hybrid_alpha = a;
     }
 
-    // If we didn't load a strategy (defaults), ensure per-CLI defaults.
-    // This keeps backward-friendly behavior when no strategy is supplied.
     if strategy_id.is_none() && strategy_file.is_none() && strategy_json.is_none() && strategy_toml.is_none() {
         strategy.budget_chars = strategy.budget_chars.max(2000);
     }
 
-    // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
     let pack = build_pack(&db, &embedder, Some(&vec_index), task, &strategy, None)?;
 
+    render_pack_result(&pack, format)
+}
+
+#[cfg(feature = "surreal")]
+fn cmd_pack_surreal(
+    store: &StoreArgs,
+    task: &str,
+    strategy_id: Option<&str>,
+    strategy_file: Option<&str>,
+    strategy_json: Option<&str>,
+    strategy_toml: Option<&str>,
+    budget_chars: Option<usize>,
+    budget_tokens: Option<usize>,
+    tokenizer: Option<&str>,
+    max_bodies: Option<usize>,
+    alpha: Option<f32>,
+    format: PackFormat,
+) -> Result<()> {
+    if strategy_id.is_some() {
+        return Err(anyhow!("--strategy-id is not supported for Surreal stores"));
+    }
+
+    let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+    let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let engine = match store.surreal_engine {
+        SurrealEngineArg::Mem => SurrealEngine::Mem,
+        SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
+            path: store.surreal_path.clone(),
+            versioned: store.surreal_versioned,
+        },
+    };
+    let cfg = SurrealConfig {
+        ns: store.surreal_ns.clone(),
+        db: store.surreal_db.clone(),
+        engine,
+        embedding_dim: embed_dim,
+        fts_enabled: matches!(store.fts, FtsMode::On),
+    };
+    let rt = tokio::runtime::Runtime::new()?;
+    let store = rt.block_on(SurrealStore::connect(cfg))?;
+
+    let mut strategy = load_strategy_from_sources(strategy_file, strategy_json, strategy_toml)?;
+
+    if let Some(b) = budget_chars {
+        strategy.budget_chars = b;
+    }
+    if let Some(bt) = budget_tokens {
+        strategy.budget_tokens = Some(bt);
+    }
+    if let Some(tk) = tokenizer {
+        strategy.tokenizer = tk.to_string();
+    }
+    if let Some(m) = max_bodies {
+        strategy.max_bodies = m;
+    }
+    if let Some(a) = alpha {
+        strategy.hybrid_alpha = a;
+    }
+
+    if strategy_file.is_none() && strategy_json.is_none() && strategy_toml.is_none() {
+        strategy.budget_chars = strategy.budget_chars.max(2000);
+    }
+
+    let qvec = embedder.embed_query(task)?;
+    let req = PackRequest {
+        repo_id: SURREAL_REPO_ID.to_string(),
+        query: task.to_string(),
+        query_vec: Some(qvec),
+        strategy,
+        seen: None,
+    };
+    let pack = rt.block_on(store.pack(req))?.pack;
+
+    render_pack_result(&pack, format)
+}
+
+#[cfg(not(feature = "surreal"))]
+fn cmd_pack_surreal(
+    _store: &StoreArgs,
+    _task: &str,
+    _strategy_id: Option<&str>,
+    _strategy_file: Option<&str>,
+    _strategy_json: Option<&str>,
+    _strategy_toml: Option<&str>,
+    _budget_chars: Option<usize>,
+    _budget_tokens: Option<usize>,
+    _tokenizer: Option<&str>,
+    _max_bodies: Option<usize>,
+    _alpha: Option<f32>,
+    _format: PackFormat,
+) -> Result<()> {
+    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+}
+
+fn render_pack_result(pack: &ContextPack, format: PackFormat) -> Result<()> {
     match format {
         PackFormat::Text => {
-            println!("{}", render_pack(&pack));
+            println!("{}", render_pack(pack));
         }
         PackFormat::Json => {
-            println!("{}", json::to_string_pretty(&pack)?);
+            println!("{}", json::to_string_pretty(pack)?);
         }
         PackFormat::Both => {
-            println!("{}", render_pack(&pack));
+            println!("{}", render_pack(pack));
             println!("\n---\n");
-            println!("{}", json::to_string_pretty(&pack)?);
+            println!("{}", json::to_string_pretty(pack)?);
         }
     }
     Ok(())
 }
 
 fn cmd_eval(
-    db_path: &str,
-    hnsw_dir: &str,
+    store: &StoreArgs,
+    tasks_path: &str,
+    strategy_id: Option<&str>,
+    strategy_file: Option<&str>,
+    strategy_json: Option<&str>,
+    strategy_toml: Option<&str>,
+    limit: usize,
+    out_path: Option<&str>,
+) -> Result<()> {
+    match store.store {
+        StoreKind::Sqlite => {
+            let (db_path, hnsw_dir) = require_sqlite_paths(store)?;
+            cmd_eval_sqlite(
+                &db_path,
+                &hnsw_dir,
+                tasks_path,
+                strategy_id,
+                strategy_file,
+                strategy_json,
+                strategy_toml,
+                limit,
+                out_path,
+            )
+        }
+        StoreKind::Surreal => cmd_eval_surreal(
+            store,
+            tasks_path,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            limit,
+            out_path,
+        ),
+    }
+}
+
+fn cmd_eval_sqlite(
+    db_path: &Path,
+    hnsw_dir: &Path,
     tasks_path: &str,
     strategy_id: Option<&str>,
     strategy_file: Option<&str>,
@@ -936,8 +1826,7 @@ fn cmd_eval(
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
     let strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
 
-    // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
     let f = fs::File::open(tasks_path)?;
     let reader = BufReader::new(f);
@@ -1101,6 +1990,288 @@ fn cmd_eval(
 
     if let Some(p) = out_path {
         println!("wrote per-task results: {p}");
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "surreal")]
+fn cmd_eval_surreal(
+    store: &StoreArgs,
+    tasks_path: &str,
+    strategy_id: Option<&str>,
+    strategy_file: Option<&str>,
+    strategy_json: Option<&str>,
+    strategy_toml: Option<&str>,
+    limit: usize,
+    out_path: Option<&str>,
+) -> Result<()> {
+    use std::io::{BufRead, BufReader, Write};
+
+    if strategy_id.is_some() {
+        return Err(anyhow!("--strategy-id is not supported for Surreal stores"));
+    }
+
+    let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+    let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let engine = match store.surreal_engine {
+        SurrealEngineArg::Mem => SurrealEngine::Mem,
+        SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
+            path: store.surreal_path.clone(),
+            versioned: store.surreal_versioned,
+        },
+    };
+    let cfg = SurrealConfig {
+        ns: store.surreal_ns.clone(),
+        db: store.surreal_db.clone(),
+        engine,
+        embedding_dim: embed_dim,
+        fts_enabled: matches!(store.fts, FtsMode::On),
+    };
+    let rt = tokio::runtime::Runtime::new()?;
+    let store = rt.block_on(SurrealStore::connect(cfg))?;
+
+    let strategy = load_strategy_from_sources(strategy_file, strategy_json, strategy_toml)?;
+
+    let f = fs::File::open(tasks_path)?;
+    let reader = BufReader::new(f);
+
+    let mut out_file = if let Some(p) = out_path {
+        let f = fs::File::create(p)?;
+        Some(std::io::BufWriter::new(f))
+    } else {
+        None
+    };
+
+    let mut total = 0usize;
+    let mut path_cases = 0usize;
+    let mut path_hits = 0usize;
+    let mut sym_cases = 0usize;
+    let mut sym_hits = 0usize;
+    let mut sum_used_chars = 0usize;
+    let mut sum_used_tokens = 0usize;
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut sum_redundancy = 0f64;
+    let mut redundancy_cases = 0usize;
+
+    for line in reader.lines() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if limit > 0 && total >= limit {
+            break;
+        }
+
+        let v: json::Value = json::from_str(line)?;
+        let t = crate::tasks::parse_eval_task(&v)?;
+
+        let qvec = embedder.embed_query(&t.task)?;
+        let req = PackRequest {
+            repo_id: SURREAL_REPO_ID.to_string(),
+            query: t.task.clone(),
+            query_vec: Some(qvec),
+            strategy: strategy.clone(),
+            seen: Some(seen_ids.clone()),
+        };
+        let mut pack = rt.block_on(store.pack(req))?.pack;
+
+        let repeated = pack.items.iter().filter(|it| seen_ids.contains(&it.id)).count();
+        let redundancy_pct = if pack.items.is_empty() {
+            0.0
+        } else {
+            (repeated as f32 / pack.items.len() as f32) * 100.0
+        };
+        pack.metrics.redundancy_pct = Some(redundancy_pct);
+        sum_redundancy += redundancy_pct as f64;
+        redundancy_cases += 1;
+        for it in &pack.items {
+            seen_ids.insert(it.id.clone());
+        }
+
+        let path_hit = if t.expect_paths.is_empty() {
+            None
+        } else {
+            path_cases += 1;
+            let hit = t.expect_paths.iter().any(|p| {
+                pack.items
+                    .iter()
+                    .any(|it| it.path == *p || it.path.ends_with(p))
+            });
+            if hit {
+                path_hits += 1;
+            }
+            Some(hit)
+        };
+
+        if let Some(hit) = path_hit {
+            pack.metrics.hit_rate_paths = Some(if hit { 1.0 } else { 0.0 });
+        }
+
+        let sym_hit = if t.expect_symbols.is_empty() {
+            None
+        } else {
+            sym_cases += 1;
+            let hit = t.expect_symbols.iter().any(|s| {
+                pack.items.iter().any(|it| {
+                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
+                })
+            });
+            if hit {
+                sym_hits += 1;
+            }
+            Some(hit)
+        };
+
+        if let Some(iters) = t.iterations {
+            pack.metrics.avg_iterations_per_fix = Some(iters);
+        }
+
+        total += 1;
+        sum_used_chars += pack.used_chars;
+        sum_used_tokens += pack.used_tokens;
+
+        if let Some(w) = out_file.as_mut() {
+            let top_paths: Vec<String> = pack.items.iter().take(8).map(|it| it.path.clone()).collect();
+            let r = json::json!({
+                "id": t.id,
+                "path_hit": path_hit,
+                "symbol_hit": sym_hit,
+                "hit_rate_paths": pack.metrics.hit_rate_paths,
+                "avg_iterations_per_fix": pack.metrics.avg_iterations_per_fix,
+                "redundancy_pct": pack.metrics.redundancy_pct,
+                "used_chars": pack.used_chars,
+                "used_tokens": pack.used_tokens,
+                "unbound_symbol_count": pack.metrics.unbound_symbol_count,
+                "n_items": pack.items.len(),
+                "top_paths": top_paths,
+            });
+            writeln!(w, "{}", json::to_string(&r)?)?;
+        }
+    }
+
+    println!("[ce-eval v0]");
+    println!("tasks: {}", total);
+    if total > 0 {
+        println!("avg_used_chars: {:.1}", sum_used_chars as f64 / total as f64);
+        println!("avg_used_tokens: {:.1}", sum_used_tokens as f64 / total as f64);
+    }
+    if path_cases > 0 {
+        println!("path_hit_rate: {:.3} ({}/{})", path_hits as f64 / path_cases as f64, path_hits, path_cases);
+    } else {
+        println!("path_hit_rate: n/a (no expect_paths)");
+    }
+    if redundancy_cases > 0 {
+        println!("avg_redundancy_pct: {:.1}", sum_redundancy / redundancy_cases as f64);
+    } else {
+        println!("avg_redundancy_pct: n/a (no tasks)");
+    }
+    if sym_cases > 0 {
+        println!("symbol_hit_rate: {:.3} ({}/{})", sym_hits as f64 / sym_cases as f64, sym_hits, sym_cases);
+    } else {
+        println!("symbol_hit_rate: n/a (no expect_symbols)");
+    }
+
+    if let Some(p) = out_path {
+        println!("wrote per-task results: {p}");
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "surreal"))]
+fn cmd_eval_surreal(
+    _store: &StoreArgs,
+    _tasks_path: &str,
+    _strategy_id: Option<&str>,
+    _strategy_file: Option<&str>,
+    _strategy_json: Option<&str>,
+    _strategy_toml: Option<&str>,
+    _limit: usize,
+    _out_path: Option<&str>,
+) -> Result<()> {
+    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+}
+
+fn cmd_bench(
+    store: &StoreArgs,
+    repo: &str,
+    workload: BenchWorkload,
+    query: Option<&str>,
+    k: usize,
+    out: Option<&str>,
+) -> Result<()> {
+    let start = Instant::now();
+
+    match workload {
+        BenchWorkload::Index => {
+            cmd_index(repo, store, false, true, false, 20000)?;
+        }
+        BenchWorkload::Search => {
+            let q = query.ok_or_else(|| anyhow!("--query is required for search workload"))?;
+            cmd_search(store, q, k, 0.5)?;
+        }
+        BenchWorkload::Pack => {
+            let q = query.ok_or_else(|| anyhow!("--query is required for pack workload"))?;
+            cmd_pack(
+                store,
+                q,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                PackFormat::Json,
+            )?;
+        }
+    }
+
+    let elapsed_ms = start.elapsed().as_millis();
+    let store_label = match store.store {
+        StoreKind::Sqlite => "sqlite",
+        StoreKind::Surreal => "surreal",
+    };
+    let workload_label = match workload {
+        BenchWorkload::Index => "index",
+        BenchWorkload::Search => "search",
+        BenchWorkload::Pack => "pack",
+    };
+
+    let report = json::json!({
+        "repo": repo,
+        "store": store_label,
+        "workload": workload_label,
+        "elapsed_ms": elapsed_ms,
+        "query": query,
+        "k": k,
+    });
+
+    let markdown = format!(
+        "| workload | store | elapsed_ms | query | k |
+|---|---|---|---|---|
+| {workload_label} | {store_label} | {elapsed_ms} | {} | {k} |",
+        query.unwrap_or("-")
+    );
+
+    if let Some(out_path) = out {
+        let out_path = PathBuf::from(out_path);
+        let json_path = if out_path.extension().and_then(|s| s.to_str()) == Some("json") {
+            out_path.clone()
+        } else {
+            out_path.with_extension("json")
+        };
+        let md_path = json_path.with_extension("md");
+        fs::write(&json_path, serde_json::to_string_pretty(&report)?)?;
+        fs::write(&md_path, markdown)?;
+        println!("wrote bench report: {} {}", json_path.display(), md_path.display());
+    } else {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        println!("\n---\n{markdown}");
     }
 
     Ok(())
@@ -2497,6 +3668,7 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
 
 fn cmd_bootstrap(
     repo: &str,
+    store: &StoreArgs,
     template: inception::ProjectTemplate,
     subtype: Option<inception::ProjectSubtype>,
     force: bool,
@@ -2514,21 +3686,23 @@ fn cmd_bootstrap(
     }
     inception::apply_template(&repo_path, template, subtype, force)?;
 
-    let ce_dir = repo_path.join(".ce");
-    fs::create_dir_all(&ce_dir)?;
-    let db_path = ce_dir.join("index.sqlite");
-    let hnsw_dir = ce_dir.join("hnsw");
-
     if !skip_index {
-        cmd_index(repo, db_path.to_string_lossy().as_ref(), hnsw_dir.to_string_lossy().as_ref(), full, prune, skip_edges, max_files)?;
+        cmd_index(repo, store, full, prune, skip_edges, max_files)?;
     }
 
-    let db = Db::open(db_path.to_string_lossy().as_ref())?;
-    if !skip_onboarding {
-        inception::write_onboarding(&repo_path, &db, template)?;
-    }
-    if !skip_golden_paths {
-        inception::write_golden_paths(&repo_path, &db, template)?;
+    if matches!(store.store, StoreKind::Sqlite) {
+        let (db_path, _hnsw_dir) = sqlite_paths_for_repo(&repo_path, store);
+        let db = Db::open(db_path)?;
+        if !skip_onboarding {
+            inception::write_onboarding(&repo_path, &db, template)?;
+        }
+        if !skip_golden_paths {
+            inception::write_golden_paths(&repo_path, &db, template)?;
+        }
+    } else {
+        if !skip_onboarding || !skip_golden_paths {
+            println!("Skipping onboarding/golden paths (Surreal store does not use SQLite).");
+        }
     }
     println!("Bootstrap complete.");
     Ok(())

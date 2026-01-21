@@ -3,7 +3,7 @@ use ce_core::model::{FragKind, Fragment, Span};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use tree_sitter::{Node, Parser, Tree};
+use tree_sitter::{Language, Node, Parser, Tree};
 
 /// Swift / SwiftUI language adapter.
 ///
@@ -16,6 +16,11 @@ use tree_sitter::{Node, Parser, Tree};
 /// NOTE: SwiftUI is Swift; we do not need a separate grammar.
 pub struct SwiftAdapter {
     parser: Parser,
+}
+
+fn language_from_raw(raw: unsafe extern "C" fn() -> *const ()) -> Language {
+    // SAFETY: tree-sitter exposes Language as a transparent pointer wrapper.
+    unsafe { std::mem::transmute(raw) }
 }
 
 /// Collect file-level refs from `import` lines.
@@ -73,7 +78,8 @@ pub fn collect_file_level_refs(source: &str) -> Vec<String> {
 impl SwiftAdapter {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        parser.set_language(&tree_sitter_swift::LANGUAGE.into())?;
+        let language = language_from_raw(tree_sitter_swift::LANGUAGE.into_raw());
+        parser.set_language(&language)?;
         Ok(Self { parser })
     }
 

@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use clap::Parser;
+use clap::{Args, Parser, ValueEnum};
 use ce_core::model::{FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::snippet;
@@ -7,26 +7,91 @@ use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
 use ce_store::{Db, Embedder, VecIndex};
 use ce_store::query;
+use ce_store_core::{CeStore, PackRequest};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-#[derive(Parser, Debug)]
-struct Args {
-    /// Path to sqlite db
-    #[arg(long)]
-    db: String,
+#[cfg(feature = "surreal")]
+use ce_store_surreal::{SurrealConfig, SurrealEngine, SurrealStore};
 
-    /// Directory for HNSW dumps (shared with `ce index`).
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum StoreKind {
+    Sqlite,
+    Surreal,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SurrealEngineArg {
+    Surrealkv,
+    Mem,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FtsMode {
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Args)]
+struct StoreArgs {
+    #[arg(long, value_enum, default_value_t = StoreKind::Sqlite)]
+    store: StoreKind,
+
+    /// Path to sqlite db (sqlite only).
     #[arg(long)]
-    hnsw_dir: String,
+    db: Option<String>,
+
+    /// Directory for HNSW dumps (sqlite only).
+    #[arg(long)]
+    hnsw_dir: Option<String>,
+
+    /// SurrealDB storage directory (surrealkv engine).
+    #[arg(long, default_value = ".ce/surreal")]
+    surreal_path: String,
+
+    /// SurrealDB engine (surrealkv or mem).
+    #[arg(long, value_enum, default_value_t = SurrealEngineArg::Surrealkv)]
+    surreal_engine: SurrealEngineArg,
+
+    /// Use SurrealKV versioned mode.
+    #[arg(long, default_value_t = false)]
+    surreal_versioned: bool,
+
+    /// SurrealDB namespace.
+    #[arg(long, default_value = "prune")]
+    surreal_ns: String,
+
+    /// SurrealDB database.
+    #[arg(long, default_value = "main")]
+    surreal_db: String,
+
+    /// Embedding dimension (defaults to embedder dim).
+    #[arg(long)]
+    embedding_dim: Option<usize>,
+
+    /// Full-text search mode for SurrealDB.
+    #[arg(long, value_enum, default_value_t = FtsMode::On)]
+    fts: FtsMode,
+}
+
+#[derive(Parser, Debug)]
+struct CliArgs {
+    #[command(flatten)]
+    store: StoreArgs,
+}
+
+const SURREAL_REPO_ID: &str = "default";
+
+enum Backend {
+    Sqlite { db: Db, embedder: Embedder, vec_index: VecIndex },
+    #[cfg(feature = "surreal")]
+    Surreal { store: SurrealStore, embedder: Embedder, rt: tokio::runtime::Runtime },
 }
 
 struct App {
-    db: Db,
-    embedder: Embedder,
-    vec_index: VecIndex,
+    backend: Backend,
     sessions: HashMap<String, SessionState>,
 }
 
@@ -36,12 +101,55 @@ struct SessionState {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
-    let db = Db::open(&args.db)?;
-    let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
-    // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(&args.hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
-    let app = App { db, embedder, vec_index, sessions: HashMap::new() };
+    let args = CliArgs::parse();
+    let backend = match args.store.store {
+        StoreKind::Sqlite => {
+            let db_path = args
+                .store
+                .db
+                .as_ref()
+                .ok_or_else(|| anyhow!("--db is required for sqlite store"))?;
+            let hnsw_dir = args
+                .store
+                .hnsw_dir
+                .as_ref()
+                .ok_or_else(|| anyhow!("--hnsw-dir is required for sqlite store"))?;
+            let db = Db::open(db_path)?;
+            let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+            let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+            Backend::Sqlite { db, embedder, vec_index }
+        }
+        StoreKind::Surreal => {
+            #[cfg(feature = "surreal")]
+            {
+                let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
+                let embed_dim = args.store.embedding_dim.unwrap_or(embedder.dim());
+                let engine = match args.store.surreal_engine {
+                    SurrealEngineArg::Mem => SurrealEngine::Mem,
+                    SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
+                        path: args.store.surreal_path.clone(),
+                        versioned: args.store.surreal_versioned,
+                    },
+                };
+                let cfg = SurrealConfig {
+                    ns: args.store.surreal_ns.clone(),
+                    db: args.store.surreal_db.clone(),
+                    engine,
+                    embedding_dim: embed_dim,
+                    fts_enabled: matches!(args.store.fts, FtsMode::On),
+                };
+                let rt = tokio::runtime::Runtime::new()?;
+                let store = rt.block_on(SurrealStore::connect(cfg))?;
+                Backend::Surreal { store, embedder, rt }
+            }
+            #[cfg(not(feature = "surreal"))]
+            {
+                return Err(anyhow!("Surreal support not enabled (build with --features surreal)"));
+            }
+        }
+    };
+
+    let app = App { backend, sessions: HashMap::new() };
     serve_stdio(app)
 }
 
@@ -233,16 +341,38 @@ fn tool_search(app: &mut App, args: Value) -> Result<(String, bool)> {
     let k = args.get("k").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
     let alpha = args.get("alpha").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
 
-    let hits = query::hybrid_search_with_index(&app.db, &app.embedder, Some(&app.vec_index), query, 50, 50, 50, alpha)?;
-    let mut out = String::new();
-    out.push_str(&format!("Top {k} hits for query: {query}\n"));
-    for (i, h) in hits.into_iter().take(k).enumerate() {
-        out.push_str(&format!("\n{}. [{:.3}] {} {:?} {}\n", i+1, h.score, h.frag_id, h.kind, h.path));
-        if let Some(sym) = h.symbol { out.push_str(&format!("   symbol: {sym}\n")); }
-        out.push_str(&indent(&h.signature.trim(), 3));
-        out.push('\n');
+    match &mut app.backend {
+        Backend::Sqlite { db, embedder, vec_index } => {
+            let hits = query::hybrid_search_with_index(db, embedder, Some(vec_index), query, 50, 50, 50, alpha)?;
+            let mut out = String::new();
+            out.push_str(&format!("Top {k} hits for query: {query}\n"));
+            for (i, h) in hits.into_iter().take(k).enumerate() {
+                out.push_str(&format!("\n{}. [{:.3}] {} {:?} {}\n", i + 1, h.score, h.frag_id, h.kind, h.path));
+                if let Some(sym) = h.symbol {
+                    out.push_str(&format!("   symbol: {sym}\n"));
+                }
+                out.push_str(&indent(&h.signature.trim(), 3));
+                out.push('\n');
+            }
+            Ok((out, false))
+        }
+        #[cfg(feature = "surreal")]
+        Backend::Surreal { store, embedder, rt } => {
+            let qvec = embedder.embed_query(query)?;
+            let hits = rt.block_on(store.hybrid_search_rrf(SURREAL_REPO_ID, query, &qvec, 50))?;
+            let mut out = String::new();
+            out.push_str(&format!("Top {k} hits for query: {query}\n"));
+            for (i, h) in hits.into_iter().take(k).enumerate() {
+                out.push_str(&format!("\n{}. [{:.3}] {} {:?} {}\n", i + 1, h.score, h.frag_id, h.kind, h.path));
+                if let Some(sym) = h.symbol {
+                    out.push_str(&format!("   symbol: {sym}\n"));
+                }
+                out.push_str(&indent(&h.signature.trim(), 3));
+                out.push('\n');
+            }
+            Ok((out, false))
+        }
     }
-    Ok((out, false))
 }
 
 fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
@@ -250,9 +380,22 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
     let view = args.get("view").and_then(|v| v.as_str()).unwrap_or("signature");
     let session_id = args.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    let got = app.db.get_fragment_by_id(id)?;
-    let Some((_rowid, frag)) = got else {
-        return Ok((format!("Fragment not found: {id}"), true));
+    let frag = match &mut app.backend {
+        Backend::Sqlite { db, .. } => {
+            let got = db.get_fragment_by_id(id)?;
+            let Some((_rowid, frag)) = got else {
+                return Ok((format!("Fragment not found: {id}"), true));
+            };
+            frag
+        }
+        #[cfg(feature = "surreal")]
+        Backend::Surreal { store, rt, .. } => {
+            let frags = rt.block_on(store.fetch_fragments(SURREAL_REPO_ID, &[id.to_string()]))?;
+            let Some(rec) = frags.into_iter().next() else {
+                return Ok((format!("Fragment not found: {id}"), true));
+            };
+            rec.to_fragment()
+        }
     };
 
     // Mark as seen for the session (best-effort; no persistence).
@@ -306,56 +449,125 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
     let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing task"))?;
     let session_id = args.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
     let remember = args.get("remember").and_then(|v| v.as_bool()).unwrap_or(true);
-    let mut strategy = load_strategy_for_pack(&app.db, &args)?;
 
-    // Optional overrides (only applied if the field exists).
-    if let Some(b) = args.get("budget_chars").and_then(|v| v.as_u64()) {
-        strategy.budget_chars = b as usize;
-    }
-    if let Some(bt) = args.get("budget_tokens").and_then(|v| v.as_u64()) {
-        strategy.budget_tokens = Some(bt as usize);
-    }
-    if let Some(tk) = args.get("tokenizer").and_then(|v| v.as_str()) {
-        strategy.tokenizer = tk.to_string();
-    }
-    if let Some(m) = args.get("max_bodies").and_then(|v| v.as_u64()) {
-        strategy.max_bodies = m as usize;
-    }
-    if let Some(a) = args.get("alpha").and_then(|v| v.as_f64()) {
-        strategy.hybrid_alpha = a as f32;
-    }
+    match &mut app.backend {
+        Backend::Sqlite { db, embedder, vec_index } => {
+            let mut strategy = load_strategy_for_pack(db, &args)?;
 
-    // Session-aware “avoid seen” behavior (optional).
-    let seen: HashSet<String> = session_id
-        .as_ref()
-        .and_then(|sid| app.sessions.get(sid))
-        .map(|st| st.seen.clone())
-        .unwrap_or_default();
-
-    let pack = build_pack(&app.db, &app.embedder, Some(&app.vec_index), task, &strategy, if session_id.is_some() { Some(&seen) } else { None })?;
-
-    if let Some(sid) = session_id {
-        if remember {
-            let st = app.sessions.entry(sid).or_default();
-            for it in &pack.items {
-                st.seen.insert(it.id.clone());
+            if let Some(b) = args.get("budget_chars").and_then(|v| v.as_u64()) {
+                strategy.budget_chars = b as usize;
             }
-            for d in &pack.deferred {
-                st.seen.insert(d.id.clone());
+            if let Some(bt) = args.get("budget_tokens").and_then(|v| v.as_u64()) {
+                strategy.budget_tokens = Some(bt as usize);
             }
+            if let Some(tk) = args.get("tokenizer").and_then(|v| v.as_str()) {
+                strategy.tokenizer = tk.to_string();
+            }
+            if let Some(m) = args.get("max_bodies").and_then(|v| v.as_u64()) {
+                strategy.max_bodies = m as usize;
+            }
+            if let Some(a) = args.get("alpha").and_then(|v| v.as_f64()) {
+                strategy.hybrid_alpha = a as f32;
+            }
+
+            let seen: HashSet<String> = session_id
+                .as_ref()
+                .and_then(|sid| app.sessions.get(sid))
+                .map(|st| st.seen.clone())
+                .unwrap_or_default();
+
+            let pack = build_pack(
+                db,
+                embedder,
+                Some(vec_index),
+                task,
+                &strategy,
+                if session_id.is_some() { Some(&seen) } else { None },
+            )?;
+
+            if let Some(sid) = session_id {
+                if remember {
+                    let st = app.sessions.entry(sid).or_default();
+                    for it in &pack.items {
+                        st.seen.insert(it.id.clone());
+                    }
+                    for d in &pack.deferred {
+                        st.seen.insert(d.id.clone());
+                    }
+                }
+            }
+            let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("text");
+            let text = match format {
+                "json" => serde_json::to_string_pretty(&pack)?,
+                "both" => {
+                    let a = render_pack(&pack);
+                    let b = serde_json::to_string_pretty(&pack)?;
+                    format!("{a}\n---\n{b}")
+                }
+                _ => render_pack(&pack),
+            };
+            Ok((text, false))
+        }
+        #[cfg(feature = "surreal")]
+        Backend::Surreal { store, embedder, rt } => {
+            let mut strategy = load_strategy_for_pack_surreal(&args)?;
+
+            if let Some(b) = args.get("budget_chars").and_then(|v| v.as_u64()) {
+                strategy.budget_chars = b as usize;
+            }
+            if let Some(bt) = args.get("budget_tokens").and_then(|v| v.as_u64()) {
+                strategy.budget_tokens = Some(bt as usize);
+            }
+            if let Some(tk) = args.get("tokenizer").and_then(|v| v.as_str()) {
+                strategy.tokenizer = tk.to_string();
+            }
+            if let Some(m) = args.get("max_bodies").and_then(|v| v.as_u64()) {
+                strategy.max_bodies = m as usize;
+            }
+            if let Some(a) = args.get("alpha").and_then(|v| v.as_f64()) {
+                strategy.hybrid_alpha = a as f32;
+            }
+
+            let seen: HashSet<String> = session_id
+                .as_ref()
+                .and_then(|sid| app.sessions.get(sid))
+                .map(|st| st.seen.clone())
+                .unwrap_or_default();
+
+            let qvec = embedder.embed_query(task)?;
+            let req = PackRequest {
+                repo_id: SURREAL_REPO_ID.to_string(),
+                query: task.to_string(),
+                query_vec: Some(qvec),
+                strategy,
+                seen: if session_id.is_some() { Some(seen.clone()) } else { None },
+            };
+            let pack = rt.block_on(store.pack(req))?.pack;
+
+            if let Some(sid) = session_id {
+                if remember {
+                    let st = app.sessions.entry(sid).or_default();
+                    for it in &pack.items {
+                        st.seen.insert(it.id.clone());
+                    }
+                    for d in &pack.deferred {
+                        st.seen.insert(d.id.clone());
+                    }
+                }
+            }
+            let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("text");
+            let text = match format {
+                "json" => serde_json::to_string_pretty(&pack)?,
+                "both" => {
+                    let a = render_pack(&pack);
+                    let b = serde_json::to_string_pretty(&pack)?;
+                    format!("{a}\n---\n{b}")
+                }
+                _ => render_pack(&pack),
+            };
+            Ok((text, false))
         }
     }
-    let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("text");
-    let text = match format {
-        "json" => serde_json::to_string_pretty(&pack)?,
-        "both" => {
-            let a = render_pack(&pack);
-            let b = serde_json::to_string_pretty(&pack)?;
-            format!("{a}\n---\n{b}")
-        }
-        _ => render_pack(&pack),
-    };
-    Ok((text, false))
 }
 
 fn tool_strategy_list(app: &mut App, args: Value) -> Result<(String, bool)> {
@@ -363,57 +575,69 @@ fn tool_strategy_list(app: &mut App, args: Value) -> Result<(String, bool)> {
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
     let show_config = args.get("show_config").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let rows = app.db.list_strategies(limit, offset)?;
-    if rows.is_empty() {
-        return Ok(("No strategies stored.".to_string(), false));
-    }
+    match &mut app.backend {
+        Backend::Sqlite { db, .. } => {
+            let rows = db.list_strategies(limit, offset)?;
+            if rows.is_empty() {
+                return Ok(("No strategies stored.".to_string(), false));
+            }
 
-    let mut out = String::new();
-    out.push_str(&format!("Strategies (limit={}, offset={}):\n", limit, offset));
-    for r in rows {
-        out.push_str(&format!(
-            "- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}\n",
-            short_id(&r.strategy_id),
-            r.name,
-            r.score,
-            r.parent_id,
-            r.created_at_ms
-        ));
-        if show_config {
-            out.push_str(&indent(&r.config_json, 2));
-            out.push('\n');
+            let mut out = String::new();
+            out.push_str(&format!("Strategies (limit={}, offset={}):\n", limit, offset));
+            for r in rows {
+                out.push_str(&format!(
+                    "- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}\n",
+                    short_id(&r.strategy_id),
+                    r.name,
+                    r.score,
+                    r.parent_id,
+                    r.created_at_ms
+                ));
+                if show_config {
+                    out.push_str(&indent(&r.config_json, 2));
+                    out.push('\n');
+                }
+            }
+
+            Ok((out, false))
         }
+        #[cfg(feature = "surreal")]
+        Backend::Surreal { .. } => Ok(("strategy storage not available for Surreal backend".to_string(), true)),
     }
-
-    Ok((out, false))
 }
 
 fn tool_strategy_get(app: &mut App, args: Value) -> Result<(String, bool)> {
     let id = args.get("id").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing id"))?;
     let pretty = args.get("pretty").and_then(|v| v.as_bool()).unwrap_or(true);
 
-    let Some(r) = app.db.get_strategy(id)? else {
-        return Ok((format!("Strategy not found: {id}"), true));
-    };
+    match &mut app.backend {
+        Backend::Sqlite { db, .. } => {
+            let Some(r) = db.get_strategy(id)? else {
+                return Ok((format!("Strategy not found: {id}"), true));
+            };
 
-    let mut out = String::new();
-    out.push_str(&format!("strategy_id: {}\n", r.strategy_id));
-    out.push_str(&format!("name: {}\n", r.name));
-    out.push_str(&format!("parent_id: {:?}\n", r.parent_id));
-    out.push_str(&format!("score: {:?}\n", r.score));
-    out.push_str(&format!("created_at_ms: {}\n", r.created_at_ms));
-    out.push_str("config:\n");
+            let mut out = String::new();
+            out.push_str(&format!("strategy_id: {}\n", r.strategy_id));
+            out.push_str(&format!("name: {}\n", r.name));
+            out.push_str(&format!("parent_id: {:?}\n", r.parent_id));
+            out.push_str(&format!("score: {:?}\n", r.score));
+            out.push_str(&format!("created_at_ms: {}\n", r.created_at_ms));
+            out.push_str("config:\n");
 
-    if pretty {
-        let v: Value = serde_json::from_str(&r.config_json)?;
-        out.push_str(&serde_json::to_string_pretty(&v)?);
-        out.push('\n');
-    } else {
-        out.push_str(&r.config_json);
-        out.push('\n');
+            if pretty {
+                let v: Value = serde_json::from_str(&r.config_json)?;
+                out.push_str(&serde_json::to_string_pretty(&v)?);
+                out.push('\n');
+            } else {
+                out.push_str(&r.config_json);
+                out.push('\n');
+            }
+
+            Ok((out, false))
+        }
+        #[cfg(feature = "surreal")]
+        Backend::Surreal { .. } => Ok((format!("Strategy not found: {id}"), true)),
     }
-
-    Ok((out, false))
 }
 
 fn load_strategy_for_pack(db: &Db, args: &Value) -> Result<StrategyConfig> {
@@ -436,6 +660,21 @@ fn load_strategy_for_pack(db: &Db, args: &Value) -> Result<StrategyConfig> {
         }
     }
 
+    Ok(cfg)
+}
+
+fn load_strategy_for_pack_surreal(args: &Value) -> Result<StrategyConfig> {
+    if args.get("strategy_id").is_some() {
+        return Err(anyhow!("strategy_id not supported for Surreal backend"));
+    }
+    let mut cfg = StrategyConfig::default();
+    if let Some(ov) = args.get("strategy_overrides") {
+        if ov.is_object() {
+            let mut base = serde_json::to_value(&cfg)?;
+            merge_json(&mut base, ov);
+            cfg = serde_json::from_value::<StrategyConfig>(base)?;
+        }
+    }
     Ok(cfg)
 }
 

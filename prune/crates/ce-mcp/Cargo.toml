@@ -13,13 +13,19 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 ce-core = { path = "../ce-core" }
 ce-store = { path = "../ce-store" }
 ce-lang-rust = { path = "../ce-lang-rust" }
+ce-store-core = { path = "../ce-store-core" }
+ce-store-surreal = { path = "../ce-store-surreal", default-features = false, optional = true, features = ["surreal"] }
 
 bytemuck = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+surreal = ["ce-store-surreal"]

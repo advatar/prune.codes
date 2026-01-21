@@ -1,0 +1,17 @@
+[package]
+name = "ce-store-sqlite"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+ce-store-core = { path = "../ce-store-core" }
+ce-store = { path = "../ce-store" }
+ce-core = { path = "../ce-core" }
+
+bytemuck = { version = "1", features = ["derive"] }

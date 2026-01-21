@@ -1,0 +1,20 @@
+version: 1
+services:
+  - name: ce-cli
+    owner: context-engine
+    type: cli
+    description: Index/search/pack CLI for Prune repositories.
+    ports: []
+    health: none
+    dependencies:
+      - sqlite index (path: .ce/index.sqlite)
+      - hnsw dump (path: .ce/hnsw)
+      - embedded surrealdb (engine: surrealkv or mem; path: .ce/surreal)
+  - name: ce-mcp
+    owner: context-engine
+    type: stdio-server
+    description: JSON-RPC MCP server used by agents.
+    ports: []
+    health: none
+    dependencies:
+      - ce-cli index artifacts (sqlite + hnsw) or embedded surrealdb store

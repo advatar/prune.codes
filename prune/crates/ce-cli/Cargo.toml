@@ -13,8 +13,10 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 ignore = "0.4"
 rayon = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 ce-core = { path = "../ce-core" }
 ce-lang-rust = { path = "../ce-lang-rust" }
@@ -22,9 +24,15 @@ ce-lang-tsreact = { path = "../ce-lang-tsreact" }
 ce-lang-swift = { path = "../ce-lang-swift" }
 
 ce-store = { path = "../ce-store" }
+ce-store-core = { path = "../ce-store-core" }
+ce-store-surreal = { path = "../ce-store-surreal", default-features = false, optional = true, features = ["surreal"] }
+surrealdb = { version = "2", default-features = false, features = ["kv-mem", "kv-surrealkv"], optional = true }
 
 bytemuck = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+surreal = ["ce-store-surreal", "surrealdb"]
