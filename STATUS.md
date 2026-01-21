@@ -4,6 +4,7 @@
 - Unify A2UIRuntime types to resolve duplicate definitions and restore Xcode builds.
 - Ensure PruneApp DMG bundles all required binaries for offline install.
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
+- Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -18,6 +19,7 @@
 - Identified A2UIRuntime duplicate type definitions causing Swift compile failures.
 - Unified A2UIRuntime model + helpers, fixed ContentView rendering, and restored Debug Xcode build with bundled binaries (cloudflared still required for Release DMG).
 - Added DMG Install.command to copy PruneApp into /Applications and launch it after install.
+- Added prerequisites section to the Help view (Git/CLT, macOS version, network, GitHub token).
 - GitHub issues created: CR-01..CR-05 + Epic (advatar/prune).
 - Added signal extraction, support-closure metrics, connected-subgraph selection, TSX/SwiftUI skeletonization, and recipe memory plumbing across `ce-core`, `ce-store`, `ce-cli`, and `ce-mcp`.
 - Added recipe persistence schema + DB methods and wired pack rendering to include recipe excerpts and metrics.

@@ -1526,6 +1526,16 @@ struct HelpView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                GroupBox("Prerequisites") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("macOS 13 or newer.")
+                        Text("Git installed (Xcode Command Line Tools). Required to mirror repos and detect remotes.")
+                        Text("If Git is missing, run: xcode-select --install")
+                        Text("Network access for tunnel + webhooks.")
+                        Text("Optional: GitHub token + webhook secret for GitHub sync.")
+                    }
+                }
+
                 GroupBox("Quickstart") {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("1. Install Prune.app and click Install.")
