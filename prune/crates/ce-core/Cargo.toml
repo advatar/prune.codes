@@ -1,0 +1,11 @@
+[package]
+name = "ce-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+blake3 = "1"
+tiktoken-rs = "0.9"

@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/ce-cli",
+  "crates/ce-core",
+  "crates/ce-lang-rust",
+  "crates/ce-lang-tsreact",
+  "crates/ce-lang-swift",
+  "crates/ce-mcp",
+  "crates/prune-mcp",
+  "crates/prune-sync",
+  "crates/ce-store",
+]

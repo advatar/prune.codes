@@ -1,0 +1,8 @@
+{
+  "agent": "opencode",
+  "instructions": ["AGENTS.md", "CLAUDE.md"],
+  "mcp_config": "opencode.json",
+  "supports_skills": true,
+  "skills_dir": ".claude/skills",
+  "notes": ["OpenCode uses AGENTS.md rules and supports Claude-compatible skills and MCP configs."]
+}

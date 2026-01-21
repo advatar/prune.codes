@@ -1,0 +1,13 @@
+.ce/
+.fastembed_cache/
+target/
+**/*.rs.bk
+*.pdb
+**/A2UIRuntime/.build/
+**/A2UIRuntime/.swiftpm/
+.DS_Store
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout

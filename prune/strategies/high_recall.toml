@@ -1,0 +1,21 @@
+# Example StrategyConfig tuned for recall (bigger candidate pool + deeper graph expansion).
+
+lexical_k = 80
+semantic_k = 80
+hybrid_alpha = 0.6
+
+budget_chars = 16000
+max_bodies = 3
+
+signals_enabled = true
+signal_file_line_boost = 3.0
+
+graph_expand = true
+graph_seed_k = 30
+neighbors_k = 6
+refs_per_seed = 12
+defs_per_ref = 3
+
+edge_radius = 3
+edge_max_nodes_per_seed = 80
+edge_max_edges_per_node = 16

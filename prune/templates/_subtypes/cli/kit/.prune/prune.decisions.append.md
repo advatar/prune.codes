@@ -1,0 +1,1 @@
+- CLI subtype: prefer clear subcommands, exit codes.

@@ -1,0 +1,7 @@
+{
+  "agent": "codex",
+  "instructions": ["AGENTS.md"],
+  "mcp_config": "~/.codex/config.toml",
+  "supports_skills": false,
+  "notes": ["Codex reads AGENTS.md and supports MCP servers via config.toml"]
+}

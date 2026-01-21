@@ -1,0 +1,2 @@
+# Decisions
+- Rust template

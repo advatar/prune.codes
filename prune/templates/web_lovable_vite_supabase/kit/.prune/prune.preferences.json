@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "project_type": "web",
+  "stack": [
+    "react",
+    "vite",
+    "tailwind",
+    "supabase",
+    "supabase_edge_functions"
+  ],
+  "answers": {}
+}

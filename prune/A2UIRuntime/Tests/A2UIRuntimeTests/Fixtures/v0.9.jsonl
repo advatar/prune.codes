@@ -1,0 +1,3 @@
+{"createSurface":{"surfaceId":"s2","catalogId":"interview","rootComponentId":"root"}}
+{"updateComponents":{"surfaceId":"s2","components":[{"id":"root","component":"VStack","children":["title","emailField","submitButton"]},{"id":"title","component":"Text","text":"Contact us"},{"id":"emailField","component":"TextField","label":"Email","value":{"path":"/contact/email"}},{"id":"submitButton","component":"Button","title":"Send","action":{"name":"submit"}}]}}
+{"updateDataModel":{"surfaceId":"s2","updates":[{"path":"/contact/email","value":"ada@example.com"}]}}

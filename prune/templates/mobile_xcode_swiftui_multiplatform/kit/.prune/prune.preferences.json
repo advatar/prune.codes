@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "project_type": "mobile",
+  "stack": [
+    "swiftui",
+    "swift6",
+    "xcode_multiplatform"
+  ],
+  "answers": {}
+}

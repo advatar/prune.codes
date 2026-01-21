@@ -1,0 +1,33 @@
+[package]
+name = "ce-store"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Cargo metadata (optional workspace-aware Rust module graph resolution)
+cargo_metadata = "0.18"
+
+# Hashing (metadata/state)
+blake3 = "1"
+
+# Local embeddings
+fastembed = "5"
+
+# Vector index (HNSW)
+hnsw_rs = "0.3"
+ouroboros = "0.18"
+
+# Binary helpers
+bincode = "1"
+bytemuck = { version = "1", features = ["derive"] }
+
+ce-core = { path = "../ce-core" }
+
+[dev-dependencies]
+tempfile = "3"

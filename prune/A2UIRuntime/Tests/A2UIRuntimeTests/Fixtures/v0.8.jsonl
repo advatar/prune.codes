@@ -1,0 +1,3 @@
+{"beginRendering":{"surfaceId":"s1","catalogId":"interview","rootComponentId":"root"}}
+{"surfaceUpdate":{"surfaceId":"s1","components":[{"id":"root","component":{"VStack":{"children":["title","nameField","nextButton"]}}},{"id":"title","component":{"Text":{"text":{"literalString":"Welcome"}}}},{"id":"nameField","component":{"TextField":{"label":{"literalString":"Name"},"value":{"path":"/answers/name"}}}},{"id":"nextButton","component":{"Button":{"title":{"literalString":"Next"},"action":{"name":"next"}}}}]}}
+{"dataModelUpdate":{"surfaceId":"s1","contents":[{"path":"/answers/name","valueString":"Ada"}]}}

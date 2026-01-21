@@ -1,0 +1,34 @@
+# Summary-first strategy for very large repos.
+#
+# Goal: get a broad but relevant overview cheaply, before spending budget on deep bodies.
+#
+# Key idea:
+# - Inject file-level ApiSummary fragments for the most relevant file paths.
+# - Keep bodies to 0 (or 1) so the pack is mostly signatures + summaries.
+
+# Retrieval
+lexical_k = 60
+semantic_k = 60
+hybrid_alpha = 0.5
+candidate_pool_limit = 400
+
+# ApiSummary injection
+include_api_summaries = true
+api_summary_max = 48
+api_summary_scan_top_n = 180
+api_summary_score_mul = 1.0
+api_summary_score_bonus = 0.75
+
+# Graph expansion (still useful, but keep it bounded)
+graph_expand = true
+edge_radius = 1
+neighbors_k = 3
+refs_per_seed = 6
+
+# Packing
+budget_tokens = 2500
+tokenizer = "o200k_base"
+max_bodies = 0
+per_file_cap_signatures = 3
+mmr_lambda = 0.86
+mmr_top_n = 120

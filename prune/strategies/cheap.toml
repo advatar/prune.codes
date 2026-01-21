@@ -1,0 +1,18 @@
+# Example StrategyConfig tuned for lower latency / smaller packs.
+
+# Retrieval: slightly smaller candidate pools
+lexical_k = 25
+semantic_k = 25
+hybrid_alpha = 0.45
+
+# Packing: smaller budget, fewer bodies
+budget_chars = 8000
+max_bodies = 1
+
+# Graph expansion: keep but reduce radius
+graph_expand = true
+edge_radius = 1
+edge_max_nodes_per_seed = 24
+neighbors_k = 2
+refs_per_seed = 6
+candidate_pool_limit = 180

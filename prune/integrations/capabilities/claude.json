@@ -1,0 +1,8 @@
+{
+  "agent": "claude",
+  "instructions": ["CLAUDE.md"],
+  "mcp_config": ".mcp.json",
+  "supports_skills": true,
+  "skills_dir": ".claude/skills",
+  "notes": ["Claude Code uses CLAUDE.md and supports MCP servers via .mcp.json and skills in .claude/skills."]
+}

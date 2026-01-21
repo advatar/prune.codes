@@ -1,0 +1,11 @@
+version: 1
+commands:
+  - name: tests
+    command: cargo test
+    description: Run workspace unit tests.
+  - name: coverage
+    command: ./scripts/codex/coverage.sh
+    description: Generate an llvm-cov summary for the workspace (requires cargo-llvm-cov).
+  - name: a2ui-tests
+    command: cd A2UIRuntime && swift test
+    description: Run A2UIRuntime Swift package tests.

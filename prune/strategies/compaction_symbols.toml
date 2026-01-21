@@ -1,0 +1,25 @@
+# Strategy focusing on aggressive context compaction with *symbol-focused* slices.
+#
+# Compared to `compaction.toml`, this tries a narrower “symbols” grep slice before
+# falling back to a broad task-token grep, which often reduces irrelevant lines.
+
+# Retrieval
+lexical_k = 40
+semantic_k = 40
+hybrid_alpha = 0.5
+
+# Packing
+budget_chars = 12000
+max_bodies = 3
+
+# Body compaction
+body_snippet_mode = "signals_or_symbols_or_ast_or_skeleton_or_query_grep"
+body_snippet_context_lines = 4
+body_snippet_max_lines = 120
+body_snippet_min_savings_tokens = 32
+
+# Graph expansion (moderate)
+graph_expand = true
+edge_radius = 2
+neighbors_k = 4
+refs_per_seed = 8

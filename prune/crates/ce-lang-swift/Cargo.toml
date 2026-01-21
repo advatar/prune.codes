@@ -1,0 +1,13 @@
+[package]
+name = "ce-lang-swift"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+ce-core = { path = "../ce-core" }
+tree-sitter = "0.22"
+# Swift grammar (tree-sitter)
+# NOTE: this is a lightweight wrapper crate that exposes `tree_sitter_swift::LANGUAGE`.
+tree-sitter-swift = "0"
