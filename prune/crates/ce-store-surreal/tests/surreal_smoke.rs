@@ -1,9 +1,9 @@
 #![cfg(feature = "surreal")]
 
 use anyhow::Result;
-use ce_store_core::{CeStore, FileRecord, FragmentRecord, RepoIdentity};
+use ce_store_core::{CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
 use ce_store_surreal::{ImportEdgeRecord, RelEdgeRecord, SurrealConfig, SurrealEngine, SurrealStore};
-use ce_core::model::FragKind;
+use ce_core::model::{FragKind, StrategyConfig};
 use surrealdb::sql::Thing;
 
 fn sample_fragment(
@@ -467,6 +467,108 @@ async fn shortest_path_returns_connector() -> Result<()> {
     assert!(ids.len() >= 3);
     assert!(ids.iter().any(|id| id == "fraga"));
     assert!(ids.iter().any(|id| id == "fragc"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn pack_connectivity_smoke() -> Result<()> {
+    let cfg = SurrealConfig {
+        ns: "pack".to_string(),
+        db: "pack".to_string(),
+        engine: SurrealEngine::Mem,
+        embedding_dim: 3,
+        fts_enabled: true,
+    };
+    let store = SurrealStore::connect(cfg).await?;
+    let repo_id = "repo";
+    store
+        .init_repo(&RepoIdentity {
+            repo_id: repo_id.to_string(),
+            root_path: "/tmp/repo".to_string(),
+            default_branch: None,
+        })
+        .await?;
+
+    let files = vec![
+        FileRecord {
+            file_id: "filea".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/a.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+        FileRecord {
+            file_id: "fileb".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/b.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+    ];
+    store.upsert_files(&files).await?;
+
+    let mut fraga = sample_fragment(repo_id, "filea", "src/a.ts", "fraga", "alpha", Some(vec![1.0, 0.0, 0.0]));
+    fraga.signature = "pub fn alpha()".to_string();
+    let mut fragb = sample_fragment(repo_id, "fileb", "src/b.ts", "fragb", "beta", Some(vec![0.0, 1.0, 0.0]));
+    fragb.kind = FragKind::ApiSummary;
+    fragb.signature = "pub fn beta()".to_string();
+
+    store.upsert_fragments(&[fraga, fragb]).await?;
+
+    store
+        .upsert_import_edges(&[ImportEdgeRecord {
+            repo_id: repo_id.to_string(),
+            from_file_id: "filea".to_string(),
+            to_file_id: "fileb".to_string(),
+            lang: "ts".to_string(),
+            specifier: "./b".to_string(),
+            resolved_path: Some("src/b.ts".to_string()),
+            is_type_only: Some(false),
+            weight: 1.0,
+            confidence: 1.0,
+            origin: "test".to_string(),
+        }])
+        .await?;
+
+    store
+        .upsert_rel_edges(&[RelEdgeRecord {
+            repo_id: repo_id.to_string(),
+            from_id: "fraga".to_string(),
+            etype: "ref_def".to_string(),
+            to_id: "fragb".to_string(),
+            weight: 1.0,
+            confidence: 0.9,
+            origin: "test".to_string(),
+            meta: serde_json::json!({}),
+        }])
+        .await?;
+
+    let mut strategy = StrategyConfig::default();
+    strategy.graph_expand = true;
+    strategy.candidate_pool_limit = 20;
+    strategy.budget_chars = 20000;
+    strategy.max_bodies = 4;
+    strategy.signals_enabled = false;
+
+    let res = store
+        .pack(PackRequest {
+            repo_id: repo_id.to_string(),
+            query: "alpha".to_string(),
+            query_vec: Some(vec![1.0, 0.0, 0.0]),
+            strategy,
+            seen: None,
+        })
+        .await?;
+
+    let ids: std::collections::HashSet<String> =
+        res.pack.items.iter().map(|it| it.id.clone()).collect();
+    assert!(ids.contains("fraga"));
+    assert!(ids.contains("fragb"));
 
     Ok(())
 }

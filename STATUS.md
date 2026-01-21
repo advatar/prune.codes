@@ -1,7 +1,7 @@
 # Status
 
 ## Current Task
-- CR-001: Add Surreal edge taxonomy (imports/contains/rel) and connected subgraph selection.
+- CR-002: Add Surreal pack connectivity smoke test and finalize edge traversal validation.
 - Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
 - Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
 - Add coverage runner + baseline report and expand tests (ce-store + ce-mcp JSON-RPC + MCP smoke).

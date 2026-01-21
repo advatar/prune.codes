@@ -1708,7 +1708,7 @@ fn contains_edge_weight(kind: FragKind, signature: &str) -> f32 {
 
 #[cfg(feature = "surreal")]
 fn import_weight(specifier: &str, is_reexport: bool) -> f32 {
-    let mut weight = if is_reexport { 0.8 } else { 1.0 };
+    let mut weight: f32 = if is_reexport { 0.8 } else { 1.0 };
     if is_typings_specifier(specifier) {
         weight = weight.min(0.4);
     }
