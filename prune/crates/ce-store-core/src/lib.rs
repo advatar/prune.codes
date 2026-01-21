@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ce_core::model::{ContextPack, FragKind, Fragment, Span, StrategyConfig};
+use ce_core::util::hash_text_hex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -79,8 +80,20 @@ impl FragmentRecord {
         embedding: Option<Vec<f32>>,
         token_estimate: Option<u32>,
     ) -> Self {
+        // Stable, file-unique fragment ID to avoid cross-file collisions.
+        let frag_id = hash_text_hex(&format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}",
+            path.as_str(),
+            frag.span.start_byte,
+            frag.span.end_byte,
+            frag.span.start_line,
+            frag.span.start_col,
+            frag.span.end_line,
+            frag.span.end_col,
+            frag.id
+        ));
         Self {
-            frag_id: frag.id.clone(),
+            frag_id,
             repo_id,
             file_id,
             path,

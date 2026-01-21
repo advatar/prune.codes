@@ -10,5 +10,5 @@ ce-core = { path = "../ce-core" }
 
 # Tree-sitter parsing
 # Note: grammar crates expose `LanguageFn` constants and do not hard-pin the tree-sitter version.
-tree-sitter = "0.22"
+tree-sitter = "0.26"
 tree-sitter-typescript = "0.23"

@@ -3,7 +3,7 @@ use ce_core::model::{FragKind, Fragment, Span};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use tree_sitter::{Language, Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Tree};
 
 /// Swift / SwiftUI language adapter.
 ///
@@ -16,11 +16,6 @@ use tree_sitter::{Language, Node, Parser, Tree};
 /// NOTE: SwiftUI is Swift; we do not need a separate grammar.
 pub struct SwiftAdapter {
     parser: Parser,
-}
-
-fn language_from_raw(raw: unsafe extern "C" fn() -> *const ()) -> Language {
-    // SAFETY: tree-sitter exposes Language as a transparent pointer wrapper.
-    unsafe { std::mem::transmute(raw) }
 }
 
 /// Collect file-level refs from `import` lines.
@@ -78,7 +73,7 @@ pub fn collect_file_level_refs(source: &str) -> Vec<String> {
 impl SwiftAdapter {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        let language = language_from_raw(tree_sitter_swift::LANGUAGE.into_raw());
+        let language = tree_sitter_swift::LANGUAGE.into();
         parser.set_language(&language)?;
         Ok(Self { parser })
     }
@@ -572,8 +567,6 @@ fn lexical_fallback_fragments(path: &Path, source: &str) -> Vec<Fragment> {
     // Very small, best-effort. We only capture top-level decl headers.
     // If this triggers, it means tree-sitter didn’t produce recognizable nodes.
     let mut out = Vec::new();
-    let bytes = source.as_bytes();
-
     let mut offset = 0usize;
     for (i, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
@@ -612,7 +605,6 @@ fn lexical_fallback_fragments(path: &Path, source: &str) -> Vec<Fragment> {
             let mut end_byte = offset + line.len();
             let mut brace = count_char(line, '{') as i64 - count_char(line, '}') as i64;
             if brace > 0 {
-                let mut j = i + 1;
                 let mut off2 = offset + line.len() + 1; // assume `\n`
                 for l2 in source.lines().skip(i + 1) {
                     brace += count_char(l2, '{') as i64;
@@ -622,7 +614,6 @@ fn lexical_fallback_fragments(path: &Path, source: &str) -> Vec<Fragment> {
                         break;
                     }
                     off2 += l2.len() + 1;
-                    j += 1;
                 }
             }
 

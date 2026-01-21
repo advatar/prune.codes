@@ -1,9 +1,9 @@
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::ValueEnum;
 use ce_store::Db;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ProjectTemplate {

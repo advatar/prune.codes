@@ -3,7 +3,7 @@ use ce_core::model::{FragKind, Fragment, Span};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use tree_sitter::{Language, Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Tree};
 
 /// TypeScript / TSX (React) language adapter.
 ///
@@ -20,20 +20,8 @@ use tree_sitter::{Language, Node, Parser, Tree};
 /// - We model `class` as `FragKind::Struct` (close enough for retrieval).
 /// - We model `interface` as `FragKind::Trait`.
 /// - We treat arrow-function component declarations as `FragKind::Function`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TsMode {
-    TypeScript,
-    Tsx,
-}
-
 pub struct TsReactAdapter {
     parser: Parser,
-    mode: TsMode,
-}
-
-fn language_from_raw(raw: unsafe extern "C" fn() -> *const ()) -> Language {
-    // SAFETY: tree-sitter exposes Language as a transparent pointer wrapper.
-    unsafe { std::mem::transmute(raw) }
 }
 
 /// Collect file-level refs (imports/exports) from TS/TSX source.
@@ -273,22 +261,16 @@ fn extract_first_string_literal(s: &str) -> Option<String> {
 impl TsReactAdapter {
     pub fn new_ts() -> Result<Self> {
         let mut parser = Parser::new();
-        let language = language_from_raw(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into_raw());
+        let language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
         parser.set_language(&language)?;
-        Ok(Self {
-            parser,
-            mode: TsMode::TypeScript,
-        })
+        Ok(Self { parser })
     }
 
     pub fn new_tsx() -> Result<Self> {
         let mut parser = Parser::new();
-        let language = language_from_raw(tree_sitter_typescript::LANGUAGE_TSX.into_raw());
+        let language = tree_sitter_typescript::LANGUAGE_TSX.into();
         parser.set_language(&language)?;
-        Ok(Self {
-            parser,
-            mode: TsMode::Tsx,
-        })
+        Ok(Self { parser })
     }
 
     pub fn parse(&mut self, source: &str) -> Result<Tree> {
@@ -481,7 +463,7 @@ fn is_large_body_container(kind: &str) -> bool {
     // Avoid diving into heavy body containers when doing top-level extraction.
     matches!(
         kind,
-        "statement_block" | "statement_block" | "object" | "object_pattern" | "array" | "array_pattern" | "template_string" | "jsx_element" | "jsx_fragment"
+        "statement_block" | "object" | "object_pattern" | "array" | "array_pattern" | "template_string" | "jsx_element" | "jsx_fragment"
     )
 }
 

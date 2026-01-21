@@ -10,6 +10,10 @@
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
+- Upgraded tree-sitter to 0.26 and switched TS/TSX/Swift adapters to the supported LanguageFn API (no grammar mismatch).
+- Made Surreal pack/search/eval resolve repo-root paths and error when the store path is missing.
+- Stabilized fragment IDs across files (path+span+content hash) to prevent collisions in embedded Surreal indexes.
+- Cleaned build warnings in ce-cli/ce-store/ce-lang-* and verified Surreal smoke tests.
 - Triaged Xcode build failure: `cargo` missing in build phase PATH; adding explicit cargo discovery and error messaging.
 - Fixed `ce-cli` integration template include paths and rebuilt `cargo build -p ce-cli` (warnings remain).
 - Updated Bundle Prune Binaries script to resolve the prune repo root and ran `xcodebuild` (warnings remain).

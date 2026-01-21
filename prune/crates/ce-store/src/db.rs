@@ -622,7 +622,6 @@ impl Db {
 
         // Use an explicit transaction for speed.
         self.conn.execute_batch("BEGIN IMMEDIATE;")?;
-        let mut committed = false;
 
         let res: Result<usize> = (|| {
             // Keep other edge types (e.g. module/import edges). Only rebuild `refers` here.
@@ -751,14 +750,15 @@ impl Db {
 
         match res {
             Ok(n) => {
-                self.conn.execute_batch("COMMIT;")?;
-                committed = true;
-                Ok(n)
+                if let Err(e) = self.conn.execute_batch("COMMIT;") {
+                    let _ = self.conn.execute_batch("ROLLBACK;");
+                    Err(e.into())
+                } else {
+                    Ok(n)
+                }
             }
             Err(e) => {
-                if !committed {
-                    let _ = self.conn.execute_batch("ROLLBACK;");
-                }
+                let _ = self.conn.execute_batch("ROLLBACK;");
                 Err(e)
             }
         }
@@ -825,7 +825,6 @@ impl Db {
 
         // Use an explicit transaction for speed.
         self.conn.execute_batch("BEGIN IMMEDIATE;")?;
-        let mut committed = false;
 
         let res: Result<usize> = (|| {
             // Delete outgoing `refers` edges for affected fragments (keep other edge types).
@@ -951,14 +950,15 @@ impl Db {
 
         match res {
             Ok(n) => {
-                self.conn.execute_batch("COMMIT;")?;
-                committed = true;
-                Ok(n)
+                if let Err(e) = self.conn.execute_batch("COMMIT;") {
+                    let _ = self.conn.execute_batch("ROLLBACK;");
+                    Err(e.into())
+                } else {
+                    Ok(n)
+                }
             }
             Err(e) => {
-                if !committed {
-                    let _ = self.conn.execute_batch("ROLLBACK;");
-                }
+                let _ = self.conn.execute_batch("ROLLBACK;");
                 Err(e)
             }
         }
@@ -989,7 +989,6 @@ impl Db {
         let ws = load_rust_workspace(repo_root, &all_paths);
 
         self.conn.execute_batch("BEGIN IMMEDIATE;")?;
-        let mut committed = false;
 
         let res: Result<usize> = (|| {
             // Remove old module/import edges, keep other edge types (e.g. `refers`).
@@ -1061,14 +1060,15 @@ impl Db {
 
         match res {
             Ok(n) => {
-                self.conn.execute_batch("COMMIT;")?;
-                committed = true;
-                Ok(n)
+                if let Err(e) = self.conn.execute_batch("COMMIT;") {
+                    let _ = self.conn.execute_batch("ROLLBACK;");
+                    Err(e.into())
+                } else {
+                    Ok(n)
+                }
             }
             Err(e) => {
-                if !committed {
-                    let _ = self.conn.execute_batch("ROLLBACK;");
-                }
+                let _ = self.conn.execute_batch("ROLLBACK;");
                 Err(e)
             }
         }
@@ -1089,10 +1089,11 @@ impl Db {
     /// Non-relative specifiers (npm packages) are ignored (no local target).
     pub fn rebuild_ts_module_edges_all(&self, repo_root: &Path) -> Result<usize> {
         // Collect all indexed TS/TSX file paths (repo-relative).
-        let mut ts_files = self.list_files_by_language("ts")?;
-        let mut tsx_files = self.list_files_by_language("tsx")?;
-        let mut files = ts_files.clone();
-        files.append(&mut tsx_files.clone());
+        let ts_files = self.list_files_by_language("ts")?;
+        let tsx_files = self.list_files_by_language("tsx")?;
+        let mut files = Vec::with_capacity(ts_files.len() + tsx_files.len());
+        files.extend(ts_files.iter().cloned());
+        files.extend(tsx_files.iter().cloned());
         if files.is_empty() {
             return Ok(0);
         }
@@ -1104,7 +1105,6 @@ impl Db {
         let aliases = ts_load_alias_config(repo_root);
 
         self.conn.execute_batch("BEGIN IMMEDIATE;")?;
-        let mut committed = false;
 
         let res: Result<usize> = (|| {
             // Remove old TS-related edges, keep other edge types (e.g. `refers`).
@@ -1341,14 +1341,15 @@ impl Db {
 
         match res {
             Ok(n) => {
-                self.conn.execute_batch("COMMIT;")?;
-                committed = true;
-                Ok(n)
+                if let Err(e) = self.conn.execute_batch("COMMIT;") {
+                    let _ = self.conn.execute_batch("ROLLBACK;");
+                    Err(e.into())
+                } else {
+                    Ok(n)
+                }
             }
             Err(e) => {
-                if !committed {
-                    let _ = self.conn.execute_batch("ROLLBACK;");
-                }
+                let _ = self.conn.execute_batch("ROLLBACK;");
                 Err(e)
             }
         }
@@ -1550,18 +1551,6 @@ let mut stmt_sel = self.conn.prepare(
                 params.push((*v).into());
             }
             stmt.execute(rusqlite::params_from_iter(params))?;
-        }
-        Ok(())
-    }
-
-    fn delete_edges_from_rowids(&self, from_rowids: &[i64]) -> Result<()> {
-        if from_rowids.is_empty() {
-            return Ok(());
-        }
-        for chunk in from_rowids.chunks(500) {
-            let sql = format!("DELETE FROM edges WHERE from_rowid IN {}", make_in_clause(chunk.len()));
-            let mut stmt = self.conn.prepare(&sql)?;
-            stmt.execute(rusqlite::params_from_iter(chunk.iter()))?;
         }
         Ok(())
     }

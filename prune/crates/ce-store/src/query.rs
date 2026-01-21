@@ -85,16 +85,6 @@ fn sanitize_fts_query(text: &str) -> String {
     tokens.join(" ")
 }
 
-/// Extract up to `max` (path, line) hints from free-form text.
-///
-/// Examples:
-/// - `src/lib.rs:123:45`
-/// - rustc `--> src/main.rs:10:5`
-fn extract_file_line_hints(text: &str, max: usize) -> Vec<(String, u32)> {
-    // Delegate to ce-core so CLI/MCP/search share the same hint extraction logic.
-    ce_core::util::extract_file_line_hints(text, max)
-}
-
 #[derive(Debug, Clone)]
 struct Accum {
     score: f32,
@@ -258,21 +248,6 @@ pub fn load_or_build_hnsw(db: &Db, hnsw_dir: &Path, base: &str, mmap: bool) -> R
     db.set_meta_i64("hnsw.dump_created_at_ms", Db::now_ms())?;
 
     Ok(ix)
-}
-
-/// Compute hybrid scores for a query, returning a map rowid -> (score, reasons).
-///
-/// - Lexical: FTS5
-/// - Semantic: embedding + HNSW
-fn hybrid_scores_map(
-    db: &Db,
-    embedder: &Embedder,
-    query: &str,
-    lexical_k: usize,
-    semantic_k: usize,
-    alpha: f32,
-) -> Result<HashMap<i64, Accum>> {
-    hybrid_scores_map_with_index(db, embedder, None, query, lexical_k, semantic_k, alpha)
 }
 
 /// Like `hybrid_scores_map` but allows the caller to provide a prebuilt semantic index.

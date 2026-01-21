@@ -754,6 +754,36 @@ fn surreal_path_for_repo(repo_path: &Path, store: &StoreArgs) -> PathBuf {
     }
 }
 
+fn discover_repo_root() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    let mut ce_candidate: Option<PathBuf> = None;
+    loop {
+        let git_marker = dir.join(".git");
+        let prune_marker = dir.join(".prune");
+        if git_marker.exists() || prune_marker.exists() {
+            return Some(dir);
+        }
+        if ce_candidate.is_none() && dir.join(".ce").exists() {
+            ce_candidate = Some(dir.clone());
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    ce_candidate
+}
+
+fn surreal_path_for_store(store: &StoreArgs) -> PathBuf {
+    let path = PathBuf::from(&store.surreal_path);
+    if path.is_absolute() {
+        return path;
+    }
+    if let Some(root) = discover_repo_root() {
+        return root.join(path);
+    }
+    path
+}
+
 fn cmd_index_sqlite(
     repo: &str,
     db_path: &Path,
@@ -839,8 +869,6 @@ fn cmd_index_sqlite(
 
     #[derive(Clone)]
     struct FileInfo {
-        /// Actual path on disk (absolute or relative, as returned by the walker).
-        disk_path: PathBuf,
         /// Repo-relative, normalized path used as the stable key in the DB.
         index_path: PathBuf,
         index_path_str: String,
@@ -877,7 +905,6 @@ fn cmd_index_sqlite(
             let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
 
             Some(FileInfo {
-                disk_path,
                 index_path,
                 index_path_str,
                 language,
@@ -1254,7 +1281,6 @@ fn cmd_index_surreal(
 
     #[derive(Clone)]
     struct FileInfo {
-        disk_path: PathBuf,
         index_path: PathBuf,
         index_path_str: String,
         language: String,
@@ -1287,7 +1313,6 @@ fn cmd_index_surreal(
             let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
 
             Some(FileInfo {
-                disk_path,
                 index_path,
                 index_path_str,
                 language,
@@ -2196,10 +2221,17 @@ fn cmd_search_sqlite(db_path: &Path, hnsw_dir: &Path, query: &str, k: usize, alp
 fn cmd_search_surreal(store: &StoreArgs, query: &str, k: usize) -> Result<()> {
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
     let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let surreal_path = surreal_path_for_store(store);
+    if matches!(store.surreal_engine, SurrealEngineArg::Surrealkv) && !surreal_path.is_dir() {
+        return Err(anyhow!(
+            "Surreal store not found at {} (run `ce index --store surreal --repo <path>` or set --surreal-path).",
+            surreal_path.display()
+        ));
+    }
     let engine = match store.surreal_engine {
         SurrealEngineArg::Mem => SurrealEngine::Mem,
         SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
-            path: store.surreal_path.clone(),
+            path: surreal_path.to_string_lossy().to_string(),
             versioned: store.surreal_versioned,
         },
     };
@@ -2352,10 +2384,17 @@ fn cmd_pack_surreal(
 
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
     let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let surreal_path = surreal_path_for_store(store);
+    if matches!(store.surreal_engine, SurrealEngineArg::Surrealkv) && !surreal_path.is_dir() {
+        return Err(anyhow!(
+            "Surreal store not found at {} (run `ce index --store surreal --repo <path>` or set --surreal-path).",
+            surreal_path.display()
+        ));
+    }
     let engine = match store.surreal_engine {
         SurrealEngineArg::Mem => SurrealEngine::Mem,
         SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
-            path: store.surreal_path.clone(),
+            path: surreal_path.to_string_lossy().to_string(),
             versioned: store.surreal_versioned,
         },
     };
@@ -2682,10 +2721,17 @@ fn cmd_eval_surreal(
 
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
     let embed_dim = store.embedding_dim.unwrap_or(embedder.dim());
+    let surreal_path = surreal_path_for_store(store);
+    if matches!(store.surreal_engine, SurrealEngineArg::Surrealkv) && !surreal_path.is_dir() {
+        return Err(anyhow!(
+            "Surreal store not found at {} (run `ce index --store surreal --repo <path>` or set --surreal-path).",
+            surreal_path.display()
+        ));
+    }
     let engine = match store.surreal_engine {
         SurrealEngineArg::Mem => SurrealEngine::Mem,
         SurrealEngineArg::Surrealkv => SurrealEngine::SurrealKv {
-            path: store.surreal_path.clone(),
+            path: surreal_path.to_string_lossy().to_string(),
             versioned: store.surreal_versioned,
         },
     };
@@ -3155,12 +3201,10 @@ fn build_imported_task_object(src: &json::Value, t: crate::tasks::EvalTask) -> j
 
 #[derive(Debug, Clone)]
 struct EvalSummary {
-    total: usize,
     path_cases: usize,
     path_hits: usize,
     sym_cases: usize,
     sym_hits: usize,
-    avg_used_chars: f64,
     avg_used_tokens: f64,
     score: f64,
 }
@@ -3183,7 +3227,6 @@ fn eval_strategy(
     let mut path_hits = 0usize;
     let mut sym_cases = 0usize;
     let mut sym_hits = 0usize;
-    let mut sum_used_chars = 0usize;
     let mut sum_used_tokens = 0usize;
     let mut seen_ids: HashSet<String> = HashSet::new();
 
@@ -3227,14 +3270,12 @@ fn eval_strategy(
         }
 
         total += 1;
-        sum_used_chars += pack.used_chars;
         sum_used_tokens += pack.used_tokens;
         for it in &pack.items {
             seen_ids.insert(it.id.clone());
         }
     }
 
-    let avg_used_chars = if total == 0 { 0.0 } else { sum_used_chars as f64 / total as f64 };
     let avg_used_tokens = if total == 0 { 0.0 } else { sum_used_tokens as f64 / total as f64 };
 
     let path_hr = if path_cases == 0 { 0.0 } else { path_hits as f64 / path_cases as f64 };
@@ -3244,12 +3285,10 @@ fn eval_strategy(
     let score = (0.6 * path_hr + 0.4 * sym_hr) - (avg_used_tokens / 200_000.0);
 
     Ok(EvalSummary {
-        total,
         path_cases,
         path_hits,
         sym_cases,
         sym_hits,
-        avg_used_chars,
         avg_used_tokens,
         score,
     })

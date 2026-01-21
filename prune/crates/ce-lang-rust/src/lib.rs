@@ -956,7 +956,7 @@ fn truncate_line(s: &str, max_chars: usize) -> String {
     out
 }
 
-fn find_first_kind<'a>(mut node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+fn find_first_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     if node.kind() == kind {
         return Some(node);
     }
