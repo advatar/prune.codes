@@ -45,6 +45,13 @@ DMG_PATH="${OUTPUT_DIR}/${DMG_NAME}"
 rm -rf "${STAGING}"
 mkdir -p "${STAGING}" "${OUTPUT_DIR}"
 cp -R "${APP_PATH}" "${STAGING}/"
+INSTALL_SCRIPT="${ROOT}/PruneApp/scripts/Install.command"
+if [ ! -f "${INSTALL_SCRIPT}" ]; then
+  echo "error: missing Install.command at ${INSTALL_SCRIPT}" >&2
+  exit 1
+fi
+cp "${INSTALL_SCRIPT}" "${STAGING}/Install.command"
+chmod +x "${STAGING}/Install.command" 2>/dev/null || true
 ln -s /Applications "${STAGING}/Applications"
 
 hdiutil create -volname "${VOL_NAME}" -srcfolder "${STAGING}" -ov -format UDZO "${DMG_PATH}"

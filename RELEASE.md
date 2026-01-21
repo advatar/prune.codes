@@ -226,11 +226,13 @@ Privacy & Analytics tab:
 DMG should contain:
 - `Prune.app`
 - `Applications` shortcut (standard drag-to-install UX)
+- `Install.command` (copies Prune.app to /Applications and launches it)
 - optional: “Uninstall Prune” doc/link
 
 The “binaries to be installed” requirement is satisfied by:
 - shipping binaries inside the app bundle
 - **install step extracts** them into `~/Library/Application Support/Prune/bin/` (stable)
+- `Install.command` ensures the app bundle (with dependencies) is installed from the DMG
 
 This avoids needing admin privileges and keeps the DMG clean.
 
