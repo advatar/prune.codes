@@ -1,7 +1,6 @@
 # Status
 
 ## Current Task
-- CR-002: Add Surreal pack connectivity smoke test and finalize edge traversal validation.
 - Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
 - Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
 - Add coverage runner + baseline report and expand tests (ce-store + ce-mcp JSON-RPC + MCP smoke).
@@ -10,6 +9,7 @@
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
 
 ## Progress
+- Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
 - Triaged Xcode build failure: `cargo` missing in build phase PATH; adding explicit cargo discovery and error messaging.
 - Fixed `ce-cli` integration template include paths and rebuilt `cargo build -p ce-cli` (warnings remain).
 - Updated Bundle Prune Binaries script to resolve the prune repo root and ran `xcodebuild` (warnings remain).

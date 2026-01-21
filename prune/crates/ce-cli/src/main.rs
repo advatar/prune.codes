@@ -142,6 +142,9 @@ enum Cmd {
         /// Skip rebuilding resolved edges (faster indexing, but weaker subgraph expansion).
         #[arg(long, default_value_t = false)]
         skip_edges: bool,
+        /// Skip tree-sitter grammar checks and omit languages that fail to load.
+        #[arg(long, default_value_t = false)]
+        skip_grammar_checks: bool,
         #[arg(long, default_value_t = 20000)]
         max_files: usize,
     },
@@ -183,6 +186,10 @@ enum Cmd {
         /// Pass-through: skip rebuilding resolved edges.
         #[arg(long, default_value_t = false)]
         skip_edges: bool,
+
+        /// Pass-through: skip tree-sitter grammar checks and omit languages that fail to load.
+        #[arg(long, default_value_t = false)]
+        skip_grammar_checks: bool,
 
         /// Pass-through: max number of files to walk.
         #[arg(long, default_value_t = 20000)]
@@ -550,11 +557,11 @@ enum StrategyCmd {
 fn main() -> Result<()> {
     let args = CliArgs::parse();
     match args.cmd {
-        Cmd::Index { repo, store, full, prune, skip_edges, max_files } => {
-            cmd_index(&repo, &store, full, prune, skip_edges, max_files)
+        Cmd::Index { repo, store, full, prune, skip_edges, skip_grammar_checks, max_files } => {
+            cmd_index(&repo, &store, full, prune, skip_edges, skip_grammar_checks, max_files)
         }
-        Cmd::Bootstrap { repo, store, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths } => {
-            cmd_bootstrap(&repo, &store, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths)
+        Cmd::Bootstrap { repo, store, template, subtype, force, skip_index, full, prune, skip_edges, skip_grammar_checks, max_files, skip_onboarding, skip_golden_paths } => {
+            cmd_bootstrap(&repo, &store, template, subtype, force, skip_index, full, prune, skip_edges, skip_grammar_checks, max_files, skip_onboarding, skip_golden_paths)
         },
         Cmd::Search { store, query, k, alpha } => cmd_search(&store, &query, k, alpha),
         Cmd::Pack { store, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
@@ -607,6 +614,7 @@ fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_
                         false,
                         true,
                         false,
+                        false,
                         20000,
                     )?;
                 }
@@ -626,6 +634,7 @@ fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_
                         store,
                         false,
                         true,
+                        false,
                         false,
                         20000,
                     )?;
@@ -689,14 +698,24 @@ fn doctor_store_for_repo(repo_path: &Path, store: &StoreArgs) -> integrations::D
     }
 }
 
-fn cmd_index(repo: &str, store: &StoreArgs, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+fn cmd_index(
+    repo: &str,
+    store: &StoreArgs,
+    full: bool,
+    prune: bool,
+    skip_edges: bool,
+    skip_grammar_checks: bool,
+    max_files: usize,
+) -> Result<()> {
     match store.store {
         StoreKind::Sqlite => {
             let repo_path = PathBuf::from(repo);
             let (db_path, hnsw_dir) = sqlite_paths_for_repo(&repo_path, store);
             cmd_index_sqlite(repo, &db_path, &hnsw_dir, full, prune, skip_edges, max_files)
         }
-        StoreKind::Surreal => cmd_index_surreal(repo, store, full, prune, skip_edges, max_files),
+        StoreKind::Surreal => {
+            cmd_index_surreal(repo, store, full, prune, skip_edges, skip_grammar_checks, max_files)
+        }
     }
 }
 
@@ -735,7 +754,15 @@ fn surreal_path_for_repo(repo_path: &Path, store: &StoreArgs) -> PathBuf {
     }
 }
 
-fn cmd_index_sqlite(repo: &str, db_path: &Path, hnsw_dir: &Path, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+fn cmd_index_sqlite(
+    repo: &str,
+    db_path: &Path,
+    hnsw_dir: &Path,
+    full: bool,
+    prune: bool,
+    skip_edges: bool,
+    max_files: usize,
+) -> Result<()> {
     use ce_lang_swift::SwiftAdapter;
     use ce_lang_tsreact::TsReactAdapter;
 
@@ -1050,7 +1077,15 @@ fn cmd_index_sqlite(repo: &str, db_path: &Path, hnsw_dir: &Path, full: bool, pru
 }
 
 #[cfg(feature = "surreal")]
-fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+fn cmd_index_surreal(
+    repo: &str,
+    store: &StoreArgs,
+    full: bool,
+    prune: bool,
+    skip_edges: bool,
+    skip_grammar_checks: bool,
+    max_files: usize,
+) -> Result<()> {
     use ce_lang_swift::SwiftAdapter;
     use ce_lang_tsreact::TsReactAdapter;
 
@@ -1092,11 +1127,66 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
     };
     rt.block_on(store.init_repo(&repo_ident))?;
 
-    // Ensure tree-sitter grammars load (fail fast on missing grammars)
-    let _ = RustAdapter::new()?;
-    let _ = SwiftAdapter::new()?;
-    let _ = TsReactAdapter::new_ts()?;
-    let _ = TsReactAdapter::new_tsx()?;
+    let mut enabled_langs: HashSet<String> = HashSet::new();
+    let rust_ok = match RustAdapter::new() {
+        Ok(_) => true,
+        Err(err) => {
+            if skip_grammar_checks {
+                eprintln!("warning: skipping rust parsing (tree-sitter error): {err}");
+                false
+            } else {
+                return Err(err);
+            }
+        }
+    };
+    if rust_ok {
+        enabled_langs.insert("rust".to_string());
+    }
+
+    let swift_ok = match SwiftAdapter::new() {
+        Ok(_) => true,
+        Err(err) => {
+            if skip_grammar_checks {
+                eprintln!("warning: skipping swift parsing (tree-sitter error): {err}");
+                false
+            } else {
+                return Err(err);
+            }
+        }
+    };
+    if swift_ok {
+        enabled_langs.insert("swift".to_string());
+    }
+
+    let ts_ok = match TsReactAdapter::new_ts() {
+        Ok(_) => true,
+        Err(err) => {
+            if skip_grammar_checks {
+                eprintln!("warning: skipping ts parsing (tree-sitter error): {err}");
+                false
+            } else {
+                return Err(err);
+            }
+        }
+    };
+    if ts_ok {
+        enabled_langs.insert("ts".to_string());
+    }
+
+    let tsx_ok = match TsReactAdapter::new_tsx() {
+        Ok(_) => true,
+        Err(err) => {
+            if skip_grammar_checks {
+                eprintln!("warning: skipping tsx parsing (tree-sitter error): {err}");
+                false
+            } else {
+                return Err(err);
+            }
+        }
+    };
+    if tsx_ok {
+        enabled_langs.insert("tsx".to_string());
+    }
 
     #[derive(Clone)]
     struct CandidateFile {
@@ -1134,6 +1224,9 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
             };
 
             if let Some(lang) = lang {
+                if !enabled_langs.contains(lang) {
+                    continue;
+                }
                 files.push(CandidateFile {
                     disk_path: path.to_path_buf(),
                     language: lang.to_string(),
@@ -1626,7 +1719,15 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
 }
 
 #[cfg(not(feature = "surreal"))]
-fn cmd_index_surreal(_repo: &str, _store: &StoreArgs, _full: bool, _prune: bool, _skip_edges: bool, _max_files: usize) -> Result<()> {
+fn cmd_index_surreal(
+    _repo: &str,
+    _store: &StoreArgs,
+    _full: bool,
+    _prune: bool,
+    _skip_edges: bool,
+    _skip_grammar_checks: bool,
+    _max_files: usize,
+) -> Result<()> {
     Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
 }
 
@@ -2773,7 +2874,7 @@ fn cmd_bench(
 
     match workload {
         BenchWorkload::Index => {
-            cmd_index(repo, store, false, true, false, 20000)?;
+            cmd_index(repo, store, false, true, false, false, 20000)?;
         }
         BenchWorkload::Search => {
             let q = query.ok_or_else(|| anyhow!("--query is required for search workload"))?;
@@ -4243,6 +4344,7 @@ fn cmd_bootstrap(
     full: bool,
     prune: bool,
     skip_edges: bool,
+    skip_grammar_checks: bool,
     max_files: usize,
     skip_onboarding: bool,
     skip_golden_paths: bool,
@@ -4254,7 +4356,7 @@ fn cmd_bootstrap(
     inception::apply_template(&repo_path, template, subtype, force)?;
 
     if !skip_index {
-        cmd_index(repo, store, full, prune, skip_edges, max_files)?;
+        cmd_index(repo, store, full, prune, skip_edges, skip_grammar_checks, max_files)?;
     }
 
     if matches!(store.store, StoreKind::Sqlite) {
