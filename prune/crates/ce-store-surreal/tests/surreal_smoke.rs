@@ -1,9 +1,10 @@
 #![cfg(feature = "surreal")]
 
 use anyhow::Result;
-use ce_store_core::{CeStore, EdgeRecord, FileRecord, FragmentRecord, RepoIdentity};
-use ce_store_surreal::{SurrealConfig, SurrealEngine, SurrealStore};
+use ce_store_core::{CeStore, FileRecord, FragmentRecord, RepoIdentity};
+use ce_store_surreal::{ImportEdgeRecord, RelEdgeRecord, SurrealConfig, SurrealEngine, SurrealStore};
 use ce_core::model::FragKind;
+use surrealdb::sql::Thing;
 
 fn sample_fragment(
     repo_id: &str,
@@ -170,19 +171,302 @@ async fn expand_graph_follows_edges() -> Result<()> {
     ];
     store.upsert_fragments(&frags).await?;
 
-    let edges = vec![EdgeRecord {
+    let edges = vec![RelEdgeRecord {
         repo_id: repo_id.to_string(),
         from_id: "fragone".to_string(),
-        edge_type: "refers".to_string(),
+        etype: "ref_def".to_string(),
         to_id: "fragtwo".to_string(),
         weight: 1.0,
+        confidence: 0.9,
+        origin: "test".to_string(),
         meta: serde_json::json!({}),
     }];
-    store.upsert_edges(&edges).await?;
+    store.upsert_rel_edges(&edges).await?;
 
     let expanded = store
         .expand_graph(repo_id, &["fragone".to_string()], &[], 8)
         .await?;
     assert!(expanded.contains(&"fragtwo".to_string()));
+    Ok(())
+}
+
+#[tokio::test]
+async fn arrow_traversal_imports_both_directions() -> Result<()> {
+    let cfg = SurrealConfig {
+        ns: "imports".to_string(),
+        db: "imports".to_string(),
+        engine: SurrealEngine::Mem,
+        embedding_dim: 3,
+        fts_enabled: false,
+    };
+    let store = SurrealStore::connect(cfg).await?;
+    let repo_id = "repo";
+    store
+        .init_repo(&RepoIdentity {
+            repo_id: repo_id.to_string(),
+            root_path: "/tmp/repo".to_string(),
+            default_branch: None,
+        })
+        .await?;
+
+    let files = vec![
+        FileRecord {
+            file_id: "filea".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/a.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+        FileRecord {
+            file_id: "fileb".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/b.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+    ];
+    store.upsert_files(&files).await?;
+
+    store
+        .upsert_import_edges(&[ImportEdgeRecord {
+            repo_id: repo_id.to_string(),
+            from_file_id: "filea".to_string(),
+            to_file_id: "fileb".to_string(),
+            lang: "ts".to_string(),
+            specifier: "./b".to_string(),
+            resolved_path: Some("src/b.ts".to_string()),
+            is_type_only: Some(false),
+            weight: 1.0,
+            confidence: 1.0,
+            origin: "test".to_string(),
+        }])
+        .await?;
+
+    let mut res = store
+        .db
+        .query("RETURN type::thing(\"file\", $a)->imports->file.id")
+        .bind(("a", "filea"))
+        .await?;
+    let forward: Vec<Thing> = res.take(0)?;
+    assert!(forward.iter().any(|id| id.to_string().contains("file:fileb")));
+
+    let mut res = store
+        .db
+        .query("RETURN type::thing(\"file\", $b)<-imports<-file.id")
+        .bind(("b", "fileb"))
+        .await?;
+    let reverse: Vec<Thing> = res.take(0)?;
+    assert!(reverse.iter().any(|id| id.to_string().contains("file:filea")));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn collect_returns_bounded_neighborhood() -> Result<()> {
+    let cfg = SurrealConfig {
+        ns: "collect".to_string(),
+        db: "collect".to_string(),
+        engine: SurrealEngine::Mem,
+        embedding_dim: 3,
+        fts_enabled: false,
+    };
+    let store = SurrealStore::connect(cfg).await?;
+    let repo_id = "repo";
+    store
+        .init_repo(&RepoIdentity {
+            repo_id: repo_id.to_string(),
+            root_path: "/tmp/repo".to_string(),
+            default_branch: None,
+        })
+        .await?;
+
+    let files = vec![
+        FileRecord {
+            file_id: "filea".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/a.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+        FileRecord {
+            file_id: "fileb".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/b.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+        FileRecord {
+            file_id: "filec".to_string(),
+            repo_id: repo_id.to_string(),
+            path: "src/c.ts".to_string(),
+            lang: "ts".to_string(),
+            size_bytes: 10,
+            mtime_ms: 0,
+            content_hash: "hash".to_string(),
+        },
+    ];
+    store.upsert_files(&files).await?;
+
+    store
+        .upsert_import_edges(&[
+            ImportEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_file_id: "filea".to_string(),
+                to_file_id: "fileb".to_string(),
+                lang: "ts".to_string(),
+                specifier: "./b".to_string(),
+                resolved_path: Some("src/b.ts".to_string()),
+                is_type_only: Some(false),
+                weight: 1.0,
+                confidence: 1.0,
+                origin: "test".to_string(),
+            },
+            ImportEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_file_id: "fileb".to_string(),
+                to_file_id: "filec".to_string(),
+                lang: "ts".to_string(),
+                specifier: "./c".to_string(),
+                resolved_path: Some("src/c.ts".to_string()),
+                is_type_only: Some(false),
+                weight: 1.0,
+                confidence: 1.0,
+                origin: "test".to_string(),
+            },
+        ])
+        .await?;
+
+    let sql =
+        "RETURN type::thing(\"file\", $a).{..1+collect}(->imports[WHERE repo_id = $repo_id]->file).id";
+    let mut res = store
+        .db
+        .query(sql)
+        .bind(("a", "filea"))
+        .bind(("repo_id", repo_id))
+        .await?;
+    let hop1: Vec<Thing> = res.take(0)?;
+    let hop1_ids: Vec<String> = hop1.iter().map(|id| id.to_string()).collect();
+    assert!(hop1_ids.iter().any(|id| id.contains("file:fileb")));
+    assert!(!hop1_ids.iter().any(|id| id.contains("file:filec")));
+
+    let sql =
+        "RETURN type::thing(\"file\", $a).{..2+collect}(->imports[WHERE repo_id = $repo_id]->file).id";
+    let mut res = store
+        .db
+        .query(sql)
+        .bind(("a", "filea"))
+        .bind(("repo_id", repo_id))
+        .await?;
+    let hop2: Vec<Thing> = res.take(0)?;
+    let hop2_ids: Vec<String> = hop2.iter().map(|id| id.to_string()).collect();
+    assert!(hop2_ids.iter().any(|id| id.contains("file:filec")));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn shortest_path_returns_connector() -> Result<()> {
+    let cfg = SurrealConfig {
+        ns: "shortest".to_string(),
+        db: "shortest".to_string(),
+        engine: SurrealEngine::Mem,
+        embedding_dim: 3,
+        fts_enabled: false,
+    };
+    let store = SurrealStore::connect(cfg).await?;
+    let repo_id = "repo";
+    store
+        .init_repo(&RepoIdentity {
+            repo_id: repo_id.to_string(),
+            root_path: "/tmp/repo".to_string(),
+            default_branch: None,
+        })
+        .await?;
+
+    let file = FileRecord {
+        file_id: "filex".to_string(),
+        repo_id: repo_id.to_string(),
+        path: "src/graph.rs".to_string(),
+        lang: "rust".to_string(),
+        size_bytes: 10,
+        mtime_ms: 0,
+        content_hash: "hash".to_string(),
+    };
+    store.upsert_files(&[file]).await?;
+
+    let frags = vec![
+        sample_fragment(repo_id, "filex", "src/graph.rs", "fraga", "a", None),
+        sample_fragment(repo_id, "filex", "src/graph.rs", "fragb", "b", None),
+        sample_fragment(repo_id, "filex", "src/graph.rs", "fragc", "c", None),
+        sample_fragment(repo_id, "filex", "src/graph.rs", "fragd", "d", None),
+    ];
+    store.upsert_fragments(&frags).await?;
+
+    store
+        .upsert_rel_edges(&[
+            RelEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_id: "fraga".to_string(),
+                etype: "ref_def".to_string(),
+                to_id: "fragb".to_string(),
+                weight: 1.0,
+                confidence: 0.9,
+                origin: "test".to_string(),
+                meta: serde_json::json!({}),
+            },
+            RelEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_id: "fraga".to_string(),
+                etype: "ref_def".to_string(),
+                to_id: "fragd".to_string(),
+                weight: 1.0,
+                confidence: 0.9,
+                origin: "test".to_string(),
+                meta: serde_json::json!({}),
+            },
+            RelEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_id: "fragb".to_string(),
+                etype: "ref_def".to_string(),
+                to_id: "fragc".to_string(),
+                weight: 1.0,
+                confidence: 0.9,
+                origin: "test".to_string(),
+                meta: serde_json::json!({}),
+            },
+            RelEdgeRecord {
+                repo_id: repo_id.to_string(),
+                from_id: "fragd".to_string(),
+                etype: "ref_def".to_string(),
+                to_id: "fragc".to_string(),
+                weight: 1.0,
+                confidence: 0.9,
+                origin: "test".to_string(),
+                meta: serde_json::json!({}),
+            },
+        ])
+        .await?;
+
+    let ids = ce_store_surreal::shortest_path_frags(
+        &store.db,
+        repo_id,
+        "fraga",
+        "fragc",
+        &vec!["ref_def".to_string()],
+        4,
+    )
+    .await?;
+    assert!(ids.len() >= 3);
+    assert!(ids.iter().any(|id| id == "fraga"));
+    assert!(ids.iter().any(|id| id == "fragc"));
+
     Ok(())
 }

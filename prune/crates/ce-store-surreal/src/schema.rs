@@ -8,7 +8,19 @@ pub async fn ensure_schema(
 ) -> anyhow::Result<()> {
     let raw = include_str!("../schema/prune.surql");
     let rendered = raw.replace("$EMBED_DIM", &embed_dim.to_string());
-    for stmt in rendered.split(';') {
+    apply_schema(db, &rendered).await.context("failed to apply Surreal base schema")?;
+
+    let edges = include_str!("../schema/prune_edges.surql");
+    apply_schema(db, edges).await.context("failed to apply Surreal edge schema")?;
+
+    Ok(())
+}
+
+async fn apply_schema(
+    db: &surrealdb::Surreal<surrealdb::engine::any::Any>,
+    sql: &str,
+) -> anyhow::Result<()> {
+    for stmt in sql.split(';') {
         let stmt = stmt.trim();
         if stmt.is_empty() || stmt.starts_with("--") {
             continue;

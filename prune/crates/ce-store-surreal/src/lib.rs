@@ -6,7 +6,12 @@ use ce_store_core::{
 #[cfg(feature = "surreal")]
 mod pack;
 #[cfg(feature = "surreal")]
+mod graph;
+#[cfg(feature = "surreal")]
 mod schema;
+
+#[cfg(feature = "surreal")]
+pub use graph::{collect_file_neighborhood, collect_frag_neighborhood, shortest_path_frags};
 
 #[cfg(feature = "surreal")]
 use anyhow::{Context, Result};
@@ -17,7 +22,7 @@ use ce_core::model::FragKind;
 #[cfg(feature = "surreal")]
 use serde_json::json;
 #[cfg(feature = "surreal")]
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "surreal")]
 use surrealdb::engine::any::Any;
 #[cfg(feature = "surreal")]
@@ -49,6 +54,51 @@ pub struct SurrealStore {
     pub cfg: SurrealConfig,
     pub db: Surreal<Any>,
 }
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Debug)]
+pub struct ImportEdgeRecord {
+    pub repo_id: String,
+    pub from_file_id: String,
+    pub to_file_id: String,
+    pub lang: String,
+    pub specifier: String,
+    pub resolved_path: Option<String>,
+    pub is_type_only: Option<bool>,
+    pub weight: f32,
+    pub confidence: f32,
+    pub origin: String,
+}
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Debug)]
+pub struct ContainsEdgeRecord {
+    pub repo_id: String,
+    pub file_id: String,
+    pub frag_id: String,
+    pub kind: String,
+    pub symbol: Option<String>,
+    pub start_line: Option<u32>,
+    pub end_line: Option<u32>,
+    pub weight: f32,
+    pub confidence: f32,
+}
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Debug)]
+pub struct RelEdgeRecord {
+    pub repo_id: String,
+    pub from_id: String,
+    pub etype: String,
+    pub to_id: String,
+    pub weight: f32,
+    pub confidence: f32,
+    pub origin: String,
+    pub meta: serde_json::Value,
+}
+
+#[cfg(feature = "surreal")]
+const DEFAULT_REL_ETYPES: &[&str] = &["ref_def", "calls", "type_uses", "jsx_uses", "tests"];
 
 #[cfg(feature = "surreal")]
 impl SurrealStore {
@@ -95,6 +145,79 @@ impl SurrealStore {
         id.trim_start_matches(&format!("{table}:"))
             .trim_matches('"')
             .to_string()
+    }
+
+    pub async fn upsert_import_edges(&self, edges: &[ImportEdgeRecord]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        let mut q = String::new();
+        for e in edges {
+            let edge_key = format!("imports|{}", e.specifier);
+            let edge_id = Self::edge_record_id(&e.from_file_id, &edge_key, &e.to_file_id);
+            let from = Self::record_id("file", &e.from_file_id);
+            let to = Self::record_id("file", &e.to_file_id);
+            let repo_id = serde_json::to_string(&e.repo_id)?;
+            let lang = serde_json::to_string(&e.lang)?;
+            let specifier = serde_json::to_string(&e.specifier)?;
+            let resolved_path = serde_json::to_string(&e.resolved_path)?;
+            let is_type_only = serde_json::to_string(&e.is_type_only)?;
+            let origin = serde_json::to_string(&e.origin)?;
+            q.push_str(&format!(
+                "RELATE {from}->imports:{edge_id}->{to} SET repo_id = {repo_id}, lang = {lang}, specifier = {specifier}, resolved_path = {resolved_path}, is_type_only = {is_type_only}, weight = {weight}, confidence = {confidence}, origin = {origin};\n",
+                weight = e.weight,
+                confidence = e.confidence
+            ));
+        }
+        self.db.query(q).await?;
+        Ok(())
+    }
+
+    pub async fn upsert_contains_edges(&self, edges: &[ContainsEdgeRecord]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        let mut q = String::new();
+        for e in edges {
+            let edge_id = Self::edge_record_id(&e.file_id, "contains", &e.frag_id);
+            let from = Self::record_id("file", &e.file_id);
+            let to = Self::record_id("frag", &e.frag_id);
+            let repo_id = serde_json::to_string(&e.repo_id)?;
+            let kind = serde_json::to_string(&e.kind)?;
+            let symbol = serde_json::to_string(&e.symbol)?;
+            let start_line = serde_json::to_string(&e.start_line)?;
+            let end_line = serde_json::to_string(&e.end_line)?;
+            q.push_str(&format!(
+                "RELATE {from}->contains:{edge_id}->{to} SET repo_id = {repo_id}, kind = {kind}, symbol = {symbol}, start_line = {start_line}, end_line = {end_line}, weight = {weight}, confidence = {confidence};\n",
+                weight = e.weight,
+                confidence = e.confidence
+            ));
+        }
+        self.db.query(q).await?;
+        Ok(())
+    }
+
+    pub async fn upsert_rel_edges(&self, edges: &[RelEdgeRecord]) -> Result<()> {
+        if edges.is_empty() {
+            return Ok(());
+        }
+        let mut q = String::new();
+        for e in edges {
+            let edge_id = Self::edge_record_id(&e.from_id, &e.etype, &e.to_id);
+            let from = Self::record_id("frag", &e.from_id);
+            let to = Self::record_id("frag", &e.to_id);
+            let repo_id = serde_json::to_string(&e.repo_id)?;
+            let etype = serde_json::to_string(&e.etype)?;
+            let origin = serde_json::to_string(&e.origin)?;
+            let meta = serde_json::to_string(&e.meta)?;
+            q.push_str(&format!(
+                "RELATE {from}->rel:{edge_id}->{to} SET repo_id = {repo_id}, etype = {etype}, weight = {weight}, confidence = {confidence}, origin = {origin}, meta = {meta};\n",
+                weight = e.weight,
+                confidence = e.confidence
+            ));
+        }
+        self.db.query(q).await?;
+        Ok(())
     }
 
     async fn vector_search_rows(
@@ -270,21 +393,20 @@ impl CeStore for SurrealStore {
         if edges.is_empty() {
             return Ok(());
         }
-        let mut q = String::new();
-        for e in edges {
-            let edge_id = Self::edge_record_id(&e.from_id, &e.edge_type, &e.to_id);
-            let from = Self::record_id("frag", &e.from_id);
-            let to = Self::record_id("frag", &e.to_id);
-            let repo_id = serde_json::to_string(&e.repo_id)?;
-            let edge_type = serde_json::to_string(&e.edge_type)?;
-            let meta = serde_json::to_string(&e.meta)?;
-            q.push_str(&format!(
-                "RELATE {from}->edge:{edge_id}->{to} SET repo_id = {repo_id}, edge_type = {edge_type}, weight = {weight}, meta = {meta};\n",
-                weight = e.weight
-            ));
-        }
-        self.db.query(q).await?;
-        Ok(())
+        let rel_edges: Vec<RelEdgeRecord> = edges
+            .iter()
+            .map(|e| RelEdgeRecord {
+                repo_id: e.repo_id.clone(),
+                from_id: e.from_id.clone(),
+                etype: e.edge_type.clone(),
+                to_id: e.to_id.clone(),
+                weight: e.weight,
+                confidence: 1.0,
+                origin: "edge_record".to_string(),
+                meta: e.meta.clone(),
+            })
+            .collect();
+        self.upsert_rel_edges(&rel_edges).await
     }
 
     async fn delete_missing_files(&self, repo_id: &str, keep_file_ids: &[String]) -> Result<usize> {
@@ -297,18 +419,34 @@ impl CeStore for SurrealStore {
                 .query("DELETE frag WHERE repo_id = $repo_id")
                 .bind(("repo_id", repo_id.to_string()))
                 .await?;
+            let _ = self
+                .db
+                .query("DELETE imports WHERE repo_id = $repo_id")
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
+            let _ = self
+                .db
+                .query("DELETE contains WHERE repo_id = $repo_id")
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
+            let _ = self
+                .db
+                .query("DELETE rel WHERE repo_id = $repo_id")
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
             return Ok(rows.len());
         }
         let keep: Vec<Thing> = keep_file_ids
             .iter()
             .map(|id| Self::record_thing("file", id))
             .collect();
+        let keep_files = keep.clone();
         let sql = "DELETE file WHERE repo_id = $repo_id AND id NOT IN $keep";
         let mut res = self
             .db
             .query(sql)
             .bind(("repo_id", repo_id.to_string()))
-            .bind(("keep", keep))
+            .bind(("keep", keep_files))
             .await?;
         let rows: Vec<serde_json::Value> = res.take(0)?;
         let _ = self
@@ -316,6 +454,25 @@ impl CeStore for SurrealStore {
             .query("DELETE frag WHERE repo_id = $repo_id AND file_id NOT IN $keep_ids")
             .bind(("repo_id", repo_id.to_string()))
             .bind(("keep_ids", keep_file_ids.to_vec()))
+            .await?;
+        let _ = self
+            .db
+            .query("DELETE imports WHERE repo_id = $repo_id AND (in NOT IN $keep OR out NOT IN $keep)")
+            .bind(("repo_id", repo_id.to_string()))
+            .bind(("keep", keep.clone()))
+            .await?;
+        let _ = self
+            .db
+            .query("DELETE contains WHERE repo_id = $repo_id AND in NOT IN $keep")
+            .bind(("repo_id", repo_id.to_string()))
+            .bind(("keep", keep))
+            .await?;
+        let _ = self
+            .db
+            .query(
+                "DELETE rel WHERE repo_id = $repo_id AND (in NOT IN (SELECT VALUE id FROM frag WHERE repo_id = $repo_id) OR out NOT IN (SELECT VALUE id FROM frag WHERE repo_id = $repo_id))",
+            )
+            .bind(("repo_id", repo_id.to_string()))
             .await?;
         Ok(rows.len())
     }
@@ -325,12 +482,24 @@ impl CeStore for SurrealStore {
             let sql = "DELETE frag WHERE repo_id = $repo_id";
             let mut res = self.db.query(sql).bind(("repo_id", repo_id.to_string())).await?;
             let rows: Vec<serde_json::Value> = res.take(0)?;
+            let _ = self
+                .db
+                .query("DELETE contains WHERE repo_id = $repo_id")
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
+            let _ = self
+                .db
+                .query("DELETE rel WHERE repo_id = $repo_id")
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
             return Ok(rows.len());
         }
         let keep: Vec<Thing> = keep_frag_ids
             .iter()
             .map(|id| Self::record_thing("frag", id))
             .collect();
+        let keep_frags = keep.clone();
+        let keep_rel = keep.clone();
         let sql = "DELETE frag WHERE repo_id = $repo_id AND id NOT IN $keep";
         let mut res = self
             .db
@@ -339,6 +508,18 @@ impl CeStore for SurrealStore {
             .bind(("keep", keep))
             .await?;
         let rows: Vec<serde_json::Value> = res.take(0)?;
+        let _ = self
+            .db
+            .query("DELETE contains WHERE repo_id = $repo_id AND out NOT IN $keep")
+            .bind(("repo_id", repo_id.to_string()))
+            .bind(("keep", keep_frags))
+            .await?;
+        let _ = self
+            .db
+            .query("DELETE rel WHERE repo_id = $repo_id AND (in NOT IN $keep OR out NOT IN $keep)")
+            .bind(("repo_id", repo_id.to_string()))
+            .bind(("keep", keep_rel))
+            .await?;
         Ok(rows.len())
     }
 
@@ -459,56 +640,60 @@ impl CeStore for SurrealStore {
         edge_types: &[String],
         max_nodes: usize,
     ) -> Result<Vec<String>> {
-        let mut visited: HashSet<String> = HashSet::new();
-        let mut q: VecDeque<String> = VecDeque::new();
-
-        for s in seed_ids {
-            visited.insert(s.clone());
-            q.push_back(s.clone());
+        if seed_ids.is_empty() || max_nodes == 0 {
+            return Ok(Vec::new());
         }
 
-        while let Some(node) = q.pop_front() {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut out: Vec<String> = Vec::new();
+        let max_hops = 2u32;
+        let etypes: Vec<String> = if edge_types.is_empty() {
+            DEFAULT_REL_ETYPES.iter().map(|s| s.to_string()).collect()
+        } else {
+            edge_types.to_vec()
+        };
+
+        let has_file_seed = seed_ids.iter().any(|s| s.starts_with("file:"));
+        for seed in seed_ids {
             if visited.len() >= max_nodes {
                 break;
             }
-            let node_thing = Self::record_thing("frag", &node);
-            let sql = if edge_types.is_empty() {
-                "SELECT in, out FROM edge WHERE repo_id = $repo_id AND (in = $node OR out = $node)"
+            let ids = if seed.starts_with("file:") {
+                graph::collect_file_neighborhood(&self.db, repo_id, seed, max_hops).await?
             } else {
-                "SELECT in, out FROM edge WHERE repo_id = $repo_id AND edge_type IN $types AND (in = $node OR out = $node)"
+                graph::collect_frag_neighborhood(&self.db, repo_id, seed, max_hops, &etypes).await?
             };
-            let mut res = self
-                .db
-                .query(sql)
-                .bind(("repo_id", repo_id.to_string()))
-                .bind(("node", node_thing.clone()))
-                .bind(("types", edge_types.to_vec()))
-                .await?;
-            #[derive(serde::Deserialize)]
-            struct Row {
-                #[serde(rename = "in")]
-                in_id: Thing,
-                #[serde(rename = "out")]
-                out_id: Thing,
-            }
-            let rows: Vec<Row> = res.take(0)?;
-            for row in rows {
-                let neighbor = if row.in_id == node_thing { row.out_id } else { row.in_id };
-                let neighbor = neighbor.to_string();
-                if neighbor.is_empty() {
-                    continue;
-                }
-                let neighbor_id = Self::strip_prefix("frag", &neighbor);
-                if visited.insert(neighbor_id.clone()) {
-                    q.push_back(neighbor_id);
-                }
-                if visited.len() >= max_nodes {
-                    break;
+            for id in ids {
+                if visited.insert(id.clone()) {
+                    out.push(id);
+                    if visited.len() >= max_nodes {
+                        break;
+                    }
                 }
             }
         }
 
-        Ok(visited.into_iter().collect())
+        if !has_file_seed && seed_ids.len() > 1 && visited.len() < max_nodes {
+            let hub = seed_ids[0].as_str();
+            for seed in seed_ids.iter().skip(1) {
+                if visited.len() >= max_nodes {
+                    break;
+                }
+                let path =
+                    graph::shortest_path_frags(&self.db, repo_id, seed, hub, &etypes, max_hops)
+                        .await?;
+                for id in path {
+                    if visited.insert(id.clone()) {
+                        out.push(id);
+                        if visited.len() >= max_nodes {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(out)
     }
 
     async fn pack(&self, req: PackRequest) -> Result<PackResult> {

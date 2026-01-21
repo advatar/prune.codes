@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
+use ce_core::model::{ContextPack, FragKind, FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
@@ -13,7 +13,7 @@ use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use serde_json as json;
@@ -23,7 +23,9 @@ mod inception;
 use ce_cli::integrations;
 
 #[cfg(feature = "surreal")]
-use ce_store_surreal::{SurrealConfig, SurrealEngine, SurrealStore};
+use ce_store_surreal::{
+    ContainsEdgeRecord, ImportEdgeRecord, RelEdgeRecord, SurrealConfig, SurrealEngine, SurrealStore,
+};
 #[cfg(feature = "surreal")]
 use surrealdb::sql::Thing;
 
@@ -1204,6 +1206,13 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
         })
         .collect();
 
+    let mut stem_map: HashMap<String, Vec<String>> = HashMap::new();
+    for fi in &file_infos {
+        if let Some(stem) = fi.index_path.file_stem().and_then(|s| s.to_str()) {
+            stem_map.entry(stem.to_string()).or_default().push(fi.index_path_str.clone());
+        }
+    }
+
     let existing_files = rt.block_on(store.list_files(SURREAL_REPO_ID))?;
     let mut existing_by_path: HashMap<String, FileRecord> = HashMap::new();
     for f in existing_files {
@@ -1213,8 +1222,9 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
     let mut scanned: HashSet<String> = HashSet::new();
     let mut to_index: Vec<FileInfo> = Vec::new();
 
-    for fi in file_infos {
+    for fi in &file_infos {
         scanned.insert(fi.index_path_str.clone());
+        let fi = fi.clone();
         if full {
             to_index.push(fi);
             continue;
@@ -1344,22 +1354,181 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
     }
 
     if !skip_edges {
-        let sql = "DELETE edge WHERE repo_id = $repo_id";
         let _ = rt.block_on(async {
-            store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await
+            store
+                .db
+                .query("DELETE imports WHERE repo_id = $repo_id")
+                .bind(("repo_id", SURREAL_REPO_ID))
+                .await
+        })?;
+        let _ = rt.block_on(async {
+            store
+                .db
+                .query("DELETE contains WHERE repo_id = $repo_id")
+                .bind(("repo_id", SURREAL_REPO_ID))
+                .await
+        })?;
+        let _ = rt.block_on(async {
+            store
+                .db
+                .query("DELETE rel WHERE repo_id = $repo_id")
+                .bind(("repo_id", SURREAL_REPO_ID))
+                .await
         })?;
 
-        let sql = "SELECT id, symbol, refs FROM frag WHERE repo_id = $repo_id";
+        let sql = "SELECT id, file_id, kind, symbol, start_line, end_line, signature, refs FROM frag WHERE repo_id = $repo_id";
         let mut res = rt.block_on(async {
             store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await
         })?;
         #[derive(serde::Deserialize)]
         struct FragRow {
             id: Thing,
+            file_id: String,
+            kind: FragKind,
             symbol: Option<String>,
+            start_line: u32,
+            end_line: u32,
+            signature: String,
             refs: Option<Vec<String>>,
         }
         let rows: Vec<FragRow> = res.take(0)?;
+
+        let mut contains_edges: Vec<ContainsEdgeRecord> = Vec::new();
+        for row in &rows {
+            let frag_id = row
+                .id
+                .to_string()
+                .trim_start_matches("frag:")
+                .trim_matches('"')
+                .to_string();
+            let weight = contains_edge_weight(row.kind, &row.signature);
+            let kind = format!("{:?}", row.kind);
+            contains_edges.push(ContainsEdgeRecord {
+                repo_id: SURREAL_REPO_ID.to_string(),
+                file_id: row.file_id.clone(),
+                frag_id,
+                kind,
+                symbol: row.symbol.clone(),
+                start_line: Some(row.start_line),
+                end_line: Some(row.end_line),
+                weight,
+                confidence: 1.0,
+            });
+        }
+        if !contains_edges.is_empty() {
+            let mut start = 0usize;
+            let batch = 500usize;
+            while start < contains_edges.len() {
+                let end = (start + batch).min(contains_edges.len());
+                rt.block_on(store.upsert_contains_edges(&contains_edges[start..end]))?;
+                start = end;
+            }
+        }
+
+        let mut import_edges: Vec<ImportEdgeRecord> = Vec::new();
+        let mut seen_imports: HashSet<(String, String, String)> = HashSet::new();
+        for fi in &file_infos {
+            let from_id = file_id_for_path(SURREAL_REPO_ID, &fi.index_path_str);
+            match fi.language.as_str() {
+                "ts" | "tsx" => {
+                    for imp in parse_ts_imports(&fi.src) {
+                        let Some(resolved) =
+                            resolve_ts_import(&imp.specifier, &fi.index_path_str, &scanned)
+                        else {
+                            continue;
+                        };
+                        let to_id = file_id_for_path(SURREAL_REPO_ID, &resolved);
+                        if to_id == from_id {
+                            continue;
+                        }
+                        let weight = import_weight(&imp.specifier, imp.is_reexport);
+                        let key = (from_id.clone(), to_id.clone(), imp.specifier.clone());
+                        if !seen_imports.insert(key) {
+                            continue;
+                        }
+                        import_edges.push(ImportEdgeRecord {
+                            repo_id: SURREAL_REPO_ID.to_string(),
+                            from_file_id: from_id.clone(),
+                            to_file_id: to_id,
+                            lang: fi.language.clone(),
+                            specifier: imp.specifier,
+                            resolved_path: Some(resolved),
+                            is_type_only: imp.is_type_only,
+                            weight,
+                            confidence: 1.0,
+                            origin: "ts_import_resolver".to_string(),
+                        });
+                    }
+                }
+                "rust" => {
+                    for imp in parse_rust_imports(&fi.src) {
+                        let Some(resolved) =
+                            resolve_rust_import(&imp, &fi.index_path_str, &scanned)
+                        else {
+                            continue;
+                        };
+                        let to_id = file_id_for_path(SURREAL_REPO_ID, &resolved);
+                        if to_id == from_id {
+                            continue;
+                        }
+                        let key = (from_id.clone(), to_id.clone(), imp.path.clone());
+                        if !seen_imports.insert(key) {
+                            continue;
+                        }
+                        import_edges.push(ImportEdgeRecord {
+                            repo_id: SURREAL_REPO_ID.to_string(),
+                            from_file_id: from_id.clone(),
+                            to_file_id: to_id,
+                            lang: fi.language.clone(),
+                            specifier: imp.path,
+                            resolved_path: Some(resolved),
+                            is_type_only: None,
+                            weight: 1.0,
+                            confidence: 1.0,
+                            origin: "rust_import_resolver".to_string(),
+                        });
+                    }
+                }
+                "swift" => {
+                    for module in parse_swift_imports(&fi.src) {
+                        let Some(resolved) = resolve_swift_import(&module, &stem_map) else {
+                            continue;
+                        };
+                        let to_id = file_id_for_path(SURREAL_REPO_ID, &resolved);
+                        if to_id == from_id {
+                            continue;
+                        }
+                        let key = (from_id.clone(), to_id.clone(), module.clone());
+                        if !seen_imports.insert(key) {
+                            continue;
+                        }
+                        import_edges.push(ImportEdgeRecord {
+                            repo_id: SURREAL_REPO_ID.to_string(),
+                            from_file_id: from_id.clone(),
+                            to_file_id: to_id,
+                            lang: fi.language.clone(),
+                            specifier: module,
+                            resolved_path: Some(resolved),
+                            is_type_only: None,
+                            weight: 1.0,
+                            confidence: 1.0,
+                            origin: "swift_import_resolver".to_string(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !import_edges.is_empty() {
+            let mut start = 0usize;
+            let batch = 500usize;
+            while start < import_edges.len() {
+                let end = (start + batch).min(import_edges.len());
+                rt.block_on(store.upsert_import_edges(&import_edges[start..end]))?;
+                start = end;
+            }
+        }
+
         let mut symbol_map: HashMap<String, Vec<String>> = HashMap::new();
         for row in &rows {
             let frag_id = row
@@ -1379,7 +1548,7 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
             }
         }
 
-        let mut edges: Vec<ce_store_core::EdgeRecord> = Vec::new();
+        let mut rel_edges: Vec<RelEdgeRecord> = Vec::new();
         let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
         let max_refs_per_fragment = 64usize;
         let max_defs_per_ref = 4usize;
@@ -1403,16 +1572,18 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
                         if def_id == &from_id {
                             continue;
                         }
-                        let key = (from_id.clone(), "refers".to_string(), def_id.clone());
+                        let key = (from_id.clone(), "ref_def".to_string(), def_id.clone());
                         if !seen_edges.insert(key) {
                             continue;
                         }
-                        edges.push(ce_store_core::EdgeRecord {
+                        rel_edges.push(RelEdgeRecord {
                             repo_id: SURREAL_REPO_ID.to_string(),
                             from_id: from_id.clone(),
-                            edge_type: "refers".to_string(),
+                            etype: "ref_def".to_string(),
                             to_id: def_id.clone(),
                             weight: 1.0,
+                            confidence: 0.9,
+                            origin: "ref_def_matcher".to_string(),
                             meta: json::json!({ "ref": r }),
                         });
                     }
@@ -1420,12 +1591,12 @@ fn cmd_index_surreal(repo: &str, store: &StoreArgs, full: bool, prune: bool, ski
             }
         }
 
-        if !edges.is_empty() {
+        if !rel_edges.is_empty() {
             let mut start = 0usize;
             let batch = 500usize;
-            while start < edges.len() {
-                let end = (start + batch).min(edges.len());
-                rt.block_on(store.upsert_edges(&edges[start..end]))?;
+            while start < rel_edges.len() {
+                let end = (start + batch).min(rel_edges.len());
+                rt.block_on(store.upsert_rel_edges(&rel_edges[start..end]))?;
                 start = end;
             }
         }
@@ -1494,6 +1665,402 @@ fn is_good_ref(s: &str) -> bool {
         return false;
     }
     true
+}
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Debug)]
+struct ParsedImport {
+    specifier: String,
+    is_type_only: Option<bool>,
+    is_reexport: bool,
+}
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Copy, Debug)]
+enum RustImportKind {
+    Mod,
+    Use,
+}
+
+#[cfg(feature = "surreal")]
+#[derive(Clone, Debug)]
+struct RustImport {
+    path: String,
+    kind: RustImportKind,
+}
+
+#[cfg(feature = "surreal")]
+fn contains_edge_weight(kind: FragKind, signature: &str) -> f32 {
+    if matches!(kind, FragKind::ApiSummary) {
+        return 0.4;
+    }
+    let sig = signature.to_ascii_lowercase();
+    let is_public = sig.contains("export ")
+        || sig.contains("public ")
+        || sig.contains("open ")
+        || sig.contains("pub ")
+        || sig.contains("pub(")
+        || sig.contains("pub(crate")
+        || sig.contains("pub(super")
+        || sig.contains("pub(self");
+    if is_public { 0.3 } else { 0.1 }
+}
+
+#[cfg(feature = "surreal")]
+fn import_weight(specifier: &str, is_reexport: bool) -> f32 {
+    let mut weight = if is_reexport { 0.8 } else { 1.0 };
+    if is_typings_specifier(specifier) {
+        weight = weight.min(0.4);
+    }
+    weight
+}
+
+#[cfg(feature = "surreal")]
+fn is_typings_specifier(specifier: &str) -> bool {
+    let s = specifier.trim().to_ascii_lowercase();
+    s.ends_with(".d.ts") || s.contains("/@types/") || s.contains("/types/")
+}
+
+#[cfg(feature = "surreal")]
+fn parse_ts_imports(source: &str) -> Vec<ParsedImport> {
+    let mut out = Vec::new();
+    let mut meaningful_seen = 0usize;
+    for raw in source.lines().take(800) {
+        let mut line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with("//") {
+            continue;
+        }
+        if let Some((before, _)) = line.split_once("//") {
+            line = before.trim();
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let is_import = line.starts_with("import ") || line.starts_with("import\t") || line.starts_with("import{");
+        let is_export_from = (line.starts_with("export ") || line.starts_with("export\t")) && line.contains(" from ");
+        if is_import || is_export_from {
+            meaningful_seen += 1;
+            if let Some(spec) = extract_string_literal(line) {
+                let is_type_only = line.contains("import type") || line.contains("export type");
+                out.push(ParsedImport {
+                    specifier: spec,
+                    is_type_only: Some(is_type_only),
+                    is_reexport: is_export_from,
+                });
+            }
+            continue;
+        }
+
+        if meaningful_seen > 0 {
+            break;
+        }
+    }
+    out
+}
+
+#[cfg(feature = "surreal")]
+fn parse_swift_imports(source: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in source.lines().take(800) {
+        let mut line = raw.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        if let Some((before, _)) = line.split_once("//") {
+            line = before.trim();
+        }
+        if line.starts_with("@testable ") {
+            line = line.trim_start_matches("@testable").trim();
+        }
+        if line.starts_with("import ") {
+            let module = line
+                .trim_start_matches("import")
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !module.is_empty() {
+                out.push(module.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+#[cfg(feature = "surreal")]
+fn parse_rust_imports(source: &str) -> Vec<RustImport> {
+    let mut out = Vec::new();
+    for raw in source.lines() {
+        let mut line = raw.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        if let Some((before, _)) = line.split_once("//") {
+            line = before.trim();
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let is_mod = line.starts_with("mod ")
+            || line.starts_with("pub mod ")
+            || (line.starts_with("pub(") && line.contains(" mod "));
+        if is_mod {
+            if let Some(name) = extract_rust_mod_name(line) {
+                out.push(RustImport {
+                    path: name,
+                    kind: RustImportKind::Mod,
+                });
+            }
+            continue;
+        }
+
+        let is_use = line.starts_with("use ")
+            || line.starts_with("pub use ")
+            || (line.starts_with("pub(") && line.contains(" use "));
+        if is_use {
+            if let Some(path) = extract_rust_use_path(line) {
+                out.push(RustImport {
+                    path,
+                    kind: RustImportKind::Use,
+                });
+            }
+        }
+    }
+    out
+}
+
+#[cfg(feature = "surreal")]
+fn resolve_ts_import(
+    specifier: &str,
+    from_path: &str,
+    known_paths: &HashSet<String>,
+) -> Option<String> {
+    let spec = specifier.trim();
+    if spec.is_empty() {
+        return None;
+    }
+    let mut base = PathBuf::new();
+    if spec.starts_with('/') {
+        base.push(spec.trim_start_matches('/'));
+    } else if spec.starts_with('.') {
+        let parent = Path::new(from_path).parent().unwrap_or(Path::new(""));
+        base = parent.join(spec);
+    } else {
+        return None;
+    }
+
+    let base = normalize_rel_path(&base);
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if base.extension().is_some() {
+        candidates.push(base);
+    } else {
+        let exts = ["ts", "tsx", "js", "jsx", "mts", "cts", "d.ts"];
+        for ext in exts {
+            let mut with_ext = base.clone();
+            with_ext.set_extension(ext);
+            candidates.push(with_ext);
+            let mut idx = base.clone();
+            idx.push(format!("index.{ext}"));
+            candidates.push(idx);
+        }
+    }
+
+    for cand in candidates {
+        let cand = normalize_rel_path(&cand);
+        let cand_str = path_to_string(&cand);
+        if known_paths.contains(&cand_str) {
+            return Some(cand_str);
+        }
+    }
+    None
+}
+
+#[cfg(feature = "surreal")]
+fn resolve_swift_import(module: &str, stem_map: &HashMap<String, Vec<String>>) -> Option<String> {
+    let module = module.trim();
+    let paths = stem_map.get(module)?;
+    if paths.len() == 1 {
+        return Some(paths[0].clone());
+    }
+    None
+}
+
+#[cfg(feature = "surreal")]
+fn resolve_rust_import(
+    imp: &RustImport,
+    from_path: &str,
+    known_paths: &HashSet<String>,
+) -> Option<String> {
+    let base_dir = Path::new(from_path).parent().unwrap_or(Path::new(""));
+    let path = imp.path.trim();
+    if path.is_empty() {
+        return None;
+    }
+    let mut segments: Vec<String> = path.split("::").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return None;
+    }
+
+    match imp.kind {
+        RustImportKind::Mod => resolve_rust_candidates(base_dir, &segments, known_paths),
+        RustImportKind::Use => {
+            let mut bases: Vec<PathBuf> = Vec::new();
+            if segments[0] == "crate" {
+                segments.remove(0);
+                bases.push(PathBuf::new());
+            } else if segments[0] == "self" {
+                segments.remove(0);
+                bases.push(base_dir.to_path_buf());
+            } else if segments[0] == "super" {
+                let mut base = base_dir.to_path_buf();
+                while segments.first().map(|s| s.as_str()) == Some("super") {
+                    segments.remove(0);
+                    base.pop();
+                }
+                bases.push(base);
+            } else {
+                bases.push(base_dir.to_path_buf());
+                bases.push(PathBuf::new());
+            }
+
+            if segments.is_empty() {
+                return None;
+            }
+
+            for base in bases {
+                if let Some(found) = resolve_rust_candidates(&base, &segments, known_paths) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+    }
+}
+
+#[cfg(feature = "surreal")]
+fn resolve_rust_candidates(
+    base: &Path,
+    segments: &[String],
+    known_paths: &HashSet<String>,
+) -> Option<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    for end in (1..=segments.len()).rev() {
+        candidates.push(segments[..end].join("/"));
+    }
+
+    for module in candidates {
+        let mut path = PathBuf::from(base);
+        path.push(&module);
+        let mut file = path.clone();
+        file.set_extension("rs");
+        let file = normalize_rel_path(&file);
+        let file_str = path_to_string(&file);
+        if known_paths.contains(&file_str) {
+            return Some(file_str);
+        }
+
+        let mut mod_rs = path.clone();
+        mod_rs.push("mod.rs");
+        let mod_rs = normalize_rel_path(&mod_rs);
+        let mod_str = path_to_string(&mod_rs);
+        if known_paths.contains(&mod_str) {
+            return Some(mod_str);
+        }
+    }
+    None
+}
+
+#[cfg(feature = "surreal")]
+fn extract_string_literal(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    for (i, b) in bytes.iter().enumerate() {
+        if *b == b'"' || *b == b'\'' {
+            let quote = *b;
+            for j in i + 1..bytes.len() {
+                if bytes[j] == quote {
+                    return Some(line[i + 1..j].to_string());
+                }
+            }
+            break;
+        }
+    }
+    None
+}
+
+#[cfg(feature = "surreal")]
+fn extract_rust_mod_name(line: &str) -> Option<String> {
+    let mut s = line.trim();
+    if s.starts_with("pub(") {
+        if let Some((_, rest)) = s.split_once(')') {
+            s = rest.trim();
+        }
+    } else if s.starts_with("pub ") {
+        s = s.trim_start_matches("pub").trim();
+    }
+    if s.starts_with("mod ") {
+        s = s.trim_start_matches("mod").trim();
+    }
+    let name = s
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .next()
+        .unwrap_or("")
+        .trim();
+    if name.is_empty() { None } else { Some(name.to_string()) }
+}
+
+#[cfg(feature = "surreal")]
+fn extract_rust_use_path(line: &str) -> Option<String> {
+    let mut s = line.trim();
+    if s.starts_with("pub(") {
+        if let Some((_, rest)) = s.split_once(')') {
+            s = rest.trim();
+        }
+    } else if s.starts_with("pub ") {
+        s = s.trim_start_matches("pub").trim();
+    }
+    if s.starts_with("use ") {
+        s = s.trim_start_matches("use").trim();
+    }
+    if let Some((before, _)) = s.split_once(';') {
+        s = before.trim();
+    }
+    if let Some((before, _)) = s.split_once(" as ") {
+        s = before.trim();
+    }
+    if let Some((before, _)) = s.split_once('{') {
+        s = before.trim();
+    }
+    s = s.trim().trim_end_matches("::").trim();
+    if s.is_empty() { None } else { Some(s.to_string()) }
+}
+
+#[cfg(feature = "surreal")]
+fn normalize_rel_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(part) => out.push(part),
+            _ => {}
+        }
+    }
+    out
+}
+
+#[cfg(feature = "surreal")]
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn cmd_search(store: &StoreArgs, query: &str, k: usize, alpha: f32) -> Result<()> {

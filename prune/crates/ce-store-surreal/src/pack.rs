@@ -1,6 +1,6 @@
-use crate::SurrealStore;
+use crate::{graph, SurrealStore};
 use anyhow::{anyhow, Result};
-use ce_core::model::{FragmentView, SignalBundle, StrategyConfig};
+use ce_core::model::{FragKind, FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::signals;
 use ce_core::snippet;
@@ -248,25 +248,210 @@ async fn expand_edges(
     seed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     seed.truncate(cfg.graph_seed_k.max(1));
 
-    for (seed_id, seed_score) in seed {
-        if seed_score < 0.05 {
-            continue;
+    seed.retain(|(_, score)| *score >= 0.05);
+    if seed.is_empty() {
+        return Ok(());
+    }
+
+    let seed_ids: Vec<String> = seed.iter().map(|(id, _)| id.clone()).collect();
+    let seed_scores: HashMap<String, f32> = seed.iter().map(|(id, score)| (id.clone(), *score)).collect();
+    let seed_files = fetch_seed_files(store, &seed_ids).await?;
+
+    let max_hops = cfg.edge_radius.max(1) as u32;
+    let max_nodes = cfg.edge_max_nodes_per_seed.max(1);
+    let etypes: Vec<String> = crate::DEFAULT_REL_ETYPES.iter().map(|s| s.to_string()).collect();
+
+    let mut file_scores: HashMap<String, f32> = HashMap::new();
+    for (seed_id, seed_score) in &seed {
+        let Some(seed_file) = seed_files.get(seed_id) else { continue; };
+        let mut prev: HashSet<String> = HashSet::new();
+        let mut added = 0usize;
+
+        if prev.insert(seed_file.clone()) {
+            let score = seed_score * cfg.edge_out_weight;
+            file_scores
+                .entry(seed_file.clone())
+                .and_modify(|s| {
+                    if score > *s {
+                        *s = score;
+                    }
+                })
+                .or_insert(score);
         }
-        let expanded = store
-            .expand_graph(repo_id, &[seed_id.clone()], &[], cfg.edge_max_nodes_per_seed.max(1))
-            .await?;
-        for id in expanded {
-            if id == seed_id {
-                continue;
+
+        for hop in 1..=max_hops {
+            if added >= max_nodes {
+                break;
             }
-            let delta = seed_score * cfg.edge_out_weight;
-            scores
-                .entry(id)
-                .or_insert_with(Accum::new)
-                .add(delta, format!("edge-of:{seed_id}"));
+            let ids = graph::collect_file_neighborhood(&store.db, repo_id, seed_file, hop).await?;
+            let set: HashSet<String> = ids.into_iter().collect();
+            let decay = cfg.edge_hop_decay.powi(hop as i32);
+            for id in set.difference(&prev) {
+                if added >= max_nodes {
+                    break;
+                }
+                let score = seed_score * cfg.edge_out_weight * decay;
+                file_scores
+                    .entry(id.clone())
+                    .and_modify(|s| {
+                        if score > *s {
+                            *s = score;
+                        }
+                    })
+                    .or_insert(score);
+                added += 1;
+            }
+            prev = set;
+        }
+    }
+
+    if !file_scores.is_empty() {
+        let file_ids: Vec<String> = file_scores.keys().cloned().collect();
+        let key_frags = fetch_key_frags(store, repo_id, &file_ids, max_nodes).await?;
+        for (frag_id, file_id) in key_frags {
+            if let Some(score) = file_scores.get(&file_id) {
+                scores
+                    .entry(frag_id)
+                    .or_insert_with(Accum::new)
+                    .add(*score, format!("file:{file_id}"));
+            }
+        }
+    }
+
+    for (seed_id, seed_score) in &seed {
+        let mut prev: HashSet<String> = HashSet::new();
+        let mut added = 0usize;
+        for hop in 1..=max_hops {
+            if added >= max_nodes {
+                break;
+            }
+            let ids =
+                graph::collect_frag_neighborhood(&store.db, repo_id, seed_id, hop, &etypes).await?;
+            let set: HashSet<String> = ids.into_iter().collect();
+            let decay = cfg.edge_hop_decay.powi(hop as i32);
+            for id in set.difference(&prev) {
+                if id == seed_id || added >= max_nodes {
+                    continue;
+                }
+                let delta = seed_score * cfg.edge_out_weight * decay;
+                scores
+                    .entry(id.clone())
+                    .or_insert_with(Accum::new)
+                    .add(delta, format!("rel:{seed_id}"));
+                added += 1;
+            }
+            prev = set;
+        }
+    }
+
+    if seed_ids.len() > 1 {
+        let hub = seed_ids[0].clone();
+        for seed_id in seed_ids.iter().skip(1) {
+            let Some(seed_score) = seed_scores.get(seed_id) else { continue; };
+            let path = graph::shortest_path_frags(&store.db, repo_id, seed_id, &hub, &etypes, max_hops)
+                .await?;
+            for (idx, id) in path.into_iter().enumerate() {
+                if id == *seed_id {
+                    continue;
+                }
+                let decay = cfg.edge_hop_decay.powi(idx as i32);
+                let delta = seed_score * cfg.edge_out_weight * decay;
+                scores
+                    .entry(id)
+                    .or_insert_with(Accum::new)
+                    .add(delta, format!("path:{seed_id}"));
+            }
         }
     }
     Ok(())
+}
+
+async fn fetch_seed_files(store: &SurrealStore, seed_ids: &[String]) -> Result<HashMap<String, String>> {
+    if seed_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let ids: Vec<Thing> = seed_ids
+        .iter()
+        .map(|id| Thing::from(("frag", id.as_str())))
+        .collect();
+    let sql = "SELECT id, file_id FROM $ids";
+    let mut res = store.db.query(sql).bind(("ids", ids)).await?;
+    #[derive(serde::Deserialize)]
+    struct Row {
+        id: Thing,
+        file_id: String,
+    }
+    let rows: Vec<Row> = res.take(0)?;
+    let mut out = HashMap::new();
+    for row in rows {
+        let frag_id = row
+            .id
+            .to_string()
+            .trim_start_matches("frag:")
+            .trim_matches('"')
+            .to_string();
+        out.insert(frag_id, row.file_id);
+    }
+    Ok(out)
+}
+
+async fn fetch_key_frags(
+    store: &SurrealStore,
+    repo_id: &str,
+    file_ids: &[String],
+    max_per_file: usize,
+) -> Result<Vec<(String, String)>> {
+    if file_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = "SELECT id, file_id, kind, signature FROM frag WHERE repo_id = $repo_id AND file_id IN $file_ids";
+    let mut res = store
+        .db
+        .query(sql)
+        .bind(("repo_id", repo_id.to_string()))
+        .bind(("file_ids", file_ids.to_vec()))
+        .await?;
+    #[derive(serde::Deserialize)]
+    struct Row {
+        id: Thing,
+        file_id: String,
+        kind: FragKind,
+        signature: String,
+    }
+    let rows: Vec<Row> = res.take(0)?;
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut per_file: HashMap<String, usize> = HashMap::new();
+    for row in rows {
+        let is_key = matches!(row.kind, FragKind::ApiSummary) || is_public_signature(&row.signature);
+        if !is_key {
+            continue;
+        }
+        let count = per_file.entry(row.file_id.clone()).or_insert(0);
+        if *count >= max_per_file {
+            continue;
+        }
+        *count += 1;
+        let frag_id = row
+            .id
+            .to_string()
+            .trim_start_matches("frag:")
+            .trim_matches('"')
+            .to_string();
+        out.push((frag_id, row.file_id));
+    }
+    Ok(out)
+}
+
+fn is_public_signature(signature: &str) -> bool {
+    let sig = signature.to_ascii_lowercase();
+    sig.contains("export ")
+        || sig.contains("public ")
+        || sig.contains("open ")
+        || sig.contains("pub ")
+        || sig.contains("pub(")
+        || sig.contains("pub(crate")
+        || sig.contains("pub(super")
+        || sig.contains("pub(self")
 }
 
 async fn fragments_covering_line(
@@ -341,7 +526,7 @@ async fn attach_candidate_neighbors(
     let max_edges = strategy.edge_max_edges_per_node.max(1) as i64;
     for idx in 0..cands.len() {
         let node_thing = Thing::from(("frag", cands[idx].id.as_str()));
-        let sql = "SELECT in, out, weight FROM edge WHERE repo_id = $repo_id AND (in = $node OR out = $node) LIMIT $k";
+        let sql = "SELECT in, out, weight FROM rel WHERE repo_id = $repo_id AND (in = $node OR out = $node) LIMIT $k";
         let mut res = store
             .db
             .query(sql)
