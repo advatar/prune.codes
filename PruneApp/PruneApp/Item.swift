@@ -113,6 +113,12 @@ enum InstallState {
     }
 }
 
+enum ToolAvailability: Equatable {
+    case unknown
+    case available
+    case missing(String)
+}
+
 enum ServiceState {
     case stopped
     case starting
@@ -799,6 +805,7 @@ final class AppModel: ObservableObject {
     @Published var githubTokenInput: String = ""
     @Published var webhookSecretInput: String = ""
     @Published var mcpTokenInput: String = ""
+    @Published var gitAvailability: ToolAvailability = .unknown
 
     init() {
         let paths = AppPaths.defaultPaths()
@@ -822,6 +829,7 @@ final class AppModel: ObservableObject {
         self.logPreview = logStore.readTail(maxBytes: 12_000)
         self.logHandle = logStore.openForAppending()
         self.ensureRepoDirectories()
+        self.refreshGitAvailability()
     }
 
     var appStatus: AppStatus {
@@ -921,6 +929,26 @@ final class AppModel: ObservableObject {
                 self.saveConfig()
             }
         )
+    }
+
+    func refreshGitAvailability() {
+        Task { @MainActor in
+            self.gitAvailability = await self.checkGitAvailability()
+        }
+    }
+
+    func installCommandLineTools() {
+        statusMessage = "Requesting Xcode Command Line Tools installer..."
+        lastErrorMessage = nil
+        Task { @MainActor in
+            do {
+                _ = try await self.runCommand("/usr/bin/xcode-select", args: ["--install"])
+                self.statusMessage = "Command Line Tools installer opened."
+            } catch {
+                self.statusMessage = "Command Line Tools: \(error.localizedDescription)"
+            }
+            self.refreshGitAvailability()
+        }
     }
 
     func repoBinding() -> Binding<String> {
@@ -1565,6 +1593,22 @@ final class AppModel: ObservableObject {
             }
             return output
         }.value
+    }
+
+    private func checkGitAvailability() async -> ToolAvailability {
+        do {
+            let output = try await runCommand("/usr/bin/xcrun", args: ["--find", "git"])
+            let path = output
+                .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+                .first
+                .map(String.init) ?? ""
+            guard !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) else {
+                return .missing("Git not found. Install Xcode Command Line Tools.")
+            }
+            return .available
+        } catch {
+            return .missing("Git not found. Install Xcode Command Line Tools.")
+        }
     }
 
     private func parseLaunchctlStatus(_ output: String, service: ServiceKind) -> ServiceStatus {

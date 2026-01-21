@@ -1526,6 +1526,23 @@ struct HelpView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if case let .missing(reason) = appModel.gitAvailability {
+                    GroupBox("Git Required") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(reason)
+                                .foregroundStyle(.primary)
+                            HStack(spacing: 12) {
+                                Button("Install Command Line Tools") {
+                                    appModel.installCommandLineTools()
+                                }
+                                Button("Recheck") {
+                                    appModel.refreshGitAvailability()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 GroupBox("Prerequisites") {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("macOS 13 or newer.")
@@ -1572,6 +1589,9 @@ struct HelpView: View {
                     error: appModel.lastErrorMessage
                 )
             }
+        }
+        .onAppear {
+            appModel.refreshGitAvailability()
         }
     }
 }
