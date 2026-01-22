@@ -277,6 +277,8 @@ private final class SetupBindingProvider: A2UIBindingProvider {
             appModel.install(reinstallOnly: true)
         case "detect_repo":
             appModel.detectRepoFromMirror()
+        case "pick_repo_folder":
+            Task { await appModel.pickRepoFolder() }
         case "copy_app_support":
             appModel.copyToClipboard(appModel.paths.appSupport.path)
         case "copy_bin":
@@ -404,7 +406,8 @@ private enum SetupSurface {
             NormalizedComponent(id: "repo_row", type: "Row", props: [
                 "children": children([
                     "repo_full_name",
-                    "repo_detect_button"
+                    "repo_detect_button",
+                    "repo_pick_button"
                 ])
             ]),
             NormalizedComponent(id: "repo_full_name", type: "TextField", props: [
@@ -415,6 +418,10 @@ private enum SetupSurface {
             NormalizedComponent(id: "repo_detect_button", type: "Button", props: [
                 "label": .string("Detect from Mirror"),
                 "action": .string("detect_repo")
+            ]),
+            NormalizedComponent(id: "repo_pick_button", type: "Button", props: [
+                "label": .string("Pick Folder"),
+                "action": .string("pick_repo_folder")
             ]),
             NormalizedComponent(id: "repo_default_branch", type: "TextField", props: [
                 "label": .string("Default Branch"),

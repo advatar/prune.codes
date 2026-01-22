@@ -1007,6 +1007,36 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func pickRepoFolder() async {
+        statusMessage = "Select repository folder..."
+        lastErrorMessage = nil
+
+        let panel = NSOpenPanel()
+        panel.title = "Select Repository Folder"
+        panel.prompt = "Select"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+
+        let response = panel.runModal()
+        guard response == .OK, let url = panel.url else {
+            statusMessage = "Repository selection canceled."
+            return
+        }
+
+        do {
+            if let candidate = try await repoCandidate(from: url) {
+                applyRepoCandidate(candidate)
+            } else {
+                statusMessage = "No git repository detected at \(url.path)."
+            }
+        } catch {
+            lastErrorMessage = "Repository detection failed: \(error.localizedDescription)"
+        }
+    }
+
     func binaryBinding(_ keyPath: WritableKeyPath<BinaryNames, String>) -> Binding<String> {
         Binding(
             get: { self.config.binaryNames[keyPath: keyPath] },
