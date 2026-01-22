@@ -52,6 +52,12 @@ if [ -z "${CLOUDFLARED_SOURCE}" ] && [ -f "${SRCROOT}/vendor/cloudflared" ]; the
   CLOUDFLARED_SOURCE="${SRCROOT}/vendor/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -f "${REPO_ROOT}/vendor/cloudflared" ]; then
   CLOUDFLARED_SOURCE="${REPO_ROOT}/vendor/cloudflared"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && command -v cloudflared >/dev/null 2>&1; then
+  CLOUDFLARED_SOURCE="$(command -v cloudflared)"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/opt/homebrew/bin/cloudflared" ]; then
+  CLOUDFLARED_SOURCE="/opt/homebrew/bin/cloudflared"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/bin/cloudflared" ]; then
+  CLOUDFLARED_SOURCE="/usr/local/bin/cloudflared"
 fi
 
 missing=()

@@ -60,17 +60,20 @@ struct MenuBarView: View {
 
     @MainActor
     private func bringSettingsWindowToFront() async {
-        for _ in 0..<8 {
+        for _ in 0..<10 {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.unhide(nil)
             if let window = findSettingsWindow() {
                 if window.isMiniaturized {
                     window.deminiaturize(nil)
                 }
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
+                NSApp.activate(ignoringOtherApps: true)
                 return
             }
             await Task.yield()
-            try? await Task.sleep(nanoseconds: 60_000_000)
+            try? await Task.sleep(nanoseconds: 80_000_000)
         }
     }
 
@@ -82,7 +85,10 @@ struct MenuBarView: View {
         if let mainWindow = NSApp.mainWindow, mainWindow.canBecomeKey {
             return mainWindow
         }
-        let candidates = NSApp.orderedWindows.filter { $0.canBecomeKey && $0.level == .normal }
+        let candidates = NSApp.orderedWindows.filter { $0.canBecomeKey }
+        if let titledWindow = candidates.first(where: { !$0.title.isEmpty }) {
+            return titledWindow
+        }
         if let visibleWindow = candidates.first(where: { $0.isVisible }) {
             return visibleWindow
         }
