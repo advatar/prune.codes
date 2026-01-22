@@ -59,15 +59,23 @@ struct MenuBarView: View {
         }
         .disabled(!appModel.canStop)
         Divider()
-        Button("Open Dashboard") {
-            appModel.openSettings(.setup)
+        SettingsLink {
+            Text("Open Dashboard")
         }
+        .simultaneousGesture(TapGesture().onEnded {
+            appModel.selectedTab = .setup
+            NSApp.activate(ignoringOtherApps: true)
+        })
         Button("View Logs") {
             appModel.openLogs()
         }
-        Button("Help") {
-            appModel.openSettings(.help)
+        SettingsLink {
+            Text("Help")
         }
+        .simultaneousGesture(TapGesture().onEnded {
+            appModel.selectedTab = .help
+            NSApp.activate(ignoringOtherApps: true)
+        })
         Divider()
         Button("Quit") {
             NSApplication.shared.terminate(nil)

@@ -21,6 +21,7 @@
 - Added DMG Install.command to copy PruneApp into /Applications and launch it after install.
 - Added prerequisites section to the Help view (Git/CLT, macOS version, network, GitHub token).
 - Added runtime Git availability check with Help banner + CLT installer button.
+- Switched menu bar settings navigation to SettingsLink.
 - GitHub issues created: CR-01..CR-05 + Epic (advatar/prune).
 - Added signal extraction, support-closure metrics, connected-subgraph selection, TSX/SwiftUI skeletonization, and recipe memory plumbing across `ce-core`, `ce-store`, `ce-cli`, and `ce-mcp`.
 - Added recipe persistence schema + DB methods and wired pack rendering to include recipe excerpts and metrics.

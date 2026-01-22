@@ -1224,12 +1224,6 @@ final class AppModel: ObservableObject {
         serviceStatuses[service] ?? ServiceStatus(state: .stopped, detail: "")
     }
 
-    func openSettings(_ tab: SettingsTab) {
-        selectedTab = tab
-        NSApp.activate(ignoringOtherApps: true)
-        _ = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
     func openLogs() {
         do {
             try logStore.ensureLogFile()
