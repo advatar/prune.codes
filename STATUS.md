@@ -45,6 +45,7 @@
 - Promoted A2UI v0.9 as the default protocol and updated versioning docs/adapter selection.
 - Fixed PruneApp startup crash and added an A2UI fixture diagnostics panel for inception testing.
 - Implemented embedded SurrealDB backend (store abstraction, Surreal store, CLI/MCP wiring, tests, docs).
+- Ensured the dashboard window orders front when opened from the menu bar.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.

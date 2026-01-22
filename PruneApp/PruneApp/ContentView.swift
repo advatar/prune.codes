@@ -44,6 +44,20 @@ struct MenuBarLabel: View {
 struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    private func openSettings(tab: SettingsTab) {
+        Task { @MainActor in
+            appModel.selectedTab = tab
+            NSApp.activate(ignoringOtherApps: true)
+            await Task.yield()
+            let candidateWindows = NSApp.windows.filter { $0.canBecomeKey && $0.level == .normal }
+            let targetWindow = candidateWindows.first(where: { $0.isVisible }) ?? candidateWindows.first
+            if let window = targetWindow {
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+            }
+        }
+    }
+
     var body: some View {
         Text("Status: \(appModel.statusLabel)")
         if let message = appModel.statusMessage {
@@ -63,8 +77,7 @@ struct MenuBarView: View {
             Text("Open Dashboard")
         }
         .simultaneousGesture(TapGesture().onEnded {
-            appModel.selectedTab = .setup
-            NSApp.activate(ignoringOtherApps: true)
+            openSettings(tab: .setup)
         })
         Button("View Logs") {
             appModel.openLogs()
@@ -73,8 +86,7 @@ struct MenuBarView: View {
             Text("Help")
         }
         .simultaneousGesture(TapGesture().onEnded {
-            appModel.selectedTab = .help
-            NSApp.activate(ignoringOtherApps: true)
+            openSettings(tab: .help)
         })
         Divider()
         Button("Quit") {
