@@ -3,7 +3,6 @@
 ## Current Task
 - Unify A2UIRuntime types to resolve duplicate definitions and restore Xcode builds.
 - Ensure PruneApp DMG bundles all required binaries for offline install.
-- Install cloudflared on the build host so DMG bundling includes it.
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
 - Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
 - Fix tray install status by auto-installing bundled dependencies on first launch.
