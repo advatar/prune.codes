@@ -3,6 +3,7 @@
 ## Current Task
 - Unify A2UIRuntime types to resolve duplicate definitions and restore Xcode builds.
 - Ensure PruneApp DMG bundles all required binaries for offline install.
+- Install cloudflared on the build host so DMG bundling includes it.
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
 - Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
 - Fix tray install status by auto-installing bundled dependencies on first launch.
@@ -19,6 +20,7 @@
 - Updated Bundle Prune Binaries script to resolve the prune repo root and ran `xcodebuild` (warnings remain).
 - Identified A2UIRuntime duplicate type definitions causing Swift compile failures.
 - Unified A2UIRuntime model + helpers, fixed ContentView rendering, and restored Debug Xcode build with bundled binaries (cloudflared still required for Release DMG).
+- Installed cloudflared via Homebrew and verified the binary is available for bundling.
 - Added DMG Install.command to copy PruneApp into /Applications and launch it after install.
 - Added prerequisites section to the Help view (Git/CLT, macOS version, network, GitHub token).
 - Added runtime Git availability check with Help banner + CLT installer button.
