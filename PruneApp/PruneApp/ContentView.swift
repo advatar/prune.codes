@@ -1563,7 +1563,7 @@ struct HelpView: View {
 
                 GroupBox("Quickstart") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Install Prune.app and click Install.")
+                        Text("1. Install Prune.app (Install.command); bundled dependencies install on first launch.")
                         Text("2. Click Start to bring up the tunnel and services.")
                         Text("3. Copy the MCP Server URL.")
                         Text("4. In Lovable: Settings -> Connectors -> Personal connectors -> New MCP server.")

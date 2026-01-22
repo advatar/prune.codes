@@ -5,6 +5,7 @@
 - Ensure PruneApp DMG bundles all required binaries for offline install.
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
 - Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
+- Fix tray install status by auto-installing bundled dependencies on first launch.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -22,6 +23,7 @@
 - Added prerequisites section to the Help view (Git/CLT, macOS version, network, GitHub token).
 - Added runtime Git availability check with Help banner + CLT installer button.
 - Switched menu bar settings navigation to SettingsLink.
+- Auto-install bundled dependencies on first launch and updated quickstart guidance.
 - GitHub issues created: CR-01..CR-05 + Epic (advatar/prune).
 - Added signal extraction, support-closure metrics, connected-subgraph selection, TSX/SwiftUI skeletonization, and recipe memory plumbing across `ce-core`, `ce-store`, `ce-cli`, and `ce-mcp`.
 - Added recipe persistence schema + DB methods and wired pack rendering to include recipe excerpts and metrics.

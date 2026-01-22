@@ -830,6 +830,20 @@ final class AppModel: ObservableObject {
         self.logHandle = logStore.openForAppending()
         self.ensureRepoDirectories()
         self.refreshGitAvailability()
+        if installState == .notInstalled, Self.shouldAutoInstall() {
+            install()
+        }
+    }
+
+    private static func shouldAutoInstall() -> Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            return false
+        }
+        if env["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+        return true
     }
 
     var appStatus: AppStatus {
