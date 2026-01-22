@@ -46,6 +46,7 @@
 - Fixed PruneApp startup crash and added an A2UI fixture diagnostics panel for inception testing.
 - Implemented embedded SurrealDB backend (store abstraction, Surreal store, CLI/MCP wiring, tests, docs).
 - Ensured the dashboard window orders front when opened from the menu bar.
+- Set PRUNE_CLOUDFLARED_PATH in PruneApp build settings to the Homebrew cloudflared path.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.
