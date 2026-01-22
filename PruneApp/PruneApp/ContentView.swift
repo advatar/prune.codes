@@ -862,6 +862,7 @@ private struct InceptionInterviewSheet: View {
 
     private let surfaceId = "prune_inception"
     private let followupsContainerId = "followups_container"
+    private let overridesContainerId = "overrides_container"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -880,7 +881,11 @@ private struct InceptionInterviewSheet: View {
             Divider()
 
             ScrollView {
-                A2UISurfaceView(store: store, surfaceId: surfaceId)
+                A2UISurfaceView(
+                    store: store,
+                    surfaceId: surfaceId,
+                    bindingProvider: InceptionBindingProvider { addManualOverride() }
+                )
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -942,7 +947,11 @@ private struct InceptionInterviewSheet: View {
                         .string("workflow_commit_style"),
                         .string("divider_2"),
                         .string("followups_title"),
-                        .string(followupsContainerId)
+                        .string(followupsContainerId),
+                        .string("overrides_title"),
+                        .string("overrides_subtitle"),
+                        .string(overridesContainerId),
+                        .string("overrides_add_button")
                     ])
                 ]
             ),
@@ -1046,6 +1055,20 @@ private struct InceptionInterviewSheet: View {
             NormalizedComponent(id: "divider_2", type: "Divider", props: [:]),
             NormalizedComponent(id: "followups_title", type: "Text", props: ["text": .string("Generated followups")]),
             NormalizedComponent(id: followupsContainerId, type: "Column", props: ["children": .array([])]),
+
+            NormalizedComponent(id: "overrides_title", type: "Text", props: [
+                "text": .string("Manual Q/A overrides")
+            ]),
+            NormalizedComponent(id: "overrides_subtitle", type: "Text", props: [
+                "text": .string("Add your own questions and answers. These override any phrasing shown above."),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: overridesContainerId, type: "Column", props: ["children": .array([])]),
+            NormalizedComponent(id: "overrides_add_button", type: "Button", props: [
+                "label": .string("Add Q/A override"),
+                "action": .string("add_override"),
+                "variant": .string("primary")
+            ])
         ]
 
         let info = NormalizedSurfaceInfo(
@@ -1145,28 +1168,52 @@ private struct InceptionInterviewSheet: View {
                 return
             }
 
-            // Build new components + data model paths under /answers/custom/<id>
+            // Build new components + data model paths under /answers/followups/<id>
             var newComponents: [NormalizedComponent] = []
             var newChildren: [JSONValue] = []
 
             for q in questions {
-                let cid = "fu_\(q.id)"
-                let path = "/answers/custom/\(q.id)"
+                let blockId = "fu_\(q.id)"
+                let questionId = "fu_\(q.id)_question"
+                let answerId = "fu_\(q.id)_answer"
+                let questionPath = "/answers/followups/\(q.id)/question"
+                let answerPath = "/answers/followups/\(q.id)/answer"
 
-                newChildren.append(.string(cid))
+                newChildren.append(.string(blockId))
                 newComponents.append(
                     NormalizedComponent(
-                        id: cid,
+                        id: blockId,
+                        type: "Column",
+                        props: [
+                            "children": .array([.string(questionId), .string(answerId)])
+                        ]
+                    )
+                )
+                newComponents.append(
+                    NormalizedComponent(
+                        id: questionId,
                         type: "TextField",
                         props: [
-                            "label": .string(q.label),
-                            "multiline": .bool(false),
-                            "value": .object(["path": .string(path)])
+                            "label": .string("Question"),
+                            "multiline": .bool(true),
+                            "value": .object(["path": .string(questionPath)])
+                        ]
+                    )
+                )
+                newComponents.append(
+                    NormalizedComponent(
+                        id: answerId,
+                        type: "TextField",
+                        props: [
+                            "label": .string("Answer"),
+                            "multiline": .bool(true),
+                            "value": .object(["path": .string(answerPath)])
                         ]
                     )
                 )
 
-                store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string(""))
+                store.setDataModelValue(surfaceId: surfaceId, path: questionPath, value: .string(q.label))
+                store.setDataModelValue(surfaceId: surfaceId, path: answerPath, value: .string(""))
             }
 
             // Update container children
@@ -1239,6 +1286,85 @@ Return STRICT JSON only, with this exact shape:
         let end = text.lastIndex(of: "]")
         guard let s = start, let e = end, s < e else { return nil }
         return String(text[s...e])
+    }
+
+    @MainActor
+    private func addManualOverride() {
+        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let blockId = "override_\(id)"
+        let questionId = "override_\(id)_question"
+        let answerId = "override_\(id)_answer"
+        let questionPath = "/answers/overrides/\(id)/question"
+        let answerPath = "/answers/overrides/\(id)/answer"
+
+        var newComponents: [NormalizedComponent] = []
+        newComponents.append(
+            NormalizedComponent(
+                id: blockId,
+                type: "Column",
+                props: [
+                    "children": .array([.string(questionId), .string(answerId)])
+                ]
+            )
+        )
+        newComponents.append(
+            NormalizedComponent(
+                id: questionId,
+                type: "TextField",
+                props: [
+                    "label": .string("Question"),
+                    "multiline": .bool(true),
+                    "value": .object(["path": .string(questionPath)])
+                ]
+            )
+        )
+        newComponents.append(
+            NormalizedComponent(
+                id: answerId,
+                type: "TextField",
+                props: [
+                    "label": .string("Answer"),
+                    "multiline": .bool(true),
+                    "value": .object(["path": .string(answerPath)])
+                ]
+            )
+        )
+
+        store.setDataModelValue(surfaceId: surfaceId, path: questionPath, value: .string(""))
+        store.setDataModelValue(surfaceId: surfaceId, path: answerPath, value: .string(""))
+
+        if let container = store.component(surfaceId: surfaceId, componentId: overridesContainerId) {
+            let existing = (container.props["children"]?.arrayValue ?? [])
+            var props = container.props
+            props["children"] = .array(existing + [.string(blockId)])
+            newComponents.append(NormalizedComponent(
+                id: container.id,
+                kind: container.kind,
+                props: props,
+                childrenRefs: container.childrenRefs,
+                childRef: container.childRef
+            ))
+        }
+
+        store.apply(.updateComponents(surfaceId: surfaceId, components: newComponents))
+    }
+}
+
+@MainActor
+private final class InceptionBindingProvider: A2UIBindingProvider {
+    private let addOverride: () -> Void
+
+    init(addOverride: @escaping () -> Void) {
+        self.addOverride = addOverride
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "add_override":
+            addOverride()
+        default:
+            break
+        }
     }
 }
 
