@@ -46,16 +46,47 @@ struct MenuBarView: View {
 
     private func openSettings(tab: SettingsTab) {
         Task { @MainActor in
-            appModel.selectedTab = tab
-            NSApp.activate(ignoringOtherApps: true)
-            await Task.yield()
-            let candidateWindows = NSApp.windows.filter { $0.canBecomeKey && $0.level == .normal }
-            let targetWindow = candidateWindows.first(where: { $0.isVisible }) ?? candidateWindows.first
-            if let window = targetWindow {
+            await openSettingsOnMain(tab: tab)
+        }
+    }
+
+    @MainActor
+    private func openSettingsOnMain(tab: SettingsTab) async {
+        appModel.selectedTab = tab
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.unhide(nil)
+        await bringSettingsWindowToFront()
+    }
+
+    @MainActor
+    private func bringSettingsWindowToFront() async {
+        for _ in 0..<8 {
+            if let window = findSettingsWindow() {
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
+                return
             }
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 60_000_000)
         }
+    }
+
+    @MainActor
+    private func findSettingsWindow() -> NSWindow? {
+        if let keyWindow = NSApp.keyWindow, keyWindow.canBecomeKey {
+            return keyWindow
+        }
+        if let mainWindow = NSApp.mainWindow, mainWindow.canBecomeKey {
+            return mainWindow
+        }
+        let candidates = NSApp.orderedWindows.filter { $0.canBecomeKey && $0.level == .normal }
+        if let visibleWindow = candidates.first(where: { $0.isVisible }) {
+            return visibleWindow
+        }
+        return candidates.first
     }
 
     var body: some View {
