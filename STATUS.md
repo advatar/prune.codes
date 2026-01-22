@@ -53,6 +53,8 @@
 - Added editable question/answer overrides in the Inception interview (manual Q/A + followup edits).
 - Made cloudflared bundling fall back to PATH/Homebrew when no explicit path is set.
 - Tightened dashboard window activation so it is raised to the front on menu bar open.
+- Converted all PruneApp UI to A2UI-driven surfaces (menu bar, settings nav, and all tabs).
+- Extended the A2UI renderer to support SecureField/read-only inputs and multiline sizing.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.

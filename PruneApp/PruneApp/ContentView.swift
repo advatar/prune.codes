@@ -43,6 +43,8 @@ struct MenuBarLabel: View {
 
 struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_menu"
 
     private func openSettings(tab: SettingsTab) {
         Task { @MainActor in
@@ -96,85 +98,61 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        Text("Status: \(appModel.statusLabel)")
-        if let message = appModel.statusMessage {
-            Text(message)
-        }
-        Divider()
-        Button("Start") {
-            appModel.startServices()
-        }
-        .disabled(!appModel.canStart)
-        Button("Stop") {
-            appModel.stopServices()
-        }
-        .disabled(!appModel.canStop)
-        Divider()
-        SettingsLink {
-            Text("Open Dashboard")
-        }
-        .simultaneousGesture(TapGesture().onEnded {
-            openSettings(tab: .setup)
-        })
-        Button("View Logs") {
-            appModel.openLogs()
-        }
-        SettingsLink {
-            Text("Help")
-        }
-        .simultaneousGesture(TapGesture().onEnded {
-            openSettings(tab: .help)
-        })
-        Divider()
-        Button("Quit") {
-            NSApplication.shared.terminate(nil)
+        A2UISurfaceView(
+            store: store,
+            surfaceId: surfaceId,
+            bindingProvider: MenuBarBindingProvider(
+                appModel: appModel,
+                openSettings: openSettings,
+                quit: { NSApplication.shared.terminate(nil) }
+            )
+        )
+        .onAppear {
+            resetSurface(store, messages: MenuBarSurface.buildMessages(surfaceId: surfaceId))
         }
     }
 }
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var navStore = NormalizedSurfaceStore()
+    private let navSurfaceId = "prune_settings_nav"
 
     var body: some View {
-        TabView(selection: $appModel.selectedTab) {
-            SetupView()
-                .tabItem {
-                    Label("Setup", systemImage: "wrench.and.screwdriver")
-                }
-                .tag(SettingsTab.setup)
-            InceptionView()
-                .tabItem {
-                    Label("Inception", systemImage: "sparkles.rectangle.stack")
-                }
-                .tag(SettingsTab.inception)
-            ServicesView()
-                .tabItem {
-                    Label("Services", systemImage: "bolt.horizontal.circle")
-                }
-                .tag(SettingsTab.services)
-            IntegrationsView()
-                .tabItem {
-                    Label("Integrations", systemImage: "link")
-                }
-                .tag(SettingsTab.integrations)
-            A2UIDiagnosticsView()
-                .tabItem {
-                    Label("A2UI", systemImage: "sparkles")
-                }
-                .tag(SettingsTab.a2ui)
-            HelpView()
-                .tabItem {
-                    Label("Help", systemImage: "questionmark.circle")
-                }
-                .tag(SettingsTab.help)
-            PrivacyView()
-                .tabItem {
-                    Label("Privacy", systemImage: "hand.raised")
-                }
-                .tag(SettingsTab.privacy)
+        VStack(alignment: .leading, spacing: 12) {
+            A2UISurfaceView(
+                store: navStore,
+                surfaceId: navSurfaceId,
+                bindingProvider: SettingsNavBindingProvider(appModel: appModel)
+            )
+            Divider()
+            settingsContent
         }
         .padding(20)
         .frame(minWidth: 760, minHeight: 540)
+        .onAppear {
+            resetSurface(navStore, messages: SettingsNavSurface.buildMessages(surfaceId: navSurfaceId))
+        }
+    }
+
+    @ViewBuilder
+    private var settingsContent: some View {
+        switch appModel.selectedTab {
+        case .setup:
+            SetupView()
+        case .inception:
+            InceptionView()
+        case .services:
+            ServicesView()
+        case .integrations:
+            IntegrationsView()
+        case .a2ui:
+            A2UIDiagnosticsView()
+        case .help:
+            HelpView()
+        case .privacy:
+            PrivacyView()
+        }
     }
 }
 
@@ -193,8 +171,7 @@ struct SetupView: View {
             .padding()
         }
         .onAppear {
-            store.reset()
-            store.apply(SetupSurface.buildMessages(surfaceId: surfaceId))
+            resetSurface(store, messages: SetupSurface.buildMessages(surfaceId: surfaceId))
         }
     }
 }
@@ -301,18 +278,34 @@ private final class SetupBindingProvider: A2UIBindingProvider {
             break
         }
     }
+}
 
-    private func toneString(_ tone: StatusTone) -> String {
-        switch tone {
-        case .good:
-            return "good"
-        case .warning:
-            return "warning"
-        case .bad:
-            return "bad"
-        case .neutral:
-            return "neutral"
-        }
+@MainActor
+private func resetSurface(_ store: NormalizedSurfaceStore, messages: [NormalizedMsg]) {
+    store.reset()
+    for message in messages {
+        store.apply(message)
+    }
+}
+
+private func binding(_ key: String) -> JSONValue {
+    .object(["binding": .string(key)])
+}
+
+private func children(_ ids: [String]) -> JSONValue {
+    .array(ids.map { .string($0) })
+}
+
+private func toneString(_ tone: StatusTone) -> String {
+    switch tone {
+    case .good:
+        return "good"
+    case .warning:
+        return "warning"
+    case .bad:
+        return "bad"
+    case .neutral:
+        return "neutral"
     }
 }
 
@@ -682,13 +675,270 @@ private enum SetupSurface {
             .updateComponents(surfaceId: surfaceId, components: components)
         ]
     }
+}
 
-    private static func binding(_ key: String) -> JSONValue {
-        .object(["binding": .string(key)])
+private enum MenuBarSurface {
+    static func buildMessages(surfaceId: String) -> [NormalizedMsg] {
+        let components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "menu_root",
+                type: "Column",
+                props: [
+                    "children": children([
+                        "menu_status",
+                        "menu_message",
+                        "menu_divider_1",
+                        "menu_start",
+                        "menu_stop",
+                        "menu_divider_2",
+                        "menu_open_dashboard",
+                        "menu_view_logs",
+                        "menu_open_help",
+                        "menu_divider_3",
+                        "menu_quit"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "menu_status", type: "Text", props: [
+                "text": binding("menu.status")
+            ]),
+            NormalizedComponent(id: "menu_message", type: "Text", props: [
+                "text": binding("menu.message"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "menu_divider_1", type: "Divider", props: [:]),
+            NormalizedComponent(id: "menu_start", type: "Button", props: [
+                "label": .string("Start"),
+                "action": .string("start"),
+                "variant": .string("primary"),
+                "disabled": binding("menu.startDisabled")
+            ]),
+            NormalizedComponent(id: "menu_stop", type: "Button", props: [
+                "label": .string("Stop"),
+                "action": .string("stop"),
+                "disabled": binding("menu.stopDisabled")
+            ]),
+            NormalizedComponent(id: "menu_divider_2", type: "Divider", props: [:]),
+            NormalizedComponent(id: "menu_open_dashboard", type: "Button", props: [
+                "label": .string("Open Dashboard"),
+                "action": .string("open_dashboard")
+            ]),
+            NormalizedComponent(id: "menu_view_logs", type: "Button", props: [
+                "label": .string("View Logs"),
+                "action": .string("view_logs")
+            ]),
+            NormalizedComponent(id: "menu_open_help", type: "Button", props: [
+                "label": .string("Help"),
+                "action": .string("open_help")
+            ]),
+            NormalizedComponent(id: "menu_divider_3", type: "Divider", props: [:]),
+            NormalizedComponent(id: "menu_quit", type: "Button", props: [
+                "label": .string("Quit"),
+                "action": .string("quit")
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.menu",
+            rootComponentId: "menu_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class MenuBarBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+    private let openSettings: (SettingsTab) -> Void
+    private let quit: () -> Void
+
+    init(
+        appModel: AppModel,
+        openSettings: @escaping (SettingsTab) -> Void,
+        quit: @escaping () -> Void
+    ) {
+        self.appModel = appModel
+        self.openSettings = openSettings
+        self.quit = quit
     }
 
-    private static func children(_ ids: [String]) -> JSONValue {
-        .array(ids.map { .string($0) })
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "menu.status":
+            return "Status: \(appModel.statusLabel)"
+        case "menu.message":
+            return appModel.statusMessage ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "menu.startDisabled":
+            return !appModel.canStart
+        case "menu.stopDisabled":
+            return !appModel.canStop
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "start":
+            appModel.startServices()
+        case "stop":
+            appModel.stopServices()
+        case "open_dashboard":
+            openSettings(.setup)
+        case "view_logs":
+            appModel.openLogs()
+        case "open_help":
+            openSettings(.help)
+        case "quit":
+            quit()
+        default:
+            break
+        }
+    }
+}
+
+private enum SettingsNavSurface {
+    static func buildMessages(surfaceId: String) -> [NormalizedMsg] {
+        let components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "nav_root",
+                type: "Column",
+                props: [
+                    "children": children([
+                        "nav_title",
+                        "nav_row"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "nav_title", type: "Text", props: [
+                "text": .string("Dashboard"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "nav_row", type: "Row", props: [
+                "children": children([
+                    "nav_setup",
+                    "nav_inception",
+                    "nav_services",
+                    "nav_integrations",
+                    "nav_a2ui",
+                    "nav_help",
+                    "nav_privacy"
+                ])
+            ]),
+            NormalizedComponent(id: "nav_setup", type: "Button", props: [
+                "label": .string("Setup"),
+                "action": .string("nav.setup"),
+                "variant": .string("primary"),
+                "disabled": binding("nav.isSetup")
+            ]),
+            NormalizedComponent(id: "nav_inception", type: "Button", props: [
+                "label": .string("Inception"),
+                "action": .string("nav.inception"),
+                "disabled": binding("nav.isInception")
+            ]),
+            NormalizedComponent(id: "nav_services", type: "Button", props: [
+                "label": .string("Services"),
+                "action": .string("nav.services"),
+                "disabled": binding("nav.isServices")
+            ]),
+            NormalizedComponent(id: "nav_integrations", type: "Button", props: [
+                "label": .string("Integrations"),
+                "action": .string("nav.integrations"),
+                "disabled": binding("nav.isIntegrations")
+            ]),
+            NormalizedComponent(id: "nav_a2ui", type: "Button", props: [
+                "label": .string("A2UI"),
+                "action": .string("nav.a2ui"),
+                "disabled": binding("nav.isA2UI")
+            ]),
+            NormalizedComponent(id: "nav_help", type: "Button", props: [
+                "label": .string("Help"),
+                "action": .string("nav.help"),
+                "disabled": binding("nav.isHelp")
+            ]),
+            NormalizedComponent(id: "nav_privacy", type: "Button", props: [
+                "label": .string("Privacy"),
+                "action": .string("nav.privacy"),
+                "disabled": binding("nav.isPrivacy")
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.settings.nav",
+            rootComponentId: "nav_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class SettingsNavBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "nav.isSetup":
+            return appModel.selectedTab == .setup
+        case "nav.isInception":
+            return appModel.selectedTab == .inception
+        case "nav.isServices":
+            return appModel.selectedTab == .services
+        case "nav.isIntegrations":
+            return appModel.selectedTab == .integrations
+        case "nav.isA2UI":
+            return appModel.selectedTab == .a2ui
+        case "nav.isHelp":
+            return appModel.selectedTab == .help
+        case "nav.isPrivacy":
+            return appModel.selectedTab == .privacy
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "nav.setup":
+            appModel.selectedTab = .setup
+        case "nav.inception":
+            appModel.selectedTab = .inception
+        case "nav.services":
+            appModel.selectedTab = .services
+        case "nav.integrations":
+            appModel.selectedTab = .integrations
+        case "nav.a2ui":
+            appModel.selectedTab = .a2ui
+        case "nav.help":
+            appModel.selectedTab = .help
+        case "nav.privacy":
+            appModel.selectedTab = .privacy
+        default:
+            break
+        }
     }
 }
 
@@ -729,6 +979,224 @@ private enum InceptionTemplate: String, CaseIterable, Identifiable {
     }
 }
 
+private enum InceptionLandingSurface {
+    static func buildMessages(surfaceId: String, hasRepo: Bool) -> [NormalizedMsg] {
+        var components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "inception_root",
+                type: "Column",
+                props: [
+                    "children": children(hasRepo ? [
+                        "inception_title",
+                        "workspace_section",
+                        "template_section",
+                        "inception_error",
+                        "inception_output_title",
+                        "inception_output"
+                    ] : [
+                        "inception_title",
+                        "inception_no_repo_title",
+                        "inception_no_repo_text"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "inception_title", type: "Text", props: [
+                "text": .string("Inception"),
+                "style": .string("headline")
+            ])
+        ]
+
+        if hasRepo {
+            components.append(contentsOf: [
+                NormalizedComponent(id: "workspace_section", type: "Column", props: [
+                    "children": children([
+                        "workspace_title",
+                        "workspace_repo",
+                        "workspace_path",
+                        "workspace_buttons"
+                    ])
+                ]),
+                NormalizedComponent(id: "workspace_title", type: "Text", props: [
+                    "text": .string("Workspace"),
+                    "style": .string("subheadline")
+                ]),
+                NormalizedComponent(id: "workspace_repo", type: "Text", props: [
+                    "text": binding("inception.repoFullName")
+                ]),
+                NormalizedComponent(id: "workspace_path", type: "Text", props: [
+                    "text": binding("inception.mirrorPath"),
+                    "style": .string("monospace"),
+                    "selectable": .bool(true)
+                ]),
+                NormalizedComponent(id: "workspace_buttons", type: "Row", props: [
+                    "children": children([
+                        "workspace_open_mirror",
+                        "workspace_start_interview"
+                    ])
+                ]),
+                NormalizedComponent(id: "workspace_open_mirror", type: "Button", props: [
+                    "label": .string("Open Mirror"),
+                    "action": .string("open_mirror")
+                ]),
+                NormalizedComponent(id: "workspace_start_interview", type: "Button", props: [
+                    "label": .string("Start A2UI Interview"),
+                    "action": .string("start_interview"),
+                    "variant": .string("primary")
+                ]),
+                NormalizedComponent(id: "template_section", type: "Column", props: [
+                    "children": children([
+                        "template_title",
+                        "template_select",
+                        "template_toggle",
+                        "template_note"
+                    ])
+                ]),
+                NormalizedComponent(id: "template_title", type: "Text", props: [
+                    "text": .string("Template"),
+                    "style": .string("subheadline")
+                ]),
+                NormalizedComponent(id: "template_select", type: "Select", props: [
+                    "label": .string("Project template"),
+                    "value": binding("inception.template"),
+                    "options": .array(InceptionTemplate.allCases.map { template in
+                        .object([
+                            "label": .string(template.title),
+                            "value": .string(template.rawValue)
+                        ])
+                    })
+                ]),
+                NormalizedComponent(id: "template_toggle", type: "Toggle", props: [
+                    "label": .string("Treat this as a CLI-style repo"),
+                    "value": binding("inception.cliSubtype")
+                ]),
+                NormalizedComponent(id: "template_note", type: "Text", props: [
+                    "text": .string("This selects the default Prune onboarding, golden paths, and strategy kit. You can refine everything in the interview before bootstrapping."),
+                    "style": .string("secondary")
+                ]),
+                NormalizedComponent(id: "inception_error", type: "Text", props: [
+                    "text": binding("inception.error"),
+                    "style": .string("error"),
+                    "hiddenWhenEmpty": .bool(true)
+                ]),
+                NormalizedComponent(id: "inception_output_title", type: "Text", props: [
+                    "text": binding("inception.outputTitle"),
+                    "style": .string("subheadline"),
+                    "hiddenWhenEmpty": .bool(true)
+                ]),
+                NormalizedComponent(id: "inception_output", type: "Text", props: [
+                    "text": binding("inception.output"),
+                    "style": .string("monospace"),
+                    "selectable": .bool(true),
+                    "hiddenWhenEmpty": .bool(true)
+                ])
+            ])
+        } else {
+            components.append(contentsOf: [
+                NormalizedComponent(id: "inception_no_repo_title", type: "Text", props: [
+                    "text": .string("No workspace configured"),
+                    "style": .string("subheadline")
+                ]),
+                NormalizedComponent(id: "inception_no_repo_text", type: "Text", props: [
+                    "text": .string("Set a GitHub repo in Setup first. Prune will create a local mirror and run inception/bootstrap inside that workspace."),
+                    "style": .string("secondary")
+                ])
+            ])
+        }
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.inception.landing",
+            rootComponentId: "inception_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class InceptionLandingBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+    private let template: Binding<String>
+    private let cliSubtype: Binding<Bool>
+    private let mirrorURL: URL?
+    private let openMirror: (URL) -> Void
+    private let startInterview: () -> Void
+    private let lastOutput: () -> String
+    private let lastError: () -> String
+
+    init(
+        appModel: AppModel,
+        template: Binding<String>,
+        cliSubtype: Binding<Bool>,
+        mirrorURL: URL?,
+        openMirror: @escaping (URL) -> Void,
+        startInterview: @escaping () -> Void,
+        lastOutput: @escaping () -> String,
+        lastError: @escaping () -> String
+    ) {
+        self.appModel = appModel
+        self.template = template
+        self.cliSubtype = cliSubtype
+        self.mirrorURL = mirrorURL
+        self.openMirror = openMirror
+        self.startInterview = startInterview
+        self.lastOutput = lastOutput
+        self.lastError = lastError
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "inception.repoFullName":
+            return appModel.normalizedRepoFullName() ?? ""
+        case "inception.mirrorPath":
+            return mirrorURL?.path ?? ""
+        case "inception.error":
+            return lastError()
+        case "inception.output":
+            return lastOutput()
+        case "inception.outputTitle":
+            return lastOutput().isEmpty ? "" : "Last output"
+        default:
+            return nil
+        }
+    }
+
+    func stringBinding(for key: String) -> Binding<String>? {
+        switch key {
+        case "inception.template":
+            return template
+        default:
+            return nil
+        }
+    }
+
+    func boolBinding(for key: String) -> Binding<Bool>? {
+        switch key {
+        case "inception.cliSubtype":
+            return cliSubtype
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "open_mirror":
+            if let mirrorURL {
+                openMirror(mirrorURL)
+            }
+        case "start_interview":
+            startInterview()
+        default:
+            break
+        }
+    }
+}
+
 struct InceptionView: View {
     @EnvironmentObject private var appModel: AppModel
 
@@ -737,118 +1205,73 @@ struct InceptionView: View {
     @State private var showInterview: Bool = false
     @State private var lastOutput: String = ""
     @State private var lastError: String? = nil
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_inception_landing"
 
     var body: some View {
+        let repoFullName = appModel.normalizedRepoFullName()
+        let mirror = repoFullName.map { appModel.paths.mirrorDirectory(repoFullName: $0) }
+
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Inception")
-                    .font(.headline)
-
-                if let repoFullName = appModel.normalizedRepoFullName() {
-                    let mirror = appModel.paths.mirrorDirectory(repoFullName: repoFullName)
-
-                    Group {
-                        GroupBox {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Workspace")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-
-                                Text(repoFullName)
-                                    .font(.body)
-
-                                Text(mirror.path)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-
-                                HStack {
-                                    Button("Open Mirror") {
-                                        NSWorkspace.shared.open(mirror)
-                                    }
-
-                                    Spacer()
-
-                                    Button("Start A2UI Interview") {
-                                        lastError = nil
-                                        showInterview = true
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-                            }
-                        }
-
-                        GroupBox {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Template")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-
-                                Picker("Project template", selection: $template) {
-                                    ForEach(InceptionTemplate.allCases) { t in
-                                        Text(t.title).tag(t)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-
-                                Toggle("Treat this as a CLI-style repo", isOn: $cliSubtype)
-                                    .help("Enables the 'cli' subtype in Prune preferences and bootstraps CLI-focused docs.")
-
-                                Text("This selects the default Prune onboarding, golden paths, and strategy kit. You can refine everything in the interview before bootstrapping.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if let err = lastError {
-                            Text(err)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .textSelection(.enabled)
-                        }
-
-                        if !lastOutput.isEmpty {
-                            GroupBox("Last output") {
-                                ScrollView {
-                                    Text(lastOutput)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(maxHeight: 240)
-                            }
-                        }
-                    }
-                    // Sheet lives here so it has access to the same appModel + state.
-                    .sheet(isPresented: $showInterview) {
-                        InceptionInterviewSheet(
-                            template: template,
-                            cliSubtype: cliSubtype,
-                            repoURL: mirror,
-                            onOutput: { out in
-                                lastOutput = out
-                            },
-                            onError: { msg in
-                                lastError = msg
-                            }
-                        )
-                        .environmentObject(appModel)
-                        .frame(minWidth: 720, minHeight: 560)
-                    }
-                } else {
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("No workspace configured")
-                                .font(.headline)
-                            Text("Set a GitHub repo in Setup first. Prune will create a local mirror and run inception/bootstrap inside that workspace.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: InceptionLandingBindingProvider(
+                    appModel: appModel,
+                    template: templateBinding,
+                    cliSubtype: $cliSubtype,
+                    mirrorURL: mirror,
+                    openMirror: { url in
+                        NSWorkspace.shared.open(url)
+                    },
+                    startInterview: {
+                        lastError = nil
+                        showInterview = true
+                    },
+                    lastOutput: { lastOutput },
+                    lastError: { lastError ?? "" }
+                )
+            )
             .padding()
         }
+        .onAppear {
+            resetSurface(store, messages: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: mirror != nil))
+        }
+        .onChange(of: appModel.config.repoFullName) { _ in
+            let hasRepo = appModel.normalizedRepoFullName() != nil
+            resetSurface(store, messages: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: hasRepo))
+        }
+        .sheet(isPresented: $showInterview) {
+            if let mirror {
+                InceptionInterviewSheet(
+                    template: template,
+                    cliSubtype: cliSubtype,
+                    repoURL: mirror,
+                    onOutput: { out in
+                        lastOutput = out
+                    },
+                    onError: { msg in
+                        lastError = msg
+                    }
+                )
+                .environmentObject(appModel)
+                .frame(minWidth: 720, minHeight: 560)
+            } else {
+                Text("No workspace configured.")
+                    .padding()
+            }
+        }
+    }
+
+    private var templateBinding: Binding<String> {
+        Binding(
+            get: { template.rawValue },
+            set: { rawValue in
+                if let newTemplate = InceptionTemplate(rawValue: rawValue) {
+                    template = newTemplate
+                }
+            }
+        )
     }
 }
 
@@ -871,59 +1294,23 @@ private struct InceptionInterviewSheet: View {
     private let overridesContainerId = "overrides_container"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("A2UI Inception Interview")
-                        .font(.headline)
-                    Text("Edit preferences, optionally generate extra questions using the local Apple Foundation Model, then save + bootstrap.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Close") { dismiss() }
-            }
-
-            Divider()
-
-            ScrollView {
-                A2UISurfaceView(
-                    store: store,
-                    surfaceId: surfaceId,
-                    bindingProvider: InceptionBindingProvider { addManualOverride() }
+        ScrollView {
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: InceptionBindingProvider(
+                    addOverride: { addManualOverride() },
+                    generateFollowups: { Task { await generateFollowups() } },
+                    savePreferences: { Task { await savePreferences() } },
+                    saveAndBootstrap: { Task { await saveAndBootstrap() } },
+                    closeInterview: { dismiss() },
+                    statusText: { status },
+                    isBusy: { isBusy }
                 )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Divider()
-
-            HStack(spacing: 10) {
-                Button("Generate followups") {
-                    Task { await generateFollowups() }
-                }
-
-                Spacer()
-
-                Button("Save preferences") {
-                    Task { await savePreferences() }
-                }
-                .buttonStyle(.bordered)
-
-                Button("Save + bootstrap") {
-                    Task { await saveAndBootstrap() }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isBusy)
-            }
-
-            if !status.isEmpty {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
         }
-        .padding()
         .onAppear {
             store.reset()
             let msgs = buildInitialMsgs()
@@ -940,6 +1327,9 @@ private struct InceptionInterviewSheet: View {
                 type: "Column",
                 props: [
                     "children": .array([
+                        .string("header_row"),
+                        .string("header_note"),
+                        .string("divider_header"),
                         .string("title"),
                         .string("subtitle"),
                         .string("divider_1"),
@@ -957,10 +1347,35 @@ private struct InceptionInterviewSheet: View {
                         .string("overrides_title"),
                         .string("overrides_subtitle"),
                         .string(overridesContainerId),
-                        .string("overrides_add_button")
+                        .string("overrides_add_button"),
+                        .string("divider_actions"),
+                        .string("actions_row"),
+                        .string("status_text")
                     ])
                 ]
             ),
+
+            NormalizedComponent(id: "header_row", type: "Row", props: [
+                "children": .array([
+                    .string("header_title"),
+                    .string("header_spacer"),
+                    .string("header_close")
+                ])
+            ]),
+            NormalizedComponent(id: "header_title", type: "Text", props: [
+                "text": .string("A2UI Inception Interview"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "header_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "header_close", type: "Button", props: [
+                "label": .string("Close"),
+                "action": .string("close_interview")
+            ]),
+            NormalizedComponent(id: "header_note", type: "Text", props: [
+                "text": .string("Edit preferences, optionally generate extra questions using the local Apple Foundation Model, then save + bootstrap."),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "divider_header", type: "Divider", props: [:]),
 
             NormalizedComponent(id: "title", type: "Text", props: ["text": .string("Prune project preferences")]),
             NormalizedComponent(id: "subtitle", type: "Text", props: ["text": .string("These answers are saved into .prune/prune.preferences.json and used by Prune to bootstrap and guide pruning strategies.")]),
@@ -1074,6 +1489,35 @@ private struct InceptionInterviewSheet: View {
                 "label": .string("Add Q/A override"),
                 "action": .string("add_override"),
                 "variant": .string("primary")
+            ]),
+            NormalizedComponent(id: "divider_actions", type: "Divider", props: [:]),
+            NormalizedComponent(id: "actions_row", type: "Row", props: [
+                "children": .array([
+                    .string("action_generate"),
+                    .string("actions_spacer"),
+                    .string("action_save"),
+                    .string("action_save_bootstrap")
+                ])
+            ]),
+            NormalizedComponent(id: "actions_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "action_generate", type: "Button", props: [
+                "label": .string("Generate followups"),
+                "action": .string("generate_followups")
+            ]),
+            NormalizedComponent(id: "action_save", type: "Button", props: [
+                "label": .string("Save preferences"),
+                "action": .string("save_preferences")
+            ]),
+            NormalizedComponent(id: "action_save_bootstrap", type: "Button", props: [
+                "label": .string("Save + bootstrap"),
+                "action": .string("save_bootstrap"),
+                "variant": .string("primary"),
+                "disabled": binding("inception.busy")
+            ]),
+            NormalizedComponent(id: "status_text", type: "Text", props: [
+                "text": binding("inception.status"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
             ])
         ]
 
@@ -1359,15 +1803,61 @@ Return STRICT JSON only, with this exact shape:
 @MainActor
 private final class InceptionBindingProvider: A2UIBindingProvider {
     private let addOverride: () -> Void
+    private let generateFollowups: () -> Void
+    private let savePreferences: () -> Void
+    private let saveAndBootstrap: () -> Void
+    private let closeInterview: () -> Void
+    private let statusText: () -> String
+    private let isBusy: () -> Bool
 
-    init(addOverride: @escaping () -> Void) {
+    init(
+        addOverride: @escaping () -> Void,
+        generateFollowups: @escaping () -> Void,
+        savePreferences: @escaping () -> Void,
+        saveAndBootstrap: @escaping () -> Void,
+        closeInterview: @escaping () -> Void,
+        statusText: @escaping () -> String,
+        isBusy: @escaping () -> Bool
+    ) {
         self.addOverride = addOverride
+        self.generateFollowups = generateFollowups
+        self.savePreferences = savePreferences
+        self.saveAndBootstrap = saveAndBootstrap
+        self.closeInterview = closeInterview
+        self.statusText = statusText
+        self.isBusy = isBusy
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "inception.status":
+            return statusText()
+        default:
+            return nil
+        }
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "inception.busy":
+            return isBusy()
+        default:
+            return nil
+        }
     }
 
     func perform(action: String) {
         switch action {
         case "add_override":
             addOverride()
+        case "generate_followups":
+            generateFollowups()
+        case "save_preferences":
+            savePreferences()
+        case "save_bootstrap":
+            saveAndBootstrap()
+        case "close_interview":
+            closeInterview()
         default:
             break
         }
@@ -1498,10 +1988,27 @@ private struct A2UISurfaceView: View {
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
+            let isReadOnly = resolveBool(from: rawProps["readOnly"], fallback: resolved["readOnly"]) ?? false
+            let minHeight = resolved["minHeight"]?.numberValue ?? rawProps["minHeight"]?.numberValue
 
             if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                if isMultiline {
+                    return AnyView(
+                        VStack(alignment: .leading, spacing: 6) {
+                            if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
+                            TextEditor(text: binding)
+                                .font(textFieldFont(for: style))
+                                .frame(minHeight: minHeight ?? 72)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                                )
+                                .disabled(isReadOnly)
+                        }
+                    )
+                }
                 let field = TextField(label, text: binding)
-                return applyTextFieldStyle(field, style: style)
+                return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
             }
 
             if isMultiline {
@@ -1512,11 +2019,13 @@ private struct A2UISurfaceView: View {
                             get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
                             set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
                         ))
-                        .frame(minHeight: 72)
+                        .font(textFieldFont(for: style))
+                        .frame(minHeight: minHeight ?? 72)
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
                                 .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
                         )
+                        .disabled(isReadOnly)
                     }
                 )
             }
@@ -1524,7 +2033,24 @@ private struct A2UISurfaceView: View {
                 get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
                 set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
             ))
-            return applyTextFieldStyle(field, style: style)
+            return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
+
+        case "SecureField":
+            let label = resolved["label"]?.stringValue ?? ""
+            let bindingKey = bindingKey(from: rawProps["value"])
+            let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
+            let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
+            let isReadOnly = resolveBool(from: rawProps["readOnly"], fallback: resolved["readOnly"]) ?? false
+
+            if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                let field = SecureField(label, text: binding)
+                return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
+            }
+            let field = SecureField(label, text: Binding(
+                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+            ))
+            return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
 
         case "Toggle":
             let label = resolved["label"]?.stringValue ?? ""
@@ -1581,7 +2107,7 @@ private struct A2UISurfaceView: View {
             let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
             if let bindingKey, let binding = bindingProvider?.intBinding(for: bindingKey) {
                 let field = TextField(label, value: binding, format: .number)
-                return applyTextFieldStyle(field, style: style)
+                return applyTextFieldStyle(field, style: style, readOnly: false)
             }
             return AnyView(EmptyView())
 
@@ -1648,283 +2174,1305 @@ private struct A2UISurfaceView: View {
         }
     }
 
-    private func applyTextFieldStyle<V: View>(_ view: V, style: String?) -> AnyView {
-        if style == "rounded" {
-            return AnyView(view.textFieldStyle(.roundedBorder))
+    private func textFieldFont(for style: String?) -> Font? {
+        if style == "monospace" {
+            return .system(.body, design: .monospaced)
         }
-        return AnyView(view)
+        return nil
+    }
+
+    private func applyTextFieldStyle<V: View>(_ view: V, style: String?, readOnly: Bool) -> AnyView {
+        var result: AnyView = AnyView(view)
+        if let font = textFieldFont(for: style) {
+            result = AnyView(result.font(font))
+        }
+        if style == "rounded" {
+            result = AnyView(result.textFieldStyle(.roundedBorder))
+        }
+        if readOnly {
+            result = AnyView(result.disabled(true))
+        }
+        return result
+    }
+}
+
+private enum ServicesSurface {
+    static func buildMessages(surfaceId: String) -> [NormalizedMsg] {
+        let components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "services_root",
+                type: "Column",
+                props: [
+                    "children": children([
+                        "services_title",
+                        "services_buttons",
+                        "services_launchagents",
+                        "services_list",
+                        "services_args",
+                        "services_logs",
+                        "services_status"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "services_title", type: "Text", props: [
+                "text": .string("Services"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "services_buttons", type: "Row", props: [
+                "children": children([
+                    "services_start",
+                    "services_stop",
+                    "services_refresh"
+                ])
+            ]),
+            NormalizedComponent(id: "services_start", type: "Button", props: [
+                "label": .string("Start"),
+                "action": .string("services.start"),
+                "variant": .string("primary"),
+                "disabled": binding("services.startDisabled")
+            ]),
+            NormalizedComponent(id: "services_stop", type: "Button", props: [
+                "label": .string("Stop"),
+                "action": .string("services.stop"),
+                "disabled": binding("services.stopDisabled")
+            ]),
+            NormalizedComponent(id: "services_refresh", type: "Button", props: [
+                "label": .string("Refresh Status"),
+                "action": .string("services.refresh"),
+                "disabled": binding("services.refreshDisabled")
+            ]),
+            NormalizedComponent(id: "services_launchagents", type: "Column", props: [
+                "children": children([
+                    "services_launchagents_title",
+                    "services_launchagents_toggle",
+                    "services_launchagents_buttons"
+                ])
+            ]),
+            NormalizedComponent(id: "services_launchagents_title", type: "Text", props: [
+                "text": .string("LaunchAgents"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "services_launchagents_toggle", type: "Toggle", props: [
+                "label": .string("Manage services with LaunchAgents"),
+                "value": binding("services.useLaunchAgents")
+            ]),
+            NormalizedComponent(id: "services_launchagents_buttons", type: "Row", props: [
+                "children": children([
+                    "services_launchagents_install",
+                    "services_launchagents_remove",
+                    "services_launchagents_open"
+                ])
+            ]),
+            NormalizedComponent(id: "services_launchagents_install", type: "Button", props: [
+                "label": .string("Install LaunchAgents"),
+                "action": .string("services.installLaunchAgents")
+            ]),
+            NormalizedComponent(id: "services_launchagents_remove", type: "Button", props: [
+                "label": .string("Remove LaunchAgents"),
+                "action": .string("services.removeLaunchAgents")
+            ]),
+            NormalizedComponent(id: "services_launchagents_open", type: "Button", props: [
+                "label": .string("Open LaunchAgents Folder"),
+                "action": .string("services.openLaunchAgentsFolder")
+            ]),
+            NormalizedComponent(id: "services_list", type: "Column", props: [
+                "children": children([
+                    "service_tunnel_row",
+                    "service_tunnel_detail",
+                    "service_sync_row",
+                    "service_sync_detail",
+                    "service_mcp_row",
+                    "service_mcp_detail"
+                ])
+            ]),
+            NormalizedComponent(id: "service_tunnel_row", type: "Row", props: [
+                "children": children([
+                    "service_tunnel_name",
+                    "service_tunnel_spacer",
+                    "service_tunnel_status"
+                ])
+            ]),
+            NormalizedComponent(id: "service_tunnel_name", type: "Text", props: [
+                "text": .string("Tunnel"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "service_tunnel_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "service_tunnel_status", type: "Text", props: [
+                "text": binding("services.tunnel.status"),
+                "style": .string("tone"),
+                "tone": binding("services.tunnel.tone")
+            ]),
+            NormalizedComponent(id: "service_tunnel_detail", type: "Text", props: [
+                "text": binding("services.tunnel.detail"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "service_sync_row", type: "Row", props: [
+                "children": children([
+                    "service_sync_name",
+                    "service_sync_spacer",
+                    "service_sync_status"
+                ])
+            ]),
+            NormalizedComponent(id: "service_sync_name", type: "Text", props: [
+                "text": .string("Sync"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "service_sync_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "service_sync_status", type: "Text", props: [
+                "text": binding("services.sync.status"),
+                "style": .string("tone"),
+                "tone": binding("services.sync.tone")
+            ]),
+            NormalizedComponent(id: "service_sync_detail", type: "Text", props: [
+                "text": binding("services.sync.detail"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "service_mcp_row", type: "Row", props: [
+                "children": children([
+                    "service_mcp_name",
+                    "service_mcp_spacer",
+                    "service_mcp_status"
+                ])
+            ]),
+            NormalizedComponent(id: "service_mcp_name", type: "Text", props: [
+                "text": .string("MCP"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "service_mcp_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "service_mcp_status", type: "Text", props: [
+                "text": binding("services.mcp.status"),
+                "style": .string("tone"),
+                "tone": binding("services.mcp.tone")
+            ]),
+            NormalizedComponent(id: "service_mcp_detail", type: "Text", props: [
+                "text": binding("services.mcp.detail"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "services_args", type: "Column", props: [
+                "children": children([
+                    "services_args_title",
+                    "services_args_tunnel",
+                    "services_args_sync",
+                    "services_args_mcp",
+                    "services_args_note"
+                ])
+            ]),
+            NormalizedComponent(id: "services_args_title", type: "Text", props: [
+                "text": .string("Service Arguments"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "services_args_tunnel", type: "TextField", props: [
+                "label": .string("Tunnel"),
+                "multiline": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(70),
+                "value": binding("services.args.tunnel")
+            ]),
+            NormalizedComponent(id: "services_args_sync", type: "TextField", props: [
+                "label": .string("Sync"),
+                "multiline": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(70),
+                "value": binding("services.args.sync")
+            ]),
+            NormalizedComponent(id: "services_args_mcp", type: "TextField", props: [
+                "label": .string("MCP"),
+                "multiline": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(70),
+                "value": binding("services.args.mcp")
+            ]),
+            NormalizedComponent(id: "services_args_note", type: "Text", props: [
+                "text": .string("Arguments are optional and appended to defaults. One argument per line."),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "services_logs", type: "Column", props: [
+                "children": children([
+                    "services_logs_title",
+                    "services_logs_buttons",
+                    "services_logs_preview"
+                ])
+            ]),
+            NormalizedComponent(id: "services_logs_title", type: "Text", props: [
+                "text": .string("Logs"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "services_logs_buttons", type: "Row", props: [
+                "children": children([
+                    "services_logs_view",
+                    "services_logs_refresh"
+                ])
+            ]),
+            NormalizedComponent(id: "services_logs_view", type: "Button", props: [
+                "label": .string("View Logs"),
+                "action": .string("services.viewLogs")
+            ]),
+            NormalizedComponent(id: "services_logs_refresh", type: "Button", props: [
+                "label": .string("Refresh Logs"),
+                "action": .string("services.refreshLogs")
+            ]),
+            NormalizedComponent(id: "services_logs_preview", type: "TextField", props: [
+                "label": .string("Log Preview"),
+                "multiline": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(180),
+                "readOnly": .bool(true),
+                "value": binding("services.logPreview")
+            ]),
+            NormalizedComponent(id: "services_status", type: "Column", props: [
+                "children": children([
+                    "services_status_message",
+                    "services_status_error"
+                ])
+            ]),
+            NormalizedComponent(id: "services_status_message", type: "Text", props: [
+                "text": binding("status.message"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "services_status_error", type: "Text", props: [
+                "text": binding("status.error"),
+                "style": .string("error"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.services",
+            rootComponentId: "services_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class ServicesBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "services.tunnel.status":
+            return appModel.serviceStatus(for: .tunnel).state.label
+        case "services.tunnel.tone":
+            return toneString(appModel.serviceStatus(for: .tunnel).state.tone)
+        case "services.tunnel.detail":
+            return appModel.serviceStatus(for: .tunnel).detail
+        case "services.sync.status":
+            return appModel.serviceStatus(for: .sync).state.label
+        case "services.sync.tone":
+            return toneString(appModel.serviceStatus(for: .sync).state.tone)
+        case "services.sync.detail":
+            return appModel.serviceStatus(for: .sync).detail
+        case "services.mcp.status":
+            return appModel.serviceStatus(for: .mcp).state.label
+        case "services.mcp.tone":
+            return toneString(appModel.serviceStatus(for: .mcp).state.tone)
+        case "services.mcp.detail":
+            return appModel.serviceStatus(for: .mcp).detail
+        case "services.logPreview":
+            return appModel.logPreview
+        case "status.message":
+            return appModel.statusMessage ?? ""
+        case "status.error":
+            return appModel.lastErrorMessage ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "services.startDisabled":
+            return !appModel.canStart
+        case "services.stopDisabled":
+            return !appModel.canStop
+        case "services.refreshDisabled":
+            return appModel.installState != .installed
+        default:
+            return nil
+        }
+    }
+
+    func boolBinding(for key: String) -> Binding<Bool>? {
+        switch key {
+        case "services.useLaunchAgents":
+            return appModel.binding(\.useLaunchAgents)
+        default:
+            return nil
+        }
+    }
+
+    func stringBinding(for key: String) -> Binding<String>? {
+        switch key {
+        case "services.args.tunnel":
+            return appModel.argumentsBinding(for: .tunnel)
+        case "services.args.sync":
+            return appModel.argumentsBinding(for: .sync)
+        case "services.args.mcp":
+            return appModel.argumentsBinding(for: .mcp)
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "services.start":
+            appModel.startServices()
+        case "services.stop":
+            appModel.stopServices()
+        case "services.refresh":
+            appModel.refreshStatus()
+        case "services.installLaunchAgents":
+            appModel.installLaunchAgents()
+        case "services.removeLaunchAgents":
+            appModel.removeLaunchAgents()
+        case "services.openLaunchAgentsFolder":
+            appModel.openLaunchAgentsFolder()
+        case "services.viewLogs":
+            appModel.openLogs()
+        case "services.refreshLogs":
+            appModel.refreshLogPreview()
+        default:
+            break
+        }
     }
 }
 
 struct ServicesView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_services"
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    Button("Start") {
-                        appModel.startServices()
-                    }
-                    .disabled(!appModel.canStart)
-                    Button("Stop") {
-                        appModel.stopServices()
-                    }
-                    .disabled(!appModel.canStop)
-                    Button("Refresh Status") {
-                        appModel.refreshStatus()
-                    }
-                    .disabled(appModel.installState != .installed)
-                }
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: ServicesBindingProvider(appModel: appModel)
+            )
+            .padding()
+        }
+        .onAppear {
+            resetSurface(store, messages: ServicesSurface.buildMessages(surfaceId: surfaceId))
+        }
+    }
+}
 
-                GroupBox("LaunchAgents") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Manage services with LaunchAgents", isOn: appModel.binding(\.useLaunchAgents))
-                        HStack {
-                            Button("Install LaunchAgents") {
-                                appModel.installLaunchAgents()
-                            }
-                            Button("Remove LaunchAgents") {
-                                appModel.removeLaunchAgents()
-                            }
-                            Button("Open LaunchAgents Folder") {
-                                appModel.openLaunchAgentsFolder()
-                            }
-                        }
-                    }
-                }
+private enum IntegrationsSurface {
+    static func buildMessages(surfaceId: String, webhooks: [GitHubWebhook]) -> [NormalizedMsg] {
+        var components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "integrations_root",
+                type: "Column",
+                props: [
+                    "children": children([
+                        "integrations_title",
+                        "integrations_lovable",
+                        "integrations_instructions",
+                        "integrations_github",
+                        "integrations_secrets",
+                        "integrations_status"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "integrations_title", type: "Text", props: [
+                "text": .string("Integrations"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "integrations_lovable", type: "Column", props: [
+                "children": children([
+                    "lovable_title",
+                    "lovable_tunnel_base",
+                    "lovable_mcp_url",
+                    "lovable_webhook_url",
+                    "lovable_buttons",
+                    "lovable_status"
+                ])
+            ]),
+            NormalizedComponent(id: "lovable_title", type: "Text", props: [
+                "text": .string("Lovable MCP"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "lovable_tunnel_base", type: "TextField", props: [
+                "label": .string("Tunnel Base URL"),
+                "value": binding("integrations.tunnelBaseURL")
+            ]),
+            NormalizedComponent(id: "lovable_mcp_url", type: "TextField", props: [
+                "label": .string("MCP Server URL"),
+                "readOnly": .bool(true),
+                "value": binding("integrations.mcpServerURL")
+            ]),
+            NormalizedComponent(id: "lovable_webhook_url", type: "TextField", props: [
+                "label": .string("Webhook URL"),
+                "readOnly": .bool(true),
+                "value": binding("integrations.webhookURL")
+            ]),
+            NormalizedComponent(id: "lovable_buttons", type: "Row", props: [
+                "children": children([
+                    "lovable_copy_mcp",
+                    "lovable_copy_webhook",
+                    "lovable_test_mcp"
+                ])
+            ]),
+            NormalizedComponent(id: "lovable_copy_mcp", type: "Button", props: [
+                "label": .string("Copy MCP URL"),
+                "action": .string("integrations.copyMcpURL")
+            ]),
+            NormalizedComponent(id: "lovable_copy_webhook", type: "Button", props: [
+                "label": .string("Copy Webhook URL"),
+                "action": .string("integrations.copyWebhookURL")
+            ]),
+            NormalizedComponent(id: "lovable_test_mcp", type: "Button", props: [
+                "label": .string("Test MCP Connection"),
+                "action": .string("integrations.testMcp")
+            ]),
+            NormalizedComponent(id: "lovable_status", type: "Text", props: [
+                "text": binding("integrations.mcpTestStatus"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "integrations_instructions", type: "Column", props: [
+                "children": children([
+                    "instructions_title",
+                    "instructions_text",
+                    "instructions_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "instructions_title", type: "Text", props: [
+                "text": .string("Lovable Instructions"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "instructions_text", type: "TextField", props: [
+                "label": .string("Instructions"),
+                "multiline": .bool(true),
+                "readOnly": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(160),
+                "value": binding("integrations.lovableInstructions")
+            ]),
+            NormalizedComponent(id: "instructions_copy", type: "Button", props: [
+                "label": .string("Copy Instructions"),
+                "action": .string("integrations.copyInstructions")
+            ]),
+            NormalizedComponent(id: "integrations_github", type: "Column", props: [
+                "children": children([
+                    "github_title",
+                    "github_repo",
+                    "github_branch",
+                    "github_buttons",
+                    "github_webhooks_title",
+                    "github_webhooks_list",
+                    "github_status"
+                ])
+            ]),
+            NormalizedComponent(id: "github_title", type: "Text", props: [
+                "text": .string("GitHub"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "github_repo", type: "Text", props: [
+                "text": binding("integrations.repoLabel")
+            ]),
+            NormalizedComponent(id: "github_branch", type: "Text", props: [
+                "text": binding("integrations.branchLabel")
+            ]),
+            NormalizedComponent(id: "github_buttons", type: "Row", props: [
+                "children": children([
+                    "github_create_webhook",
+                    "github_refresh_webhooks"
+                ])
+            ]),
+            NormalizedComponent(id: "github_create_webhook", type: "Button", props: [
+                "label": .string("Create Webhook"),
+                "action": .string("integrations.createWebhook")
+            ]),
+            NormalizedComponent(id: "github_refresh_webhooks", type: "Button", props: [
+                "label": .string("Refresh Webhooks"),
+                "action": .string("integrations.refreshWebhooks")
+            ]),
+            NormalizedComponent(id: "github_webhooks_title", type: "Text", props: [
+                "text": .string("Webhooks"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "github_webhooks_list", type: "Column", props: [
+                "children": .array([])
+            ]),
+            NormalizedComponent(id: "github_status", type: "Text", props: [
+                "text": binding("integrations.githubStatus"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "integrations_secrets", type: "Column", props: [
+                "children": children([
+                    "secrets_title",
+                    "secrets_github_token",
+                    "secrets_save_github",
+                    "secrets_webhook_token",
+                    "secrets_save_webhook",
+                    "secrets_mcp_token",
+                    "secrets_save_mcp"
+                ])
+            ]),
+            NormalizedComponent(id: "secrets_title", type: "Text", props: [
+                "text": .string("Secrets"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "secrets_github_token", type: "SecureField", props: [
+                "label": .string("GitHub Token"),
+                "value": binding("integrations.githubToken")
+            ]),
+            NormalizedComponent(id: "secrets_save_github", type: "Button", props: [
+                "label": .string("Save GitHub Token"),
+                "action": .string("integrations.saveGitHubToken")
+            ]),
+            NormalizedComponent(id: "secrets_webhook_token", type: "SecureField", props: [
+                "label": .string("Webhook Secret"),
+                "value": binding("integrations.webhookSecret")
+            ]),
+            NormalizedComponent(id: "secrets_save_webhook", type: "Button", props: [
+                "label": .string("Save Webhook Secret"),
+                "action": .string("integrations.saveWebhookSecret")
+            ]),
+            NormalizedComponent(id: "secrets_mcp_token", type: "SecureField", props: [
+                "label": .string("MCP Bearer Token (optional)"),
+                "value": binding("integrations.mcpToken")
+            ]),
+            NormalizedComponent(id: "secrets_save_mcp", type: "Button", props: [
+                "label": .string("Save MCP Token"),
+                "action": .string("integrations.saveMcpToken")
+            ]),
+            NormalizedComponent(id: "integrations_status", type: "Column", props: [
+                "children": children([
+                    "integrations_status_message",
+                    "integrations_status_error"
+                ])
+            ]),
+            NormalizedComponent(id: "integrations_status_message", type: "Text", props: [
+                "text": binding("status.message"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "integrations_status_error", type: "Text", props: [
+                "text": binding("status.error"),
+                "style": .string("error"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        ]
 
-                ForEach(ServiceKind.allCases) { service in
-                    ServiceRow(
-                        name: service.displayName,
-                        status: appModel.serviceStatus(for: service)
-                    )
-                }
-
-                GroupBox("Service Arguments") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ArgumentsEditor(
-                            title: "Tunnel",
-                            text: appModel.argumentsBinding(for: .tunnel)
-                        )
-                        ArgumentsEditor(
-                            title: "Sync",
-                            text: appModel.argumentsBinding(for: .sync)
-                        )
-                        ArgumentsEditor(
-                            title: "MCP",
-                            text: appModel.argumentsBinding(for: .mcp)
-                        )
-                        Text("Arguments are optional and appended to defaults. One argument per line.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                GroupBox("Logs") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Button("View Logs") {
-                                appModel.openLogs()
-                            }
-                            Button("Refresh Logs") {
-                                appModel.refreshLogPreview()
-                            }
-                        }
-                        TextEditor(text: $appModel.logPreview)
-                            .font(.system(.body, design: .monospaced))
-                            .frame(minHeight: 180)
-                            .disabled(true)
-                    }
-                }
-
-                StatusBanner(
-                    message: appModel.statusMessage,
-                    error: appModel.lastErrorMessage
+        var webhookChildren: [JSONValue] = []
+        if webhooks.isEmpty {
+            webhookChildren.append(.string("github_webhooks_empty"))
+            components.append(
+                NormalizedComponent(id: "github_webhooks_empty", type: "Text", props: [
+                    "text": .string("No webhooks configured."),
+                    "style": .string("secondary")
+                ])
+            )
+        } else {
+            for hook in webhooks {
+                let rowId = "github_webhook_row_\(hook.id)"
+                let textId = "github_webhook_text_\(hook.id)"
+                let spacerId = "github_webhook_spacer_\(hook.id)"
+                let deleteId = "github_webhook_delete_\(hook.id)"
+                webhookChildren.append(.string(rowId))
+                components.append(
+                    NormalizedComponent(id: rowId, type: "Row", props: [
+                        "children": children([textId, spacerId, deleteId])
+                    ])
+                )
+                components.append(
+                    NormalizedComponent(id: textId, type: "Text", props: [
+                        "text": .string("Hook \(hook.id) - \(hook.displayURL)")
+                    ])
+                )
+                components.append(NormalizedComponent(id: spacerId, type: "Spacer", props: [:]))
+                components.append(
+                    NormalizedComponent(id: deleteId, type: "Button", props: [
+                        "label": .string("Delete"),
+                        "action": .string("integrations.deleteWebhook:\(hook.id)")
+                    ])
                 )
             }
+        }
+
+        if let idx = components.firstIndex(where: { $0.id == "github_webhooks_list" }) {
+            var updated = components[idx]
+            var props = updated.props
+            props["children"] = .array(webhookChildren)
+            updated = NormalizedComponent(
+                id: updated.id,
+                kind: updated.kind,
+                props: props,
+                childrenRefs: updated.childrenRefs,
+                childRef: updated.childRef
+            )
+            components[idx] = updated
+        }
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.integrations",
+            rootComponentId: "integrations_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class IntegrationsBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "integrations.mcpTestStatus":
+            return appModel.mcpTestStatus ?? ""
+        case "integrations.githubStatus":
+            return appModel.githubStatusMessage ?? ""
+        case "integrations.repoLabel":
+            return "Repository: \(appModel.config.repoFullName.isEmpty ? "Not set" : appModel.config.repoFullName)"
+        case "integrations.branchLabel":
+            return "Branch: \(appModel.config.defaultBranch)"
+        case "status.message":
+            return appModel.statusMessage ?? ""
+        case "status.error":
+            return appModel.lastErrorMessage ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func stringBinding(for key: String) -> Binding<String>? {
+        switch key {
+        case "integrations.tunnelBaseURL":
+            return appModel.binding(\.tunnelBaseURL)
+        case "integrations.mcpServerURL":
+            return appModel.mcpServerURLBinding
+        case "integrations.webhookURL":
+            return appModel.webhookURLBinding
+        case "integrations.lovableInstructions":
+            return appModel.lovableInstructionsBinding
+        case "integrations.githubToken":
+            return Binding(get: { self.appModel.githubTokenInput }, set: { self.appModel.githubTokenInput = $0 })
+        case "integrations.webhookSecret":
+            return Binding(get: { self.appModel.webhookSecretInput }, set: { self.appModel.webhookSecretInput = $0 })
+        case "integrations.mcpToken":
+            return Binding(get: { self.appModel.mcpTokenInput }, set: { self.appModel.mcpTokenInput = $0 })
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        if action.hasPrefix("integrations.deleteWebhook:") {
+            let idString = action.replacingOccurrences(of: "integrations.deleteWebhook:", with: "")
+            if let id = Int(idString) {
+                appModel.deleteGitHubWebhook(id: id)
+            }
+            return
+        }
+
+        switch action {
+        case "integrations.copyMcpURL":
+            appModel.copyMcpURL()
+        case "integrations.copyWebhookURL":
+            appModel.copyWebhookURL()
+        case "integrations.testMcp":
+            appModel.testMcpConnection()
+        case "integrations.copyInstructions":
+            appModel.copyLovableInstructions()
+        case "integrations.createWebhook":
+            appModel.createGitHubWebhook()
+        case "integrations.refreshWebhooks":
+            appModel.refreshGitHubWebhooks()
+        case "integrations.saveGitHubToken":
+            appModel.saveGitHubToken()
+        case "integrations.saveWebhookSecret":
+            appModel.saveWebhookSecret()
+        case "integrations.saveMcpToken":
+            appModel.saveMcpToken()
+        default:
+            break
         }
     }
 }
 
 struct IntegrationsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_integrations"
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                GroupBox("Lovable MCP") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("Tunnel Base URL") {
-                            TextField("https://example.tunnel.app", text: appModel.binding(\.tunnelBaseURL))
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        LabeledContent("MCP Server URL") {
-                            TextField("MCP Server URL", text: appModel.mcpServerURLBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(true)
-                        }
-                        LabeledContent("Webhook URL") {
-                            TextField("Webhook URL", text: appModel.webhookURLBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(true)
-                        }
-                        HStack {
-                            Button("Copy MCP URL") {
-                                appModel.copyMcpURL()
-                            }
-                            Button("Copy Webhook URL") {
-                                appModel.copyWebhookURL()
-                            }
-                            Button("Test MCP Connection") {
-                                appModel.testMcpConnection()
-                            }
-                        }
-                        if let status = appModel.mcpTestStatus {
-                            Text(status)
-                        }
-                    }
-                }
-
-                GroupBox("Lovable Instructions") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextEditor(text: appModel.lovableInstructionsBinding)
-                            .font(.system(.body, design: .monospaced))
-                            .frame(minHeight: 160)
-                            .disabled(true)
-                        Button("Copy Instructions") {
-                            appModel.copyLovableInstructions()
-                        }
-                    }
-                }
-
-                GroupBox("GitHub") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Repository: \(appModel.config.repoFullName.isEmpty ? "Not set" : appModel.config.repoFullName)")
-                        Text("Branch: \(appModel.config.defaultBranch)")
-                        HStack {
-                            Button("Create Webhook") {
-                                appModel.createGitHubWebhook()
-                            }
-                            Button("Refresh Webhooks") {
-                                appModel.refreshGitHubWebhooks()
-                            }
-                        }
-                        if !appModel.webhooks.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(appModel.webhooks) { hook in
-                                    HStack {
-                                        Text("Hook \(hook.id) - \(hook.displayURL)")
-                                        Spacer()
-                                        Button("Delete") {
-                                            appModel.deleteGitHubWebhook(id: hook.id)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if let status = appModel.githubStatusMessage {
-                            Text(status)
-                        }
-                    }
-                }
-
-                GroupBox("Secrets") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        SecureField("GitHub Token", text: $appModel.githubTokenInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save GitHub Token") {
-                            appModel.saveGitHubToken()
-                        }
-                        SecureField("Webhook Secret", text: $appModel.webhookSecretInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save Webhook Secret") {
-                            appModel.saveWebhookSecret()
-                        }
-                        SecureField("MCP Bearer Token (optional)", text: $appModel.mcpTokenInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save MCP Token") {
-                            appModel.saveMcpToken()
-                        }
-                    }
-                }
-
-                StatusBanner(
-                    message: appModel.statusMessage,
-                    error: appModel.lastErrorMessage
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: IntegrationsBindingProvider(appModel: appModel)
+            )
+            .padding()
+        }
+        .onAppear {
+            resetSurface(
+                store,
+                messages: IntegrationsSurface.buildMessages(
+                    surfaceId: surfaceId,
+                    webhooks: appModel.webhooks
                 )
-            }
+            )
+        }
+        .onChange(of: appModel.webhooks.map(\.id)) { _ in
+            resetSurface(
+                store,
+                messages: IntegrationsSurface.buildMessages(
+                    surfaceId: surfaceId,
+                    webhooks: appModel.webhooks
+                )
+            )
         }
     }
 }
 
+private enum DiagnosticsInputMode: String, CaseIterable {
+    case fixture
+    case file
+    case live
+
+    var label: String {
+        switch self {
+        case .fixture:
+            return "Fixture"
+        case .file:
+            return "JSONL File"
+        case .live:
+            return "Live Stream"
+        }
+    }
+}
+
+private enum DiagnosticsFixtureVersion: String, CaseIterable {
+    case v09
+    case v08
+
+    var label: String {
+        switch self {
+        case .v09:
+            return "v0.9"
+        case .v08:
+            return "v0.8"
+        }
+    }
+}
+
+private struct DiagnosticsReportSummary: Equatable {
+    let surfaceId: String
+    let protocolVersion: String?
+    let rootComponentId: String?
+    let componentCount: Int
+    let resolvedText: String?
+    let dataModelJSON: String
+    let errors: [String]
+}
+
+private enum DiagnosticsSurface {
+    static func buildMessages(
+        surfaceId: String,
+        inputMode: DiagnosticsInputMode,
+        fixtureVersion: DiagnosticsFixtureVersion,
+        isRunning: Bool,
+        isStreaming: Bool,
+        report: DiagnosticsReportSummary?
+    ) -> [NormalizedMsg] {
+        var components: [NormalizedComponent] = []
+
+        var rootChildren: [String] = [
+            "diag_title",
+            "diag_subtitle",
+            "diag_input",
+            "diag_status",
+            "diag_output"
+        ]
+
+        components.append(contentsOf: [
+            NormalizedComponent(
+                id: "diag_root",
+                type: "Column",
+                props: [
+                    "children": children(rootChildren)
+                ]
+            ),
+            NormalizedComponent(id: "diag_title", type: "Text", props: [
+                "text": .string("A2UI Inception Diagnostics"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "diag_subtitle", type: "Text", props: [
+                "text": .string("Run fixtures, load JSONL, or stream live messages into A2UIRuntime."),
+                "style": .string("secondary")
+            ])
+        ])
+
+        var inputChildren: [String] = [
+            "diag_input_title",
+            "diag_input_mode"
+        ]
+
+        components.append(
+            NormalizedComponent(id: "diag_input", type: "Column", props: [
+                "children": .array([])
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_input_title", type: "Text", props: [
+                "text": .string("Input"),
+                "style": .string("subheadline")
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_input_mode", type: "Select", props: [
+                "label": .string("Mode"),
+                "value": binding("diag.inputMode"),
+                "options": .array(DiagnosticsInputMode.allCases.map { mode in
+                    .object(["label": .string(mode.label), "value": .string(mode.rawValue)])
+                })
+            ])
+        )
+
+        switch inputMode {
+        case .fixture:
+            inputChildren.append(contentsOf: [
+                "diag_fixture_version",
+                "diag_fixture_buttons"
+            ])
+            components.append(
+                NormalizedComponent(id: "diag_fixture_version", type: "Select", props: [
+                    "label": .string("Fixture Version"),
+                    "value": binding("diag.fixtureVersion"),
+                    "options": .array(DiagnosticsFixtureVersion.allCases.map { version in
+                        .object(["label": .string(version.label), "value": .string(version.rawValue)])
+                    })
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_fixture_buttons", type: "Row", props: [
+                    "children": children([
+                        "diag_run_fixture",
+                        "diag_reset_fixture"
+                    ])
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_run_fixture", type: "Button", props: [
+                    "label": .string("Run Fixture"),
+                    "action": .string("diag.runFixture"),
+                    "variant": .string("primary"),
+                    "disabled": binding("diag.running")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_reset_fixture", type: "Button", props: [
+                    "label": .string("Reset"),
+                    "action": .string("diag.reset")
+                ])
+            )
+        case .file:
+            inputChildren.append(contentsOf: [
+                "diag_file_path",
+                "diag_file_buttons",
+                "diag_file_note"
+            ])
+            components.append(
+                NormalizedComponent(id: "diag_file_path", type: "TextField", props: [
+                    "label": .string("JSONL file path"),
+                    "value": binding("diag.filePath")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_file_buttons", type: "Row", props: [
+                    "children": children([
+                        "diag_file_browse",
+                        "diag_file_load",
+                        "diag_file_reset"
+                    ])
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_file_browse", type: "Button", props: [
+                    "label": .string("Browse"),
+                    "action": .string("diag.browse")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_file_load", type: "Button", props: [
+                    "label": .string("Load File"),
+                    "action": .string("diag.loadFile"),
+                    "variant": .string("primary")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_file_reset", type: "Button", props: [
+                    "label": .string("Reset"),
+                    "action": .string("diag.reset")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_file_note", type: "Text", props: [
+                    "text": .string("Each line should be a JSON object (A2UI message envelope)."),
+                    "style": .string("secondary")
+                ])
+            )
+        case .live:
+            inputChildren.append(contentsOf: [
+                "diag_stream_url",
+                "diag_stream_buttons",
+                "diag_stream_note"
+            ])
+            components.append(
+                NormalizedComponent(id: "diag_stream_url", type: "TextField", props: [
+                    "label": .string("Stream URL"),
+                    "value": binding("diag.streamURL")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_stream_buttons", type: "Row", props: [
+                    "children": children([
+                        "diag_stream_toggle",
+                        "diag_stream_reset"
+                    ])
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_stream_toggle", type: "Button", props: [
+                    "label": .string(isStreaming ? "Stop Stream" : "Start Stream"),
+                    "action": .string(isStreaming ? "diag.stopStream" : "diag.startStream"),
+                    "variant": .string("primary")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_stream_reset", type: "Button", props: [
+                    "label": .string("Reset"),
+                    "action": .string("diag.reset")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_stream_note", type: "Text", props: [
+                    "text": .string("Stream expects newline-delimited JSON objects over HTTP."),
+                    "style": .string("secondary")
+                ])
+            )
+        }
+
+        if let inputIndex = components.firstIndex(where: { $0.id == "diag_input" }) {
+            var updated = components[inputIndex]
+            var props = updated.props
+            props["children"] = children(inputChildren)
+            updated = NormalizedComponent(
+                id: updated.id,
+                kind: updated.kind,
+                props: props,
+                childrenRefs: updated.childrenRefs,
+                childRef: updated.childRef
+            )
+            components[inputIndex] = updated
+        }
+
+        components.append(
+            NormalizedComponent(id: "diag_status", type: "Column", props: [
+                "children": children([
+                    "diag_status_message",
+                    "diag_error_message",
+                    "diag_activity"
+                ])
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_status_message", type: "Text", props: [
+                "text": binding("diag.status"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_error_message", type: "Text", props: [
+                "text": binding("diag.error"),
+                "style": .string("error"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_activity", type: "Text", props: [
+                "text": binding("diag.activity"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        )
+
+        if let report {
+            components.append(
+                NormalizedComponent(id: "diag_output", type: "Column", props: [
+                    "children": children([
+                        "diag_output_title",
+                        "diag_surface_info",
+                        "diag_resolved_title",
+                        "diag_resolved_text",
+                        "diag_model_title",
+                        "diag_model_text",
+                        "diag_errors_title",
+                        "diag_errors_list"
+                    ])
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_output_title", type: "Text", props: [
+                    "text": .string("Output"),
+                    "style": .string("subheadline")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_surface_info", type: "Column", props: [
+                    "children": children([
+                        "diag_surface_id",
+                        "diag_surface_protocol",
+                        "diag_surface_root",
+                        "diag_surface_components"
+                    ])
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_surface_id", type: "Text", props: [
+                    "text": .string("Surface ID: \(report.surfaceId)")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_surface_protocol", type: "Text", props: [
+                    "text": .string("Protocol: \(report.protocolVersion ?? "unknown")")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_surface_root", type: "Text", props: [
+                    "text": .string("Root component: \(report.rootComponentId ?? "unknown")")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_surface_components", type: "Text", props: [
+                    "text": .string("Components: \(report.componentCount)")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_resolved_title", type: "Text", props: [
+                    "text": .string("Resolved Text"),
+                    "style": .string("subheadline")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_resolved_text", type: "Text", props: [
+                    "text": .string(report.resolvedText ?? "No bound text resolved.")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_model_title", type: "Text", props: [
+                    "text": .string("Data Model"),
+                    "style": .string("subheadline")
+                ])
+            )
+            components.append(
+                NormalizedComponent(id: "diag_model_text", type: "Text", props: [
+                    "text": .string(report.dataModelJSON),
+                    "style": .string("monospace"),
+                    "selectable": .bool(true)
+                ])
+            )
+
+            if report.errors.isEmpty {
+                components.append(
+                    NormalizedComponent(id: "diag_errors_title", type: "Text", props: [
+                        "text": .string("Adapter Errors"),
+                        "style": .string("subheadline"),
+                        "hiddenWhenEmpty": .bool(true)
+                    ])
+                )
+                components.append(
+                    NormalizedComponent(id: "diag_errors_list", type: "Column", props: [
+                        "children": .array([])
+                    ])
+                )
+            } else {
+                components.append(
+                    NormalizedComponent(id: "diag_errors_title", type: "Text", props: [
+                        "text": .string("Adapter Errors"),
+                        "style": .string("subheadline")
+                    ])
+                )
+                let errorChildren = report.errors.enumerated().map { idx, _ in
+                    JSONValue.string("diag_error_\(idx)")
+                }
+                components.append(
+                    NormalizedComponent(id: "diag_errors_list", type: "Column", props: [
+                        "children": .array(errorChildren)
+                    ])
+                )
+                for (idx, error) in report.errors.enumerated() {
+                    components.append(
+                        NormalizedComponent(id: "diag_error_\(idx)", type: "Text", props: [
+                            "text": .string(error),
+                            "style": .string("error")
+                        ])
+                    )
+                }
+            }
+        } else {
+            components.append(
+                NormalizedComponent(id: "diag_output", type: "Text", props: [
+                    "text": .string("No A2UI output yet."),
+                    "style": .string("secondary")
+                ])
+            )
+        }
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.a2ui.diagnostics",
+            rootComponentId: "diag_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class DiagnosticsBindingProvider: A2UIBindingProvider {
+    private let inputMode: Binding<String>
+    private let fixtureVersion: Binding<String>
+    private let filePath: Binding<String>
+    private let streamURL: Binding<String>
+    private let statusMessage: () -> String?
+    private let errorMessage: () -> String?
+    private let activityMessage: () -> String?
+    private let isRunning: () -> Bool
+    private let actions: (String) -> Void
+
+    init(
+        inputMode: Binding<String>,
+        fixtureVersion: Binding<String>,
+        filePath: Binding<String>,
+        streamURL: Binding<String>,
+        statusMessage: @escaping () -> String?,
+        errorMessage: @escaping () -> String?,
+        activityMessage: @escaping () -> String?,
+        isRunning: @escaping () -> Bool,
+        actions: @escaping (String) -> Void
+    ) {
+        self.inputMode = inputMode
+        self.fixtureVersion = fixtureVersion
+        self.filePath = filePath
+        self.streamURL = streamURL
+        self.statusMessage = statusMessage
+        self.errorMessage = errorMessage
+        self.activityMessage = activityMessage
+        self.isRunning = isRunning
+        self.actions = actions
+    }
+
+    func stringBinding(for key: String) -> Binding<String>? {
+        switch key {
+        case "diag.inputMode":
+            return inputMode
+        case "diag.fixtureVersion":
+            return fixtureVersion
+        case "diag.filePath":
+            return filePath
+        case "diag.streamURL":
+            return streamURL
+        default:
+            return nil
+        }
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "diag.status":
+            return statusMessage() ?? ""
+        case "diag.error":
+            return errorMessage() ?? ""
+        case "diag.activity":
+            return activityMessage() ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "diag.running":
+            return isRunning()
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        actions(action)
+    }
+}
+
 struct A2UIDiagnosticsView: View {
-    private struct A2UIFixtureReport: Equatable {
-        let surfaceId: String
-        let protocolVersion: String?
-        let rootComponentId: String?
-        let componentCount: Int
-        let resolvedText: String?
-        let dataModelJSON: String
-        let errors: [String]
-    }
-
-    private enum InputMode: String, CaseIterable {
-        case fixture
-        case file
-        case live
-
-        var label: String {
-            switch self {
-            case .fixture:
-                return "Fixture"
-            case .file:
-                return "JSONL File"
-            case .live:
-                return "Live Stream"
-            }
-        }
-    }
-
-    private enum FixtureVersion: String, CaseIterable {
-        case v09
-        case v08
-
-        var label: String {
-            switch self {
-            case .v09:
-                return "v0.9"
-            case .v08:
-                return "v0.8"
-            }
-        }
-    }
-
-    @State private var inputMode: InputMode = .fixture
-    @State private var fixtureVersion: FixtureVersion = .v09
+    @State private var inputMode: DiagnosticsInputMode = .fixture
+    @State private var fixtureVersion: DiagnosticsFixtureVersion = .v09
     @State private var filePath: String = ""
     @State private var isFileImporterPresented = false
     @State private var streamURLText: String = "http://localhost:47802/a2ui"
     @State private var statusMessage: String?
     @State private var errorMessage: String?
-    @State private var report: A2UIFixtureReport?
+    @State private var report: DiagnosticsReportSummary?
     @State private var errors: [String] = []
     @State private var isRunning = false
     @State private var isStreaming = false
     @State private var streamTask: Task<Void, Never>?
-    @State private var store = NormalizedSurfaceStore()
+    @State private var fixtureStore = NormalizedSurfaceStore()
+    @StateObject private var uiStore = NormalizedSurfaceStore()
+    private let surfaceId = "prune_a2ui_diagnostics"
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("A2UI Inception Diagnostics")
-                    .font(.title2)
-                Text("Run fixtures, load JSONL, or stream live messages into A2UIRuntime.")
-                    .foregroundStyle(.secondary)
-                inputSection
-                statusSection
-                outputSection
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            A2UISurfaceView(
+                store: uiStore,
+                surfaceId: surfaceId,
+                bindingProvider: DiagnosticsBindingProvider(
+                    inputMode: inputModeBinding,
+                    fixtureVersion: fixtureVersionBinding,
+                    filePath: $filePath,
+                    streamURL: $streamURLText,
+                    statusMessage: { statusMessage },
+                    errorMessage: { errorMessage },
+                    activityMessage: { activityMessage },
+                    isRunning: { isRunning },
+                    actions: handleAction
+                )
+            )
+            .padding()
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -1940,150 +3488,82 @@ struct A2UIDiagnosticsView: View {
                 loadJSONL(from: url)
             case .failure(let error):
                 errorMessage = "File import failed: \(error.localizedDescription)"
+                refreshSurface()
             }
         }
         .onAppear {
+            refreshSurface()
             guard report == nil, !isRunning, !isStreaming else { return }
             DispatchQueue.main.async {
                 runFixture()
             }
+        }
+        .onChange(of: inputMode) { _ in
+            refreshSurface()
+        }
+        .onChange(of: fixtureVersion) { _ in
+            refreshSurface()
+        }
+        .onChange(of: isRunning) { _ in
+            refreshSurface()
+        }
+        .onChange(of: isStreaming) { _ in
+            refreshSurface()
         }
         .onDisappear {
             stopStreaming()
         }
     }
 
-    @ViewBuilder
-    private var inputSection: some View {
-        GroupBox("Input") {
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("Mode", selection: $inputMode) {
-                    ForEach(InputMode.allCases, id: \.self) { mode in
-                        Text(mode.label).tag(mode)
-                    }
+    private var inputModeBinding: Binding<String> {
+        Binding(
+            get: { inputMode.rawValue },
+            set: { rawValue in
+                if let mode = DiagnosticsInputMode(rawValue: rawValue) {
+                    inputMode = mode
                 }
-                .pickerStyle(.segmented)
-                modeControls
             }
-        }
+        )
     }
 
-    @ViewBuilder
-    private var modeControls: some View {
-        switch inputMode {
-        case .fixture:
-            Picker("Fixture Version", selection: $fixtureVersion) {
-                ForEach(FixtureVersion.allCases, id: \.self) { version in
-                    Text(version.label).tag(version)
+    private var fixtureVersionBinding: Binding<String> {
+        Binding(
+            get: { fixtureVersion.rawValue },
+            set: { rawValue in
+                if let version = DiagnosticsFixtureVersion(rawValue: rawValue) {
+                    fixtureVersion = version
                 }
             }
-            .pickerStyle(.segmented)
-            HStack(spacing: 12) {
-                Button("Run Fixture") {
-                    runFixture()
-                }
-                Button("Reset") {
-                    resetState()
-                }
-                if isRunning {
-                    ProgressView()
-                }
-            }
-        case .file:
-            TextField("JSONL file path", text: $filePath)
-                .textFieldStyle(.roundedBorder)
-            HStack(spacing: 12) {
-                Button("Browse") {
-                    isFileImporterPresented = true
-                }
-                Button("Load File") {
-                    loadJSONLFromPath()
-                }
-                Button("Reset") {
-                    resetState()
-                }
-                if isRunning {
-                    ProgressView()
-                }
-            }
-            Text("Each line should be a JSON object (A2UI message envelope).")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .live:
-            TextField("Stream URL", text: $streamURLText)
-                .textFieldStyle(.roundedBorder)
-            HStack(spacing: 12) {
-                if isStreaming {
-                    Button("Stop Stream") {
-                        stopStreaming()
-                    }
-                } else {
-                    Button("Start Stream") {
-                        startStreaming()
-                    }
-                }
-                Button("Reset") {
-                    resetState()
-                }
-                if isStreaming {
-                    ProgressView()
-                }
-            }
-            Text("Stream expects newline-delimited JSON objects over HTTP.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+        )
     }
 
-    @ViewBuilder
-    private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let statusMessage {
-                Text(statusMessage)
-                    .foregroundStyle(.secondary)
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-            }
+    private var activityMessage: String? {
+        if isRunning {
+            return "Running..."
         }
+        if isStreaming {
+            return "Streaming..."
+        }
+        return nil
     }
 
-    @ViewBuilder
-    private var outputSection: some View {
-        if let report {
-            GroupBox("Surface") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Surface ID: \(report.surfaceId)")
-                    Text("Protocol: \(report.protocolVersion ?? "unknown")")
-                    Text("Root component: \(report.rootComponentId ?? "unknown")")
-                    Text("Components: \(report.componentCount)")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            GroupBox("Resolved Text") {
-                Text(report.resolvedText ?? "No bound text resolved.")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            GroupBox("Data Model") {
-                Text(report.dataModelJSON)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if !report.errors.isEmpty {
-                GroupBox("Adapter Errors") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(report.errors, id: \.self) { error in
-                            Text(error)
-                                .foregroundStyle(.red)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        } else {
-            Text("No A2UI output yet.")
-                .foregroundStyle(.secondary)
+    @MainActor
+    private func handleAction(_ action: String) {
+        switch action {
+        case "diag.runFixture":
+            runFixture()
+        case "diag.reset":
+            resetState()
+        case "diag.browse":
+            isFileImporterPresented = true
+        case "diag.loadFile":
+            loadJSONLFromPath()
+        case "diag.startStream":
+            startStreaming()
+        case "diag.stopStream":
+            stopStreaming()
+        default:
+            break
         }
     }
 
@@ -2107,6 +3587,7 @@ struct A2UIDiagnosticsView: View {
         let trimmed = filePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Enter a JSONL file path."
+            refreshSurface()
             return
         }
         loadJSONL(from: URL(fileURLWithPath: trimmed))
@@ -2119,6 +3600,7 @@ struct A2UIDiagnosticsView: View {
             let lines = content.split(whereSeparator: \.isNewline).map(String.init)
             guard !lines.isEmpty else {
                 errorMessage = "No JSONL lines found in \(url.lastPathComponent)."
+                refreshSurface()
                 return
             }
             runLines(
@@ -2128,6 +3610,7 @@ struct A2UIDiagnosticsView: View {
             )
         } catch {
             errorMessage = "Failed to read file: \(error.localizedDescription)"
+            refreshSurface()
         }
     }
 
@@ -2136,18 +3619,21 @@ struct A2UIDiagnosticsView: View {
         stopStreaming()
         guard let url = URL(string: streamURLText), url.scheme != nil else {
             errorMessage = "Invalid stream URL."
+            refreshSurface()
             return
         }
 
         resetState()
         isStreaming = true
         statusMessage = "Connecting to stream..."
+        refreshSurface()
 
         let adapter = A2UIProtocolAdapter(enableV09: true)
         streamTask = Task { @MainActor in
             do {
                 let (bytes, _) = try await URLSession.shared.bytes(from: url)
                 statusMessage = "Streaming..."
+                refreshSurface()
                 for try await line in bytes.lines {
                     if Task.isCancelled {
                         break
@@ -2162,6 +3648,7 @@ struct A2UIDiagnosticsView: View {
                 statusMessage = "Stream error: \(error.localizedDescription)"
             }
             isStreaming = false
+            refreshSurface()
         }
     }
 
@@ -2172,6 +3659,7 @@ struct A2UIDiagnosticsView: View {
         if isStreaming {
             isStreaming = false
             statusMessage = "Stream stopped."
+            refreshSurface()
         }
     }
 
@@ -2184,6 +3672,7 @@ struct A2UIDiagnosticsView: View {
         isRunning = true
         resetState()
         statusMessage = label
+        refreshSurface()
 
         let adapter = A2UIProtocolAdapter(enableV09: true, preferredVersion: preferredVersion)
         for line in lines {
@@ -2194,6 +3683,7 @@ struct A2UIDiagnosticsView: View {
         }
 
         isRunning = false
+        refreshSurface()
     }
 
     @MainActor
@@ -2203,7 +3693,7 @@ struct A2UIDiagnosticsView: View {
             case .error(let message):
                 errors.append(message)
             default:
-                store.apply(message)
+                fixtureStore.apply(message)
             }
         }
         updateReport()
@@ -2211,21 +3701,22 @@ struct A2UIDiagnosticsView: View {
 
     @MainActor
     private func updateReport() {
-        guard let surfaceId = store.surfaces.keys.sorted().first,
-              let surface = store.surfaces[surfaceId] else {
+        guard let surfaceId = fixtureStore.surfaces.keys.sorted().first,
+              let surface = fixtureStore.surfaces[surfaceId] else {
             report = nil
+            refreshSurface()
             return
         }
 
-        let rootId = store.rootComponentId(for: surfaceId)
+        let rootId = fixtureStore.rootComponentId(for: surfaceId)
         var resolvedText: String?
         if let rootId,
-           let props = store.resolvedProps(surfaceId: surfaceId, componentId: rootId),
+           let props = fixtureStore.resolvedProps(surfaceId: surfaceId, componentId: rootId),
            let textValue = props["text"] {
             resolvedText = textValue.stringValue ?? prettyJSON(textValue)
         }
 
-        report = A2UIFixtureReport(
+        report = DiagnosticsReportSummary(
             surfaceId: surfaceId,
             protocolVersion: surface.info.protocolVersion?.rawValue,
             rootComponentId: rootId,
@@ -2234,14 +3725,17 @@ struct A2UIDiagnosticsView: View {
             dataModelJSON: prettyJSON(surface.dataModel),
             errors: errors
         )
+        refreshSurface()
     }
 
     @MainActor
     private func resetState() {
-        store = NormalizedSurfaceStore()
+        fixtureStore = NormalizedSurfaceStore()
         errors = []
         report = nil
         errorMessage = nil
+        statusMessage = nil
+        refreshSurface()
     }
 
     private func prettyJSON(_ value: JSONValue) -> String {
@@ -2280,94 +3774,405 @@ struct A2UIDiagnosticsView: View {
         {"dataModelUpdate":{"surfaceId":"inception","contents":[{"path":"/question","value":{"literalString":"Hello from A2UI v0.8"}}]}}
         """
     ]
+
+    @MainActor
+    private func refreshSurface() {
+        resetSurface(
+            uiStore,
+            messages: DiagnosticsSurface.buildMessages(
+                surfaceId: surfaceId,
+                inputMode: inputMode,
+                fixtureVersion: fixtureVersion,
+                isRunning: isRunning,
+                isStreaming: isStreaming,
+                report: report
+            )
+        )
+    }
+}
+
+private enum HelpSurface {
+    static func buildMessages(surfaceId: String, missingGit: Bool) -> [NormalizedMsg] {
+        var childrenIds: [String] = [
+            "help_title"
+        ]
+        if missingGit {
+            childrenIds.append("help_git_required")
+        }
+        childrenIds.append(contentsOf: [
+            "help_prereq",
+            "help_quickstart",
+            "help_troubleshooting",
+            "help_diagnostics",
+            "help_status"
+        ])
+
+        var components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "help_root",
+                type: "Column",
+                props: [
+                    "children": children(childrenIds)
+                ]
+            ),
+            NormalizedComponent(id: "help_title", type: "Text", props: [
+                "text": .string("Help"),
+                "style": .string("headline")
+            ])
+        ]
+
+        if missingGit {
+            components.append(contentsOf: [
+                NormalizedComponent(id: "help_git_required", type: "Column", props: [
+                    "children": children([
+                        "help_git_title",
+                        "help_git_reason",
+                        "help_git_buttons"
+                    ])
+                ]),
+                NormalizedComponent(id: "help_git_title", type: "Text", props: [
+                    "text": .string("Git Required"),
+                    "style": .string("subheadline")
+                ]),
+                NormalizedComponent(id: "help_git_reason", type: "Text", props: [
+                    "text": binding("help.gitReason")
+                ]),
+                NormalizedComponent(id: "help_git_buttons", type: "Row", props: [
+                    "children": children([
+                        "help_install_clt",
+                        "help_recheck_git"
+                    ])
+                ]),
+                NormalizedComponent(id: "help_install_clt", type: "Button", props: [
+                    "label": .string("Install Command Line Tools"),
+                    "action": .string("help.installCLT")
+                ]),
+                NormalizedComponent(id: "help_recheck_git", type: "Button", props: [
+                    "label": .string("Recheck"),
+                    "action": .string("help.recheckGit")
+                ])
+            ])
+        }
+
+        components.append(contentsOf: [
+            NormalizedComponent(id: "help_prereq", type: "Column", props: [
+                "children": children([
+                    "help_prereq_title",
+                    "help_prereq_1",
+                    "help_prereq_2",
+                    "help_prereq_3",
+                    "help_prereq_4",
+                    "help_prereq_5"
+                ])
+            ]),
+            NormalizedComponent(id: "help_prereq_title", type: "Text", props: [
+                "text": .string("Prerequisites"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "help_prereq_1", type: "Text", props: [
+                "text": .string("macOS 13 or newer.")
+            ]),
+            NormalizedComponent(id: "help_prereq_2", type: "Text", props: [
+                "text": .string("Git installed (Xcode Command Line Tools). Required to mirror repos and detect remotes.")
+            ]),
+            NormalizedComponent(id: "help_prereq_3", type: "Text", props: [
+                "text": .string("If Git is missing, run: xcode-select --install")
+            ]),
+            NormalizedComponent(id: "help_prereq_4", type: "Text", props: [
+                "text": .string("Network access for tunnel + webhooks.")
+            ]),
+            NormalizedComponent(id: "help_prereq_5", type: "Text", props: [
+                "text": .string("Optional: GitHub token + webhook secret for GitHub sync.")
+            ]),
+            NormalizedComponent(id: "help_quickstart", type: "Column", props: [
+                "children": children([
+                    "help_quickstart_title",
+                    "help_quickstart_1",
+                    "help_quickstart_2",
+                    "help_quickstart_3",
+                    "help_quickstart_4",
+                    "help_quickstart_5",
+                    "help_quickstart_6"
+                ])
+            ]),
+            NormalizedComponent(id: "help_quickstart_title", type: "Text", props: [
+                "text": .string("Quickstart"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "help_quickstart_1", type: "Text", props: [
+                "text": .string("1. Install Prune.app (Install.command); bundled dependencies install on first launch.")
+            ]),
+            NormalizedComponent(id: "help_quickstart_2", type: "Text", props: [
+                "text": .string("2. Click Start to bring up the tunnel and services.")
+            ]),
+            NormalizedComponent(id: "help_quickstart_3", type: "Text", props: [
+                "text": .string("3. Copy the MCP Server URL.")
+            ]),
+            NormalizedComponent(id: "help_quickstart_4", type: "Text", props: [
+                "text": .string("4. In Lovable: Settings -> Connectors -> Personal connectors -> New MCP server.")
+            ]),
+            NormalizedComponent(id: "help_quickstart_5", type: "Text", props: [
+                "text": .string("5. Connect Lovable project to GitHub (default branch sync).")
+            ]),
+            NormalizedComponent(id: "help_quickstart_6", type: "Text", props: [
+                "text": .string("6. Confirm Last Indexed SHA updates after edits.")
+            ]),
+            NormalizedComponent(id: "help_troubleshooting", type: "Column", props: [
+                "children": children([
+                    "help_troubleshooting_title",
+                    "help_troubleshooting_1",
+                    "help_troubleshooting_2",
+                    "help_troubleshooting_3",
+                    "help_troubleshooting_4"
+                ])
+            ]),
+            NormalizedComponent(id: "help_troubleshooting_title", type: "Text", props: [
+                "text": .string("Troubleshooting"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "help_troubleshooting_1", type: "Text", props: [
+                "text": .string("MCP not reachable: confirm tunnel is running and URL is copied exactly.")
+            ]),
+            NormalizedComponent(id: "help_troubleshooting_2", type: "Text", props: [
+                "text": .string("Webhook failing: ensure GitHub token and webhook secret are stored.")
+            ]),
+            NormalizedComponent(id: "help_troubleshooting_3", type: "Text", props: [
+                "text": .string("Index not updating: check sync service status and logs.")
+            ]),
+            NormalizedComponent(id: "help_troubleshooting_4", type: "Text", props: [
+                "text": .string("Tunnel expired: stop and start to refresh.")
+            ]),
+            NormalizedComponent(id: "help_diagnostics", type: "Column", props: [
+                "children": children([
+                    "help_diagnostics_title",
+                    "help_diagnostics_button",
+                    "help_diagnostics_last"
+                ])
+            ]),
+            NormalizedComponent(id: "help_diagnostics_title", type: "Text", props: [
+                "text": .string("Diagnostics"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "help_diagnostics_button", type: "Button", props: [
+                "label": .string("Export Diagnostics"),
+                "action": .string("help.exportDiagnostics")
+            ]),
+            NormalizedComponent(id: "help_diagnostics_last", type: "Text", props: [
+                "text": binding("help.lastDiagnostics"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "help_status", type: "Column", props: [
+                "children": children([
+                    "help_status_message",
+                    "help_status_error"
+                ])
+            ]),
+            NormalizedComponent(id: "help_status_message", type: "Text", props: [
+                "text": binding("status.message"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "help_status_error", type: "Text", props: [
+                "text": binding("status.error"),
+                "style": .string("error"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        ])
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.help",
+            rootComponentId: "help_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class HelpBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "help.gitReason":
+            if case let .missing(reason) = appModel.gitAvailability {
+                return reason
+            }
+            return ""
+        case "help.lastDiagnostics":
+            if let path = appModel.lastDiagnosticsPath {
+                return "Last export: \(path.path)"
+            }
+            return ""
+        case "status.message":
+            return appModel.statusMessage ?? ""
+        case "status.error":
+            return appModel.lastErrorMessage ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "help.installCLT":
+            appModel.installCommandLineTools()
+        case "help.recheckGit":
+            appModel.refreshGitAvailability()
+        case "help.exportDiagnostics":
+            appModel.exportDiagnostics()
+        default:
+            break
+        }
+    }
+}
+
+private enum PrivacySurface {
+    static func buildMessages(surfaceId: String) -> [NormalizedMsg] {
+        let components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "privacy_root",
+                type: "Column",
+                props: [
+                    "children": children([
+                        "privacy_title",
+                        "privacy_toggle",
+                        "privacy_note",
+                        "privacy_link"
+                    ])
+                ]
+            ),
+            NormalizedComponent(id: "privacy_title", type: "Text", props: [
+                "text": .string("Privacy"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "privacy_toggle", type: "Toggle", props: [
+                "label": .string("Share anonymous usage analytics"),
+                "value": binding("privacy.analyticsOptIn")
+            ]),
+            NormalizedComponent(id: "privacy_note", type: "Text", props: [
+                "text": .string("Analytics are opt-in and never include code, prompts, or repository contents."),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "privacy_link", type: "Button", props: [
+                "label": .string("Privacy Policy"),
+                "action": .string("privacy.openPolicy")
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.privacy",
+            rootComponentId: "privacy_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+}
+
+@MainActor
+private final class PrivacyBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func boolBinding(for key: String) -> Binding<Bool>? {
+        switch key {
+        case "privacy.analyticsOptIn":
+            return Binding(
+                get: { self.appModel.analyticsOptIn },
+                set: { self.appModel.analyticsOptIn = $0 }
+            )
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "privacy.openPolicy":
+            if let url = URL(string: "https://prune.dev/privacy") {
+                NSWorkspace.shared.open(url)
+            }
+        default:
+            break
+        }
+    }
 }
 
 struct HelpView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_help"
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if case let .missing(reason) = appModel.gitAvailability {
-                    GroupBox("Git Required") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(reason)
-                                .foregroundStyle(.primary)
-                            HStack(spacing: 12) {
-                                Button("Install Command Line Tools") {
-                                    appModel.installCommandLineTools()
-                                }
-                                Button("Recheck") {
-                                    appModel.refreshGitAvailability()
-                                }
-                            }
-                        }
-                    }
-                }
-
-                GroupBox("Prerequisites") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("macOS 13 or newer.")
-                        Text("Git installed (Xcode Command Line Tools). Required to mirror repos and detect remotes.")
-                        Text("If Git is missing, run: xcode-select --install")
-                        Text("Network access for tunnel + webhooks.")
-                        Text("Optional: GitHub token + webhook secret for GitHub sync.")
-                    }
-                }
-
-                GroupBox("Quickstart") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Install Prune.app (Install.command); bundled dependencies install on first launch.")
-                        Text("2. Click Start to bring up the tunnel and services.")
-                        Text("3. Copy the MCP Server URL.")
-                        Text("4. In Lovable: Settings -> Connectors -> Personal connectors -> New MCP server.")
-                        Text("5. Connect Lovable project to GitHub (default branch sync).")
-                        Text("6. Confirm Last Indexed SHA updates after edits.")
-                    }
-                }
-
-                GroupBox("Troubleshooting") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("MCP not reachable: confirm tunnel is running and URL is copied exactly.")
-                        Text("Webhook failing: ensure GitHub token and webhook secret are stored.")
-                        Text("Index not updating: check sync service status and logs.")
-                        Text("Tunnel expired: stop and start to refresh.")
-                    }
-                }
-
-                GroupBox("Diagnostics") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button("Export Diagnostics") {
-                            appModel.exportDiagnostics()
-                        }
-                        if let path = appModel.lastDiagnosticsPath {
-                            Text("Last export: \(path.path)")
-                        }
-                    }
-                }
-
-                StatusBanner(
-                    message: appModel.statusMessage,
-                    error: appModel.lastErrorMessage
-                )
-            }
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: HelpBindingProvider(appModel: appModel)
+            )
+            .padding()
         }
         .onAppear {
             appModel.refreshGitAvailability()
+            resetSurface(
+                store,
+                messages: HelpSurface.buildMessages(
+                    surfaceId: surfaceId,
+                    missingGit: isMissingGit
+                )
+            )
         }
+        .onChange(of: appModel.gitAvailability) { _ in
+            resetSurface(
+                store,
+                messages: HelpSurface.buildMessages(
+                    surfaceId: surfaceId,
+                    missingGit: isMissingGit
+                )
+            )
+        }
+    }
+
+    private var isMissingGit: Bool {
+        if case .missing = appModel.gitAvailability {
+            return true
+        }
+        return false
     }
 }
 
 struct PrivacyView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_privacy"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Toggle("Share anonymous usage analytics", isOn: $appModel.analyticsOptIn)
-            Text("Analytics are opt-in and never include code, prompts, or repository contents.")
-                .foregroundStyle(.secondary)
-            Link("Privacy Policy", destination: URL(string: "https://prune.dev/privacy")!)
-            Spacer()
+        A2UISurfaceView(
+            store: store,
+            surfaceId: surfaceId,
+            bindingProvider: PrivacyBindingProvider(appModel: appModel)
+        )
+        .padding()
+        .onAppear {
+            resetSurface(store, messages: PrivacySurface.buildMessages(surfaceId: surfaceId))
         }
     }
 }
