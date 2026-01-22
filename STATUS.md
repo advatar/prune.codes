@@ -48,6 +48,7 @@
 - Ensured the dashboard window orders front when opened from the menu bar.
 - Set PRUNE_CLOUDFLARED_PATH in PruneApp build settings to the Homebrew cloudflared path.
 - Ensured the dashboard window is brought to the front with retries after opening from the menu bar.
+- Converted the Setup view to an A2UI-driven surface with binding-backed controls and actions.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.

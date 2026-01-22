@@ -174,96 +174,508 @@ struct SettingsView: View {
 
 struct SetupView: View {
     @EnvironmentObject private var appModel: AppModel
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_setup"
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    StatusBadge(
-                        title: "Install Status",
-                        value: appModel.installStateLabel,
-                        tone: appModel.installStateTone
-                    )
-                    Spacer()
-                    Button("Install") {
-                        appModel.install()
-                    }
-                    .disabled(appModel.installState == .installing)
-                    Button("Reinstall Binaries") {
-                        appModel.install(reinstallOnly: true)
-                    }
-                    .disabled(appModel.installState == .installing)
-                }
-
-                GroupBox("Repository") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            TextField("ORG/REPO", text: appModel.repoBinding())
-                            Button("Detect from Mirror") {
-                                appModel.detectRepoFromMirror()
-                            }
-                        }
-                        TextField("Default Branch", text: appModel.binding(\.defaultBranch))
-                        TextField("Last Indexed SHA", text: appModel.binding(\.lastIndexedSha))
-                        Text("Webhook Status: \(appModel.webhookStatusLabel)")
-                            .foregroundStyle(.secondary)
-                    }
-                    .textFieldStyle(.roundedBorder)
-                }
-
-                GroupBox("Binaries") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        TextField("Tunnel Binary", text: appModel.binaryBinding(\.tunnel))
-                        TextField("Sync Binary", text: appModel.binaryBinding(\.sync))
-                        TextField("MCP Binary", text: appModel.binaryBinding(\.mcp))
-                    }
-                    .textFieldStyle(.roundedBorder)
-                }
-
-                GroupBox("Paths") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        PathRow(title: "App Support", path: appModel.paths.appSupport.path) {
-                            appModel.copyToClipboard(appModel.paths.appSupport.path)
-                        }
-                        PathRow(title: "Bin Directory", path: appModel.paths.bin.path) {
-                            appModel.copyToClipboard(appModel.paths.bin.path)
-                        }
-                        PathRow(title: "Config File", path: appModel.paths.configFile.path) {
-                            appModel.copyToClipboard(appModel.paths.configFile.path)
-                        }
-                        PathRow(title: "Sync Status", path: appModel.paths.syncStatusFile.path) {
-                            appModel.copyToClipboard(appModel.paths.syncStatusFile.path)
-                        }
-                        PathRow(title: "Logs", path: appModel.paths.logs.path) {
-                            appModel.copyToClipboard(appModel.paths.logs.path)
-                        }
-                        PathRow(title: "LaunchAgents", path: appModel.paths.launchAgents.path) {
-                            appModel.copyToClipboard(appModel.paths.launchAgents.path)
-                        }
-                    }
-                }
-
-                GroupBox("Ports") {
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("MCP Port")
-                            TextField("MCP Port", value: appModel.binding(\.mcpPort), format: .number)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Webhook Port")
-                            TextField("Webhook Port", value: appModel.binding(\.webhookPort), format: .number)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                }
-
-                StatusBanner(
-                    message: appModel.statusMessage,
-                    error: appModel.lastErrorMessage
-                )
-            }
+            A2UISurfaceView(
+                store: store,
+                surfaceId: surfaceId,
+                bindingProvider: SetupBindingProvider(appModel: appModel)
+            )
+            .padding()
         }
+        .onAppear {
+            store.reset()
+            store.apply(SetupSurface.buildMessages(surfaceId: surfaceId))
+        }
+    }
+}
+
+@MainActor
+private final class SetupBindingProvider: A2UIBindingProvider {
+    private let appModel: AppModel
+
+    init(appModel: AppModel) {
+        self.appModel = appModel
+    }
+
+    func stringValue(for key: String) -> String? {
+        switch key {
+        case "status.installLabel":
+            return appModel.installStateLabel
+        case "status.installTone":
+            return toneString(appModel.installStateTone)
+        case "status.webhookStatusLine":
+            return "Webhook Status: \(appModel.webhookStatusLabel)"
+        case "paths.appSupport":
+            return appModel.paths.appSupport.path
+        case "paths.bin":
+            return appModel.paths.bin.path
+        case "paths.config":
+            return appModel.paths.configFile.path
+        case "paths.syncStatus":
+            return appModel.paths.syncStatusFile.path
+        case "paths.logs":
+            return appModel.paths.logs.path
+        case "paths.launchAgents":
+            return appModel.paths.launchAgents.path
+        case "status.message":
+            return appModel.statusMessage ?? ""
+        case "status.error":
+            return appModel.lastErrorMessage ?? ""
+        default:
+            return nil
+        }
+    }
+
+    func boolValue(for key: String) -> Bool? {
+        switch key {
+        case "status.installing":
+            return appModel.installState == .installing
+        default:
+            return nil
+        }
+    }
+
+    func stringBinding(for key: String) -> Binding<String>? {
+        switch key {
+        case "config.repoFullName":
+            return appModel.repoBinding()
+        case "config.defaultBranch":
+            return appModel.binding(\.defaultBranch)
+        case "config.lastIndexedSha":
+            return appModel.binding(\.lastIndexedSha)
+        case "config.binary.tunnel":
+            return appModel.binaryBinding(\.tunnel)
+        case "config.binary.sync":
+            return appModel.binaryBinding(\.sync)
+        case "config.binary.mcp":
+            return appModel.binaryBinding(\.mcp)
+        default:
+            return nil
+        }
+    }
+
+    func intBinding(for key: String) -> Binding<Int>? {
+        switch key {
+        case "config.mcpPort":
+            return appModel.binding(\.mcpPort)
+        case "config.webhookPort":
+            return appModel.binding(\.webhookPort)
+        default:
+            return nil
+        }
+    }
+
+    func perform(action: String) {
+        switch action {
+        case "install":
+            appModel.install()
+        case "reinstall":
+            appModel.install(reinstallOnly: true)
+        case "detect_repo":
+            appModel.detectRepoFromMirror()
+        case "copy_app_support":
+            appModel.copyToClipboard(appModel.paths.appSupport.path)
+        case "copy_bin":
+            appModel.copyToClipboard(appModel.paths.bin.path)
+        case "copy_config":
+            appModel.copyToClipboard(appModel.paths.configFile.path)
+        case "copy_sync_status":
+            appModel.copyToClipboard(appModel.paths.syncStatusFile.path)
+        case "copy_logs":
+            appModel.copyToClipboard(appModel.paths.logs.path)
+        case "copy_launch_agents":
+            appModel.copyToClipboard(appModel.paths.launchAgents.path)
+        default:
+            break
+        }
+    }
+
+    private func toneString(_ tone: StatusTone) -> String {
+        switch tone {
+        case .good:
+            return "good"
+        case .warning:
+            return "warning"
+        case .bad:
+            return "bad"
+        case .neutral:
+            return "neutral"
+        }
+    }
+}
+
+private enum SetupSurface {
+    static func buildMessages(surfaceId: String) -> [NormalizedMsg] {
+        let components: [NormalizedComponent] = [
+            NormalizedComponent(
+                id: "setup_root",
+                type: "Column",
+                props: ["children": children([
+                    "setup_title",
+                    "setup_divider_1",
+                    "install_section",
+                    "setup_divider_2",
+                    "repo_section",
+                    "setup_divider_3",
+                    "binaries_section",
+                    "setup_divider_4",
+                    "paths_section",
+                    "setup_divider_5",
+                    "ports_section",
+                    "setup_divider_6",
+                    "status_section"
+                ])]
+            ),
+
+            NormalizedComponent(id: "setup_title", type: "Text", props: [
+                "text": .string("Setup"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: "setup_divider_1", type: "Divider", props: [:]),
+            NormalizedComponent(id: "setup_divider_2", type: "Divider", props: [:]),
+            NormalizedComponent(id: "setup_divider_3", type: "Divider", props: [:]),
+            NormalizedComponent(id: "setup_divider_4", type: "Divider", props: [:]),
+            NormalizedComponent(id: "setup_divider_5", type: "Divider", props: [:]),
+            NormalizedComponent(id: "setup_divider_6", type: "Divider", props: [:]),
+
+            NormalizedComponent(id: "install_section", type: "Column", props: [
+                "children": children([
+                    "install_header",
+                    "install_status_row",
+                    "install_buttons_row"
+                ])
+            ]),
+            NormalizedComponent(id: "install_header", type: "Text", props: [
+                "text": .string("Install"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "install_status_row", type: "Row", props: [
+                "children": children([
+                    "install_status_label",
+                    "install_status_value",
+                    "install_status_spacer"
+                ])
+            ]),
+            NormalizedComponent(id: "install_status_label", type: "Text", props: [
+                "text": .string("Status"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "install_status_value", type: "Text", props: [
+                "text": binding("status.installLabel"),
+                "style": .string("tone"),
+                "tone": binding("status.installTone")
+            ]),
+            NormalizedComponent(id: "install_status_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "install_buttons_row", type: "Row", props: [
+                "children": children([
+                    "install_button",
+                    "reinstall_button"
+                ])
+            ]),
+            NormalizedComponent(id: "install_button", type: "Button", props: [
+                "label": .string("Install"),
+                "action": .string("install"),
+                "variant": .string("primary"),
+                "disabled": binding("status.installing")
+            ]),
+            NormalizedComponent(id: "reinstall_button", type: "Button", props: [
+                "label": .string("Reinstall Binaries"),
+                "action": .string("reinstall"),
+                "disabled": binding("status.installing")
+            ]),
+
+            NormalizedComponent(id: "repo_section", type: "Column", props: [
+                "children": children([
+                    "repo_header",
+                    "repo_row",
+                    "repo_default_branch",
+                    "repo_last_sha",
+                    "repo_webhook_status"
+                ])
+            ]),
+            NormalizedComponent(id: "repo_header", type: "Text", props: [
+                "text": .string("Repository"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "repo_row", type: "Row", props: [
+                "children": children([
+                    "repo_full_name",
+                    "repo_detect_button"
+                ])
+            ]),
+            NormalizedComponent(id: "repo_full_name", type: "TextField", props: [
+                "label": .string("ORG/REPO"),
+                "style": .string("rounded"),
+                "value": binding("config.repoFullName")
+            ]),
+            NormalizedComponent(id: "repo_detect_button", type: "Button", props: [
+                "label": .string("Detect from Mirror"),
+                "action": .string("detect_repo")
+            ]),
+            NormalizedComponent(id: "repo_default_branch", type: "TextField", props: [
+                "label": .string("Default Branch"),
+                "style": .string("rounded"),
+                "value": binding("config.defaultBranch")
+            ]),
+            NormalizedComponent(id: "repo_last_sha", type: "TextField", props: [
+                "label": .string("Last Indexed SHA"),
+                "style": .string("rounded"),
+                "value": binding("config.lastIndexedSha")
+            ]),
+            NormalizedComponent(id: "repo_webhook_status", type: "Text", props: [
+                "text": binding("status.webhookStatusLine"),
+                "style": .string("secondary")
+            ]),
+
+            NormalizedComponent(id: "binaries_section", type: "Column", props: [
+                "children": children([
+                    "binaries_header",
+                    "binary_tunnel",
+                    "binary_sync",
+                    "binary_mcp"
+                ])
+            ]),
+            NormalizedComponent(id: "binaries_header", type: "Text", props: [
+                "text": .string("Binaries"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "binary_tunnel", type: "TextField", props: [
+                "label": .string("Tunnel Binary"),
+                "style": .string("rounded"),
+                "value": binding("config.binary.tunnel")
+            ]),
+            NormalizedComponent(id: "binary_sync", type: "TextField", props: [
+                "label": .string("Sync Binary"),
+                "style": .string("rounded"),
+                "value": binding("config.binary.sync")
+            ]),
+            NormalizedComponent(id: "binary_mcp", type: "TextField", props: [
+                "label": .string("MCP Binary"),
+                "style": .string("rounded"),
+                "value": binding("config.binary.mcp")
+            ]),
+
+            NormalizedComponent(id: "paths_section", type: "Column", props: [
+                "children": children([
+                    "paths_header",
+                    "paths_list"
+                ])
+            ]),
+            NormalizedComponent(id: "paths_header", type: "Text", props: [
+                "text": .string("Paths"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "paths_list", type: "Column", props: [
+                "children": children([
+                    "path_app_support_row",
+                    "path_bin_row",
+                    "path_config_row",
+                    "path_sync_status_row",
+                    "path_logs_row",
+                    "path_launch_agents_row"
+                ])
+            ]),
+            NormalizedComponent(id: "path_app_support_row", type: "Row", props: [
+                "children": children([
+                    "path_app_support_label",
+                    "path_app_support_value",
+                    "path_app_support_spacer",
+                    "path_app_support_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_app_support_label", type: "Text", props: [
+                "text": .string("App Support"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_app_support_value", type: "Text", props: [
+                "text": binding("paths.appSupport"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_app_support_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_app_support_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_app_support")
+            ]),
+            NormalizedComponent(id: "path_bin_row", type: "Row", props: [
+                "children": children([
+                    "path_bin_label",
+                    "path_bin_value",
+                    "path_bin_spacer",
+                    "path_bin_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_bin_label", type: "Text", props: [
+                "text": .string("Bin Directory"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_bin_value", type: "Text", props: [
+                "text": binding("paths.bin"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_bin_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_bin_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_bin")
+            ]),
+            NormalizedComponent(id: "path_config_row", type: "Row", props: [
+                "children": children([
+                    "path_config_label",
+                    "path_config_value",
+                    "path_config_spacer",
+                    "path_config_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_config_label", type: "Text", props: [
+                "text": .string("Config File"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_config_value", type: "Text", props: [
+                "text": binding("paths.config"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_config_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_config_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_config")
+            ]),
+            NormalizedComponent(id: "path_sync_status_row", type: "Row", props: [
+                "children": children([
+                    "path_sync_status_label",
+                    "path_sync_status_value",
+                    "path_sync_status_spacer",
+                    "path_sync_status_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_sync_status_label", type: "Text", props: [
+                "text": .string("Sync Status"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_sync_status_value", type: "Text", props: [
+                "text": binding("paths.syncStatus"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_sync_status_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_sync_status_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_sync_status")
+            ]),
+            NormalizedComponent(id: "path_logs_row", type: "Row", props: [
+                "children": children([
+                    "path_logs_label",
+                    "path_logs_value",
+                    "path_logs_spacer",
+                    "path_logs_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_logs_label", type: "Text", props: [
+                "text": .string("Logs"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_logs_value", type: "Text", props: [
+                "text": binding("paths.logs"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_logs_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_logs_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_logs")
+            ]),
+            NormalizedComponent(id: "path_launch_agents_row", type: "Row", props: [
+                "children": children([
+                    "path_launch_agents_label",
+                    "path_launch_agents_value",
+                    "path_launch_agents_spacer",
+                    "path_launch_agents_copy"
+                ])
+            ]),
+            NormalizedComponent(id: "path_launch_agents_label", type: "Text", props: [
+                "text": .string("LaunchAgents"),
+                "style": .string("secondary")
+            ]),
+            NormalizedComponent(id: "path_launch_agents_value", type: "Text", props: [
+                "text": binding("paths.launchAgents"),
+                "style": .string("monospace"),
+                "selectable": .bool(true)
+            ]),
+            NormalizedComponent(id: "path_launch_agents_spacer", type: "Spacer", props: [:]),
+            NormalizedComponent(id: "path_launch_agents_copy", type: "Button", props: [
+                "label": .string("Copy"),
+                "action": .string("copy_launch_agents")
+            ]),
+
+            NormalizedComponent(id: "ports_section", type: "Column", props: [
+                "children": children([
+                    "ports_header",
+                    "ports_row"
+                ])
+            ]),
+            NormalizedComponent(id: "ports_header", type: "Text", props: [
+                "text": .string("Ports"),
+                "style": .string("subheadline")
+            ]),
+            NormalizedComponent(id: "ports_row", type: "Row", props: [
+                "children": children([
+                    "ports_mcp",
+                    "ports_webhook"
+                ])
+            ]),
+            NormalizedComponent(id: "ports_mcp", type: "NumberField", props: [
+                "label": .string("MCP Port"),
+                "style": .string("rounded"),
+                "value": binding("config.mcpPort")
+            ]),
+            NormalizedComponent(id: "ports_webhook", type: "NumberField", props: [
+                "label": .string("Webhook Port"),
+                "style": .string("rounded"),
+                "value": binding("config.webhookPort")
+            ]),
+
+            NormalizedComponent(id: "status_section", type: "Column", props: [
+                "children": children([
+                    "status_message",
+                    "status_error"
+                ])
+            ]),
+            NormalizedComponent(id: "status_message", type: "Text", props: [
+                "text": binding("status.message"),
+                "style": .string("secondary"),
+                "hiddenWhenEmpty": .bool(true)
+            ]),
+            NormalizedComponent(id: "status_error", type: "Text", props: [
+                "text": binding("status.error"),
+                "style": .string("error"),
+                "hiddenWhenEmpty": .bool(true)
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.setup",
+            rootComponentId: "setup_root",
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+
+    private static func binding(_ key: String) -> JSONValue {
+        .object(["binding": .string(key)])
+    }
+
+    private static func children(_ ids: [String]) -> JSONValue {
+        .array(ids.map { .string($0) })
     }
 }
 
@@ -823,10 +1235,42 @@ Return STRICT JSON only, with this exact shape:
     }
 }
 
-/// A tiny SwiftUI renderer for a limited A2UI component catalog used by Prune inception.
+/// A tiny SwiftUI renderer for a limited A2UI component catalog used by Prune views.
+@MainActor
+private protocol A2UIBindingProvider {
+    func stringValue(for key: String) -> String?
+    func boolValue(for key: String) -> Bool?
+    func stringBinding(for key: String) -> Binding<String>?
+    func intBinding(for key: String) -> Binding<Int>?
+    func boolBinding(for key: String) -> Binding<Bool>?
+    func perform(action: String)
+}
+
+@MainActor
+private extension A2UIBindingProvider {
+    func stringValue(for key: String) -> String? { nil }
+    func boolValue(for key: String) -> Bool? { nil }
+    func stringBinding(for key: String) -> Binding<String>? { nil }
+    func intBinding(for key: String) -> Binding<Int>? { nil }
+    func boolBinding(for key: String) -> Binding<Bool>? { nil }
+    func perform(action: String) {}
+}
+
+@MainActor
 private struct A2UISurfaceView: View {
     @ObservedObject var store: NormalizedSurfaceStore
     let surfaceId: String
+    let bindingProvider: (any A2UIBindingProvider)?
+
+    init(
+        store: NormalizedSurfaceStore,
+        surfaceId: String,
+        bindingProvider: (any A2UIBindingProvider)? = nil
+    ) {
+        self.store = store
+        self.surfaceId = surfaceId
+        self.bindingProvider = bindingProvider
+    }
 
     var body: some View {
         if let root = store.rootComponentId(for: surfaceId) {
@@ -844,6 +1288,7 @@ private struct A2UISurfaceView: View {
         }
 
         let resolved = store.resolvedProps(surfaceId: surfaceId, componentId: componentId) ?? [:]
+        let rawProps = store.rawProps(surfaceId: surfaceId, componentId: componentId) ?? [:]
 
         switch component.type {
         case "Column":
@@ -870,13 +1315,56 @@ private struct A2UISurfaceView: View {
             return AnyView(Divider())
 
         case "Text":
-            let text = resolved["text"]?.stringValue ?? ""
-            return AnyView(Text(text))
+            let text = resolveText(from: rawProps["text"], fallback: resolved["text"]) ?? ""
+            let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
+            let tone = resolveText(from: rawProps["tone"], fallback: resolved["tone"])
+            let selectable = resolved["selectable"]?.boolValue ?? rawProps["selectable"]?.boolValue ?? false
+            let hideWhenEmpty = resolved["hiddenWhenEmpty"]?.boolValue ?? rawProps["hiddenWhenEmpty"]?.boolValue ?? false
+
+            if hideWhenEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return AnyView(EmptyView())
+            }
+
+            var view = Text(text)
+            if let style {
+                switch style {
+                case "headline":
+                    view = view.font(.headline)
+                case "subheadline":
+                    view = view.font(.subheadline)
+                case "caption":
+                    view = view.font(.caption).foregroundStyle(.secondary)
+                case "secondary":
+                    view = view.foregroundStyle(.secondary)
+                case "error":
+                    view = view.foregroundStyle(.red)
+                case "monospace":
+                    view = view.font(.system(.caption, design: .monospaced))
+                case "tone":
+                    if let tone = tone {
+                        view = view.foregroundStyle(colorForTone(tone))
+                    }
+                default:
+                    break
+                }
+            }
+            if selectable {
+                return AnyView(view.textSelection(.enabled))
+            }
+            return AnyView(view)
 
         case "TextField":
             let label = resolved["label"]?.stringValue ?? ""
             let isMultiline = (component.props["multiline"]?.boolValue) ?? false
+            let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
+            let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
+
+            if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                let field = TextField(label, text: binding)
+                return applyTextFieldStyle(field, style: style)
+            }
+
             if isMultiline {
                 return AnyView(
                     VStack(alignment: .leading, spacing: 6) {
@@ -893,16 +1381,19 @@ private struct A2UISurfaceView: View {
                     }
                 )
             }
-            return AnyView(
-                TextField(label, text: Binding(
-                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
-                ))
-            )
+            let field = TextField(label, text: Binding(
+                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+            ))
+            return applyTextFieldStyle(field, style: style)
 
         case "Toggle":
             let label = resolved["label"]?.stringValue ?? ""
+            let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
+            if let bindingKey, let binding = bindingProvider?.boolBinding(for: bindingKey) {
+                return AnyView(Toggle(label, isOn: binding))
+            }
             return AnyView(
                 Toggle(label, isOn: Binding(
                     get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
@@ -912,6 +1403,7 @@ private struct A2UISurfaceView: View {
 
         case "Select":
             let label = resolved["label"]?.stringValue ?? ""
+            let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             let options = (component.props["options"]?.arrayValue ?? []).compactMap { opt -> (String, String)? in
                 if let obj = opt.objectValue {
@@ -919,6 +1411,17 @@ private struct A2UISurfaceView: View {
                 }
                 if let s = opt.stringValue { return (s, s) }
                 return nil
+            }
+
+            if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                return AnyView(
+                    Picker(label, selection: binding) {
+                        ForEach(options, id: \.1) { (lbl, val) in
+                            Text(lbl).tag(val)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                )
             }
 
             return AnyView(
@@ -933,6 +1436,33 @@ private struct A2UISurfaceView: View {
                 .pickerStyle(.menu)
             )
 
+        case "NumberField":
+            let label = resolved["label"]?.stringValue ?? ""
+            let bindingKey = bindingKey(from: rawProps["value"])
+            let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
+            if let bindingKey, let binding = bindingProvider?.intBinding(for: bindingKey) {
+                let field = TextField(label, value: binding, format: .number)
+                return applyTextFieldStyle(field, style: style)
+            }
+            return AnyView(EmptyView())
+
+        case "Button":
+            let label = resolved["label"]?.stringValue ?? rawProps["label"]?.stringValue ?? "Action"
+            let actionId = resolved["action"]?.stringValue ?? rawProps["action"]?.stringValue ?? ""
+            let variant = resolved["variant"]?.stringValue ?? rawProps["variant"]?.stringValue
+            let disabled = resolveBool(from: rawProps["disabled"], fallback: resolved["disabled"]) ?? false
+            let button = Button(label) {
+                bindingProvider?.perform(action: actionId)
+            }
+            .disabled(disabled)
+            if variant == "primary" {
+                return AnyView(button.buttonStyle(.borderedProminent))
+            }
+            return AnyView(button.buttonStyle(.bordered))
+
+        case "Spacer":
+            return AnyView(Spacer())
+
         default:
             // Unknown component in this minimal renderer.
             let fallback = "[Unsupported component: \(component.type)]"
@@ -942,6 +1472,48 @@ private struct A2UISurfaceView: View {
                     .foregroundStyle(.secondary)
             )
         }
+    }
+
+    private func bindingKey(from value: JSONValue?) -> String? {
+        guard case let .object(obj) = value,
+              let binding = obj["binding"]?.stringValue else {
+            return nil
+        }
+        return binding
+    }
+
+    private func resolveText(from raw: JSONValue?, fallback: JSONValue?) -> String? {
+        if let key = bindingKey(from: raw) {
+            return bindingProvider?.stringValue(for: key)
+        }
+        return fallback?.stringValue ?? raw?.stringValue
+    }
+
+    private func resolveBool(from raw: JSONValue?, fallback: JSONValue?) -> Bool? {
+        if let key = bindingKey(from: raw) {
+            return bindingProvider?.boolValue(for: key)
+        }
+        return fallback?.boolValue ?? raw?.boolValue
+    }
+
+    private func colorForTone(_ tone: String) -> Color {
+        switch tone {
+        case "good":
+            return .green
+        case "warning":
+            return .orange
+        case "bad":
+            return .red
+        default:
+            return .gray
+        }
+    }
+
+    private func applyTextFieldStyle<V: View>(_ view: V, style: String?) -> AnyView {
+        if style == "rounded" {
+            return AnyView(view.textFieldStyle(.roundedBorder))
+        }
+        return AnyView(view)
     }
 }
 
