@@ -2616,10 +2616,28 @@ private struct A2UISurfaceView: View {
 
     var body: some View {
         if let root = store.rootComponentId(for: surfaceId) {
-            render(componentId: root)
+            if shouldUseStarterCatalog {
+                A2UIStarterCatalogSurfaceView(
+                    store: store,
+                    surfaceId: surfaceId,
+                    rootComponentId: root,
+                    interactionHandler: interactionHandler
+                )
+            } else {
+                render(componentId: root)
+            }
         } else {
-            AnyView(EmptyView())
+            EmptyView()
         }
+    }
+
+    private var shouldUseStarterCatalog: Bool {
+        guard let surface = store.surfaces[surfaceId] else { return false }
+        if surface.info.protocolVersion == .v08 { return true }
+        if let catalogId = surface.info.catalogId {
+            return !catalogId.hasPrefix("prune.")
+        }
+        return false
     }
 
     private func render(componentId: String) -> AnyView {

@@ -203,7 +203,7 @@
 			mainGroup = 0CA185C32F1B06B70032FD6B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F0A1B2C3D4E5F67890ABCDE4 /* A2UIRuntime */,
+				F0A1B2C3D4E5F67890ABCDE4 /* XCLocalSwiftPackageReference "../prune/A2UIRuntime" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0CA185CD2F1B06B70032FD6B /* Products */;
@@ -305,21 +305,6 @@
 			targetProxy = 0CA185E62F1B06B80032FD6B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		F0A1B2C3D4E5F67890ABCDE4 /* A2UIRuntime */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../prune/A2UIRuntime;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		F0A1B2C3D4E5F67890ABCDE3 /* A2UIRuntime */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F0A1B2C3D4E5F67890ABCDE4 /* A2UIRuntime */;
-			productName = A2UIRuntime;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0CA185ED2F1B06B80032FD6B /* Debug */ = {
@@ -628,6 +613,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F0A1B2C3D4E5F67890ABCDE4 /* XCLocalSwiftPackageReference "../prune/A2UIRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../prune/A2UIRuntime;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F0A1B2C3D4E5F67890ABCDE3 /* A2UIRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0A1B2C3D4E5F67890ABCDE4 /* XCLocalSwiftPackageReference "../prune/A2UIRuntime" */;
+			productName = A2UIRuntime;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 0CA185C42F1B06B70032FD6B /* Project object */;
 }

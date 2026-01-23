@@ -9,6 +9,7 @@
 - Make all human interaction LLM-driven via A2UI (LLM-generated surfaces, Q/A overrides).
 - Ensure cloudflared is bundled/installed for dashboard flows.
 - Route all UI interactions through A2UI userAction → LLM → UI updates.
+- Add starter A2UI catalog (CATALOG.md + Swift file) and wire it into the renderer.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
