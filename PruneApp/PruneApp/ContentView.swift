@@ -587,6 +587,9 @@ final class A2UIAgent: ObservableObject {
             availableActions: availableActions
         )
         let isPreview = (mode == .preview)
+        if !isPreview {
+            resetSurface(store, messages: template)
+        }
         let templateData = template.compactMap { msg -> NormalizedMsg? in
             if case let .updateDataModel(id, updates) = msg, id == surfaceId {
                 return .updateDataModel(surfaceId: id, updates: updates)
