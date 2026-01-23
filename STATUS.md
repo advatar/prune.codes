@@ -11,6 +11,7 @@
 - Route all UI interactions through A2UI userAction → LLM → UI updates.
 - Add starter A2UI catalog (CATALOG.md + Swift file) and wire it into the renderer.
 - Document Xcode project file auto-updates in AGENTS.md.
+- Resolve A2UI starter catalog build errors and clean ce-cli/ce-mcp warnings.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -63,6 +64,7 @@
 - Added LLM-driven A2UI render validation and a no-repo A2UI sheet for inception flows.
 - Let Install.command and the runtime installer locate system cloudflared when the bundle is missing it.
 - Routed A2UI interactions through userAction → LLM responses with action requests + data-model baselines.
+- Fixed A2UI starter catalog SwiftUI builder errors and gated Surreal-only Rust code to clear ce-cli/ce-mcp warnings.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.

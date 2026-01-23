@@ -405,7 +405,7 @@ struct A2UIStarterCatalogComponentView<Store: A2UIStarterCatalogStore>: View {
             }
 
         case .button(let props):
-            Button {
+            styledButton(primary: props.primary) {
                 guard let action = props.action else { return }
                 let ctx = resolveActionContext(action.context)
                 store.emitUserAction(
@@ -417,7 +417,6 @@ struct A2UIStarterCatalogComponentView<Store: A2UIStarterCatalogStore>: View {
             } label: {
                 A2UIStarterCatalogComponentView(store: store, surfaceId: surfaceId, componentId: props.child)
             }
-            .buttonStyle(props.primary ? .borderedProminent : .bordered)
 
         case .textField(let props):
             let labelText = (props.label.flatMap { resolvedString($0) }) ?? ""
@@ -566,15 +565,19 @@ struct A2UIStarterCatalogComponentView<Store: A2UIStarterCatalogStore>: View {
             Text(label.isEmpty ? "Invalid DateTimeInput" : label)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            return
+        } else {
+            let binding = bindingDate(
+                props.value,
+                enableDate: props.enableDate,
+                enableTime: props.enableTime,
+                componentId: componentId
+            )
+            DatePicker(
+                label,
+                selection: binding,
+                displayedComponents: displayedComponents(enableDate: props.enableDate, enableTime: props.enableTime)
+            )
         }
-
-        let binding = bindingDate(props.value, enableDate: props.enableDate, enableTime: props.enableTime, componentId: componentId)
-        DatePicker(
-            label,
-            selection: binding,
-            displayedComponents: displayedComponents(enableDate: props.enableDate, enableTime: props.enableTime)
-        )
     }
 
     private func displayedComponents(enableDate: Bool, enableTime: Bool) -> DatePickerComponents {
@@ -678,6 +681,26 @@ struct A2UIStarterCatalogComponentView<Store: A2UIStarterCatalogStore>: View {
             context["path"] = .string(path)
         }
         return context
+    }
+
+    @ViewBuilder
+    private func styledButton(
+        primary: Bool,
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> some View
+    ) -> some View {
+        if #available(macOS 12.0, *) {
+            if primary {
+                Button(action: action, label: label)
+                    .buttonStyle(BorderedProminentButtonStyle())
+            } else {
+                Button(action: action, label: label)
+                    .buttonStyle(BorderedButtonStyle())
+            }
+        } else {
+            Button(action: action, label: label)
+                .buttonStyle(PlainButtonStyle())
+        }
     }
 
     private func columnAlignment(_ s: String?) -> HorizontalAlignment {

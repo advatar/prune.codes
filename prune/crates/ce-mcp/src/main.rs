@@ -7,6 +7,7 @@ use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
 use ce_store::{Db, Embedder, VecIndex};
 use ce_store::query;
+#[cfg(feature = "surreal")]
 use ce_store_core::{CeStore, PackRequest};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -82,6 +83,7 @@ struct CliArgs {
     store: StoreArgs,
 }
 
+#[cfg(feature = "surreal")]
 const SURREAL_REPO_ID: &str = "default";
 
 enum Backend {
@@ -663,6 +665,7 @@ fn load_strategy_for_pack(db: &Db, args: &Value) -> Result<StrategyConfig> {
     Ok(cfg)
 }
 
+#[cfg(feature = "surreal")]
 fn load_strategy_for_pack_surreal(args: &Value) -> Result<StrategyConfig> {
     if args.get("strategy_id").is_some() {
         return Err(anyhow!("strategy_id not supported for Surreal backend"));

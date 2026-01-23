@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use ce_core::model::{ContextPack, FragKind, FragmentView, SignalBundle, StrategyConfig};
+use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
+#[cfg(feature = "surreal")]
+use ce_core::model::FragKind;
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
@@ -8,12 +10,15 @@ use ce_core::snippet;
 use ce_lang_rust::RustAdapter;
 use ce_store::{Db, Embedder};
 use ce_store::query;
+#[cfg(feature = "surreal")]
 use ce_store_core::{file_id_for_path, CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+#[cfg(feature = "surreal")]
+use std::path::Component;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde_json as json;
@@ -114,6 +119,7 @@ struct StoreArgs {
     hybrid: HybridMode,
 }
 
+#[cfg(feature = "surreal")]
 const SURREAL_REPO_ID: &str = "default";
 
 #[derive(Parser, Debug)]
@@ -754,6 +760,7 @@ fn surreal_path_for_repo(repo_path: &Path, store: &StoreArgs) -> PathBuf {
     }
 }
 
+#[cfg(feature = "surreal")]
 fn discover_repo_root() -> Option<PathBuf> {
     let mut dir = std::env::current_dir().ok()?;
     let mut ce_candidate: Option<PathBuf> = None;
@@ -773,6 +780,7 @@ fn discover_repo_root() -> Option<PathBuf> {
     ce_candidate
 }
 
+#[cfg(feature = "surreal")]
 fn surreal_path_for_store(store: &StoreArgs) -> PathBuf {
     let path = PathBuf::from(&store.surreal_path);
     if path.is_absolute() {
@@ -1756,6 +1764,7 @@ fn cmd_index_surreal(
     Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
 }
 
+#[cfg(feature = "surreal")]
 fn is_stop_ref(s: &str) -> bool {
     matches!(
         s,
@@ -1773,6 +1782,7 @@ fn is_stop_ref(s: &str) -> bool {
     )
 }
 
+#[cfg(feature = "surreal")]
 fn is_good_ref(s: &str) -> bool {
     let s = s.trim();
     if s.is_empty() {
