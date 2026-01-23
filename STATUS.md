@@ -14,6 +14,7 @@
 - Resolve A2UI starter catalog build errors and clean ce-cli/ce-mcp warnings.
 - Ensure cloudflared is found during bundling/install and enable Surreal features in bundled ce binaries.
 - Make menu bar/dashboard A2UI surfaces render immediately from the template to avoid empty popovers when the LLM is slow/unavailable.
+- Force the menu bar extra to use window style so custom A2UI content opens reliably.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.

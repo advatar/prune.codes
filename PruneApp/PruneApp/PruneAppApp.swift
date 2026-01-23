@@ -22,6 +22,7 @@ struct PruneAppApp: App {
         } label: {
             MenuBarLabel(status: appModel.appStatus)
         }
+        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()
