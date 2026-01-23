@@ -100,16 +100,23 @@ struct MenuBarView: View {
     }
 
     var body: some View {
+        let bindingProvider = MenuBarBindingProvider(
+            appModel: appModel,
+            openSettings: openSettings,
+            quit: { NSApplication.shared.terminate(nil) }
+        )
         A2UISurfaceView(
             store: store,
             surfaceId: surfaceId,
-            bindingProvider: MenuBarBindingProvider(
-                appModel: appModel,
-                openSettings: openSettings,
-                quit: { NSApplication.shared.terminate(nil) }
-            )
+            bindingProvider: bindingProvider,
+            interactionHandler: { event in
+                handleInteraction(event)
+            }
         )
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: surfaceId,
                 store: store,
@@ -117,10 +124,23 @@ struct MenuBarView: View {
                 context: menuContext()
             )
         }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
+        }
     }
 
     private func menuContext() -> String {
         "status=\(appModel.statusLabel), canStart=\(appModel.canStart), canStop=\(appModel.canStop)"
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: MenuBarSurface.buildMessages(surfaceId: surfaceId),
+            context: menuContext(),
+            event: event
+        )
     }
 }
 
@@ -131,11 +151,15 @@ struct SettingsView: View {
     private let navSurfaceId = "prune_settings_nav"
 
     var body: some View {
+        let bindingProvider = SettingsNavBindingProvider(appModel: appModel)
         VStack(alignment: .leading, spacing: 12) {
             A2UISurfaceView(
                 store: navStore,
                 surfaceId: navSurfaceId,
-                bindingProvider: SettingsNavBindingProvider(appModel: appModel)
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             Divider()
             settingsContent
@@ -143,12 +167,18 @@ struct SettingsView: View {
         .padding(20)
         .frame(minWidth: 760, minHeight: 540)
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: navSurfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: navSurfaceId,
                 store: navStore,
                 template: SettingsNavSurface.buildMessages(surfaceId: navSurfaceId),
                 context: "selectedTab=\(appModel.selectedTab)"
             )
+        }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: navSurfaceId)
         }
     }
 
@@ -171,6 +201,16 @@ struct SettingsView: View {
             PrivacyView()
         }
     }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: navSurfaceId,
+            store: navStore,
+            template: SettingsNavSurface.buildMessages(surfaceId: navSurfaceId),
+            context: "selectedTab=\(appModel.selectedTab)",
+            event: event
+        )
+    }
 }
 
 struct SetupView: View {
@@ -180,15 +220,22 @@ struct SetupView: View {
     private let surfaceId = "prune_setup"
 
     var body: some View {
+        let bindingProvider = SetupBindingProvider(appModel: appModel)
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: SetupBindingProvider(appModel: appModel)
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: surfaceId,
                 store: store,
@@ -196,10 +243,23 @@ struct SetupView: View {
                 context: setupContext()
             )
         }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
+        }
     }
 
     private func setupContext() -> String {
         "installState=\(appModel.installStateLabel), repo=\(appModel.config.repoFullName)"
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: SetupSurface.buildMessages(surfaceId: surfaceId),
+            context: setupContext(),
+            event: event
+        )
     }
 }
 
@@ -402,16 +462,79 @@ private func jsonObject(for message: NormalizedMsg) -> [String: Any]? {
     }
 }
 
-private func a2uiPrompt(surfaceId: String, context: String, template: [NormalizedMsg]) -> String {
+struct A2UIUserActionEvent {
+    let surfaceId: String
+    let componentId: String
+    let name: String
+    let context: [String: JSONValue]
+    let timestamp: Date
+
+    init(
+        surfaceId: String,
+        componentId: String,
+        name: String,
+        context: [String: JSONValue] = [:],
+        timestamp: Date = Date()
+    ) {
+        self.surfaceId = surfaceId
+        self.componentId = componentId
+        self.name = name
+        self.context = context
+        self.timestamp = timestamp
+    }
+
+    func jsonLine() -> String? {
+        var payload: [String: Any] = [
+            "name": name,
+            "surfaceId": surfaceId,
+            "sourceComponentId": componentId,
+            "timestamp": Self.formatter.string(from: timestamp)
+        ]
+        if !context.isEmpty {
+            payload["context"] = context.mapValues { $0.toAny() }
+        }
+        let envelope: [String: Any] = ["userAction": payload]
+        guard JSONSerialization.isValidJSONObject(envelope),
+              let data = try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return text
+    }
+
+    private static let formatter = ISO8601DateFormatter()
+}
+
+private struct A2UIActionRequest {
+    let name: String
+    let payload: JSONValue?
+}
+
+private func a2uiPrompt(
+    surfaceId: String,
+    context: String,
+    template: [NormalizedMsg],
+    userAction: String?,
+    availableActions: [String]
+) -> String {
     let jsonl = encodeJSONL(template)
+    let actionsLine = availableActions.isEmpty ? "(none)" : availableActions.joined(separator: ", ")
+    let userActionSection = userAction.map { "\nUSER_ACTION_JSONL:\n\($0)\n" } ?? ""
+
     return """
 You are a local A2UI UI generator. Output ONLY JSONL lines (one JSON object per line). Do not include Markdown or extra text.
 Use A2UI v0.9 messages: createSurface, updateComponents, updateDataModel.
 Keep all component IDs, binding keys, and action IDs exactly as in the template. You may reorder lines but must not change the structure.
 
+ACTION_PROTOCOL:
+- User interactions arrive as a JSONL line with a "userAction" envelope (see USER_ACTION_JSONL).
+- To request app side-effects, emit updateDataModel with path "/app/actions/<unique>" and value {"name":"<actionId>","payload":{...}}.
+- Only use actionId values from AVAILABLE_ACTIONS.
+- When USER_ACTION_JSONL includes a name in AVAILABLE_ACTIONS, request that action unless the UI should block it.
+
 SurfaceId: \(surfaceId)
 Context: \(context)
-
+AVAILABLE_ACTIONS: \(actionsLine)\(userActionSection)
 TEMPLATE_JSONL:
 \(jsonl)
 """
@@ -427,9 +550,23 @@ final class A2UIAgent: ObservableObject {
     private let adapter = A2UIProtocolAdapter(enableV09: true, preferredVersion: .v09)
     private let mode: Mode
     private var inflight: [String: Task<Void, Never>] = [:]
+    @MainActor private var actionHandlers: [String: (String, JSONValue?) -> Void] = [:]
 
     init(mode: Mode = .live) {
         self.mode = mode
+    }
+
+    @MainActor
+    func registerActionHandler(
+        surfaceId: String,
+        handler: @escaping (String, JSONValue?) -> Void
+    ) {
+        actionHandlers[surfaceId] = handler
+    }
+
+    @MainActor
+    func removeActionHandler(surfaceId: String) {
+        actionHandlers.removeValue(forKey: surfaceId)
     }
 
     @MainActor
@@ -441,7 +578,14 @@ final class A2UIAgent: ObservableObject {
     ) {
         inflight[surfaceId]?.cancel()
 
-        let prompt = a2uiPrompt(surfaceId: surfaceId, context: context, template: template)
+        let availableActions = templateActionIds(from: template, surfaceId: surfaceId)
+        let prompt = a2uiPrompt(
+            surfaceId: surfaceId,
+            context: context,
+            template: template,
+            userAction: nil,
+            availableActions: availableActions
+        )
         let isPreview = (mode == .preview)
         let templateData = template.compactMap { msg -> NormalizedMsg? in
             if case let .updateDataModel(id, updates) = msg, id == surfaceId {
@@ -470,6 +614,76 @@ final class A2UIAgent: ObservableObject {
             )
             await MainActor.run {
                 resetSurface(store, messages: output)
+            }
+        }
+
+        inflight[surfaceId] = task
+    }
+
+    @MainActor
+    func handleUserAction(
+        surfaceId: String,
+        store: NormalizedSurfaceStore,
+        template: [NormalizedMsg],
+        context: String,
+        event: A2UIUserActionEvent
+    ) {
+        inflight[surfaceId]?.cancel()
+
+        let availableActions = templateActionIds(from: template, surfaceId: surfaceId)
+        let userActionLine = event.jsonLine()
+        let prompt = a2uiPrompt(
+            surfaceId: surfaceId,
+            context: context,
+            template: template,
+            userAction: userActionLine,
+            availableActions: availableActions
+        )
+        let isPreview = (mode == .preview)
+        let baselineModel = store.surfaces[surfaceId]?.dataModel
+        let templateData = template.compactMap { msg -> NormalizedMsg? in
+            if case let .updateDataModel(id, updates) = msg, id == surfaceId {
+                return .updateDataModel(surfaceId: id, updates: updates)
+            }
+            return nil
+        }
+        let templateComponents = templateComponentMap(from: template, surfaceId: surfaceId)
+        let templateRootId = templateRootComponentId(from: template, surfaceId: surfaceId)
+        let allowedActionSet = Set(availableActions)
+
+        let task = Task.detached { [weak self] in
+            guard let self else { return }
+            if isPreview {
+                await MainActor.run {
+                    resetSurface(store, messages: template)
+                }
+                return
+            }
+
+            let output = await self.generateMessages(
+                prompt: prompt,
+                surfaceId: surfaceId,
+                templateData: templateData,
+                templateComponents: templateComponents,
+                templateRootId: templateRootId
+            )
+            let mergedOutput = self.applyBaselineModel(
+                output,
+                surfaceId: surfaceId,
+                baselineModel: baselineModel
+            )
+            let actionRequests = self.extractActionRequests(
+                from: mergedOutput,
+                surfaceId: surfaceId,
+                allowedActions: allowedActionSet
+            )
+            await MainActor.run {
+                resetSurface(store, messages: mergedOutput)
+                if let handler = self.actionHandlers[surfaceId] {
+                    for request in actionRequests {
+                        handler(request.name, request.payload)
+                    }
+                }
             }
         }
 
@@ -658,6 +872,21 @@ final class A2UIAgent: ObservableObject {
         return components
     }
 
+    private func templateActionIds(from template: [NormalizedMsg], surfaceId: String) -> [String] {
+        var actions = Set<String>()
+        for message in template {
+            guard case let .updateComponents(id, items) = message, id == surfaceId else {
+                continue
+            }
+            for component in items {
+                if let action = component.props["action"]?.stringValue, !action.isEmpty {
+                    actions.insert(action)
+                }
+            }
+        }
+        return actions.sorted()
+    }
+
     private func templateRootComponentId(from template: [NormalizedMsg], surfaceId: String) -> String? {
         for message in template {
             guard case let .createSurface(info) = message, info.surfaceId == surfaceId else {
@@ -666,6 +895,45 @@ final class A2UIAgent: ObservableObject {
             return info.rootComponentId
         }
         return nil
+    }
+
+    nonisolated private func extractActionRequests(
+        from messages: [NormalizedMsg],
+        surfaceId: String,
+        allowedActions: Set<String>
+    ) -> [A2UIActionRequest] {
+        var requests: [A2UIActionRequest] = []
+        for message in messages {
+            guard case let .updateDataModel(id, updates) = message, id == surfaceId else {
+                continue
+            }
+            for update in updates where update.path.hasPrefix("/app/actions/") {
+                if case let .object(obj) = update.value,
+                   let name = obj["name"]?.stringValue,
+                   allowedActions.contains(name) {
+                    requests.append(A2UIActionRequest(name: name, payload: obj["payload"]))
+                    continue
+                }
+                if let name = update.value.stringValue,
+                   allowedActions.contains(name) {
+                    requests.append(A2UIActionRequest(name: name, payload: nil))
+                }
+            }
+        }
+        return requests
+    }
+
+    nonisolated private func applyBaselineModel(
+        _ messages: [NormalizedMsg],
+        surfaceId: String,
+        baselineModel: JSONValue?
+    ) -> [NormalizedMsg] {
+        guard let baselineModel else { return messages }
+        let baseline = NormalizedMsg.updateDataModel(
+            surfaceId: surfaceId,
+            updates: [NormalizedDataUpdate(path: "/", value: baselineModel)]
+        )
+        return [baseline] + messages
     }
 }
 
@@ -1572,30 +1840,37 @@ struct InceptionView: View {
     var body: some View {
         let repoFullName = appModel.normalizedRepoFullName()
         let mirror = repoFullName.map { appModel.paths.mirrorDirectory(repoFullName: $0) }
+        let bindingProvider = InceptionLandingBindingProvider(
+            appModel: appModel,
+            template: templateBinding,
+            cliSubtype: $cliSubtype,
+            mirrorURL: mirror,
+            openMirror: { url in
+                NSWorkspace.shared.open(url)
+            },
+            startInterview: {
+                lastError = nil
+                showInterview = true
+            },
+            lastOutput: { lastOutput },
+            lastError: { lastError ?? "" }
+        )
 
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: InceptionLandingBindingProvider(
-                    appModel: appModel,
-                    template: templateBinding,
-                    cliSubtype: $cliSubtype,
-                    mirrorURL: mirror,
-                    openMirror: { url in
-                        NSWorkspace.shared.open(url)
-                    },
-                    startInterview: {
-                        lastError = nil
-                        showInterview = true
-                    },
-                    lastOutput: { lastOutput },
-                    lastError: { lastError ?? "" }
-                )
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event, hasRepo: mirror != nil)
+                }
             )
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: surfaceId,
                 store: store,
@@ -1611,6 +1886,9 @@ struct InceptionView: View {
                 template: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: hasRepo),
                 context: inceptionContext(hasRepo: hasRepo)
             )
+        }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
         }
         .sheet(isPresented: $showInterview) {
             if let mirror {
@@ -1647,6 +1925,16 @@ struct InceptionView: View {
 
     private func inceptionContext(hasRepo: Bool) -> String {
         "hasRepo=\(hasRepo), template=\(template.rawValue), cliSubtype=\(cliSubtype)"
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent, hasRepo: Bool) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: hasRepo),
+            context: inceptionContext(hasRepo: hasRepo),
+            event: event
+        )
     }
 }
 
@@ -1691,24 +1979,31 @@ private struct InceptionInterviewSheet: View {
     private let overridesContainerId = "overrides_container"
 
     var body: some View {
+        let bindingProvider = InceptionBindingProvider(
+            addOverride: { addManualOverride() },
+            generateFollowups: { Task { await generateFollowups() } },
+            savePreferences: { Task { await savePreferences() } },
+            saveAndBootstrap: { Task { await saveAndBootstrap() } },
+            closeInterview: { dismiss() },
+            statusText: { status },
+            isBusy: { isBusy }
+        )
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: InceptionBindingProvider(
-                    addOverride: { addManualOverride() },
-                    generateFollowups: { Task { await generateFollowups() } },
-                    savePreferences: { Task { await savePreferences() } },
-                    saveAndBootstrap: { Task { await saveAndBootstrap() } },
-                    closeInterview: { dismiss() },
-                    statusText: { status },
-                    isBusy: { isBusy }
-                )
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             store.reset()
             let msgs = buildInitialMsgs()
             a2uiAgent.render(
@@ -1718,6 +2013,19 @@ private struct InceptionInterviewSheet: View {
                 context: "template=\(template.rawValue), cliSubtype=\(cliSubtype), repo=\(repoURL.path)"
             )
         }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
+        }
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: buildInitialMsgs(),
+            context: "template=\(template.rawValue), cliSubtype=\(cliSubtype), repo=\(repoURL.path)",
+            event: event
+        )
     }
 
     private func buildInitialMsgs() -> [NormalizedMsg] {
@@ -2292,15 +2600,18 @@ private struct A2UISurfaceView: View {
     @ObservedObject var store: NormalizedSurfaceStore
     let surfaceId: String
     let bindingProvider: (any A2UIBindingProvider)?
+    let interactionHandler: ((A2UIUserActionEvent) -> Void)?
 
     init(
         store: NormalizedSurfaceStore,
         surfaceId: String,
-        bindingProvider: (any A2UIBindingProvider)? = nil
+        bindingProvider: (any A2UIBindingProvider)? = nil,
+        interactionHandler: ((A2UIUserActionEvent) -> Void)? = nil
     ) {
         self.store = store
         self.surfaceId = surfaceId
         self.bindingProvider = bindingProvider
+        self.interactionHandler = interactionHandler
     }
 
     var body: some View {
@@ -2392,11 +2703,12 @@ private struct A2UISurfaceView: View {
             let minHeight = resolved["minHeight"]?.numberValue ?? rawProps["minHeight"]?.numberValue
 
             if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                let wrapped = wrapStringBinding(binding, componentId: componentId, bindingKey: bindingKey, path: path)
                 if isMultiline {
                     return AnyView(
                         VStack(alignment: .leading, spacing: 6) {
                             if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
-                            TextEditor(text: binding)
+                            TextEditor(text: wrapped)
                                 .font(textFieldFont(for: style))
                                 .frame(minHeight: minHeight ?? 72)
                                 .overlay(
@@ -2407,7 +2719,7 @@ private struct A2UISurfaceView: View {
                         }
                     )
                 }
-                let field = TextField(label, text: binding)
+                let field = TextField(label, text: wrapped)
                 return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
             }
 
@@ -2415,9 +2727,14 @@ private struct A2UISurfaceView: View {
                 return AnyView(
                     VStack(alignment: .leading, spacing: 6) {
                         if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
-                        TextEditor(text: Binding(
-                            get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                            set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                        TextEditor(text: wrapStringBinding(
+                            Binding(
+                                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                            ),
+                            componentId: componentId,
+                            bindingKey: nil,
+                            path: path
                         ))
                         .font(textFieldFont(for: style))
                         .frame(minHeight: minHeight ?? 72)
@@ -2429,9 +2746,14 @@ private struct A2UISurfaceView: View {
                     }
                 )
             }
-            let field = TextField(label, text: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+            let field = TextField(label, text: wrapStringBinding(
+                Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                ),
+                componentId: componentId,
+                bindingKey: nil,
+                path: path
             ))
             return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
 
@@ -2443,12 +2765,18 @@ private struct A2UISurfaceView: View {
             let isReadOnly = resolveBool(from: rawProps["readOnly"], fallback: resolved["readOnly"]) ?? false
 
             if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
-                let field = SecureField(label, text: binding)
+                let wrapped = wrapStringBinding(binding, componentId: componentId, bindingKey: bindingKey, path: path)
+                let field = SecureField(label, text: wrapped)
                 return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
             }
-            let field = SecureField(label, text: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+            let field = SecureField(label, text: wrapStringBinding(
+                Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                ),
+                componentId: componentId,
+                bindingKey: nil,
+                path: path
             ))
             return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
 
@@ -2457,12 +2785,18 @@ private struct A2UISurfaceView: View {
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             if let bindingKey, let binding = bindingProvider?.boolBinding(for: bindingKey) {
-                return AnyView(Toggle(label, isOn: binding))
+                let wrapped = wrapBoolBinding(binding, componentId: componentId, bindingKey: bindingKey, path: path)
+                return AnyView(Toggle(label, isOn: wrapped))
             }
             return AnyView(
-                Toggle(label, isOn: Binding(
-                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
-                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
+                Toggle(label, isOn: wrapBoolBinding(
+                    Binding(
+                        get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
+                        set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
+                    ),
+                    componentId: componentId,
+                    bindingKey: nil,
+                    path: path
                 ))
             )
 
@@ -2479,8 +2813,9 @@ private struct A2UISurfaceView: View {
             }
 
             if let bindingKey, let binding = bindingProvider?.stringBinding(for: bindingKey) {
+                let wrapped = wrapStringBinding(binding, componentId: componentId, bindingKey: bindingKey, path: path)
                 return AnyView(
-                    Picker(label, selection: binding) {
+                    Picker(label, selection: wrapped) {
                         ForEach(options, id: \.1) { (lbl, val) in
                             Text(lbl).tag(val)
                         }
@@ -2490,9 +2825,14 @@ private struct A2UISurfaceView: View {
             }
 
             return AnyView(
-                Picker(label, selection: Binding(
-                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                Picker(label, selection: wrapStringBinding(
+                    Binding(
+                        get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                        set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                    ),
+                    componentId: componentId,
+                    bindingKey: nil,
+                    path: path
                 )) {
                     ForEach(options, id: \.1) { (lbl, val) in
                         Text(lbl).tag(val)
@@ -2506,7 +2846,8 @@ private struct A2UISurfaceView: View {
             let bindingKey = bindingKey(from: rawProps["value"])
             let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
             if let bindingKey, let binding = bindingProvider?.intBinding(for: bindingKey) {
-                let field = TextField(label, value: binding, format: .number)
+                let wrapped = wrapIntBinding(binding, componentId: componentId, bindingKey: bindingKey, path: nil)
+                let field = TextField(label, value: wrapped, format: .number)
                 return applyTextFieldStyle(field, style: style, readOnly: false)
             }
             return AnyView(EmptyView())
@@ -2517,7 +2858,8 @@ private struct A2UISurfaceView: View {
             let variant = resolved["variant"]?.stringValue ?? rawProps["variant"]?.stringValue
             let disabled = resolveBool(from: rawProps["disabled"], fallback: resolved["disabled"]) ?? false
             let button = Button(label) {
-                bindingProvider?.perform(action: actionId)
+                guard !actionId.isEmpty else { return }
+                sendUserAction(name: actionId, componentId: componentId)
             }
             .disabled(disabled)
             if variant == "primary" {
@@ -2537,6 +2879,92 @@ private struct A2UISurfaceView: View {
                     .foregroundStyle(.secondary)
             )
         }
+    }
+
+    private func sendUserAction(
+        name: String,
+        componentId: String,
+        context: [String: JSONValue] = [:]
+    ) {
+        guard let interactionHandler else { return }
+        interactionHandler(A2UIUserActionEvent(
+            surfaceId: surfaceId,
+            componentId: componentId,
+            name: name,
+            context: context
+        ))
+    }
+
+    private func inputContext(
+        bindingKey: String?,
+        path: String?,
+        value: JSONValue
+    ) -> [String: JSONValue] {
+        var context: [String: JSONValue] = ["value": value]
+        if let bindingKey {
+            context["binding"] = .string(bindingKey)
+        }
+        if let path, !path.isEmpty {
+            context["path"] = .string(path)
+        }
+        return context
+    }
+
+    private func wrapStringBinding(
+        _ binding: Binding<String>,
+        componentId: String,
+        bindingKey: String?,
+        path: String?
+    ) -> Binding<String> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                binding.wrappedValue = newValue
+                sendUserAction(
+                    name: "input.change",
+                    componentId: componentId,
+                    context: inputContext(bindingKey: bindingKey, path: path, value: .string(newValue))
+                )
+            }
+        )
+    }
+
+    private func wrapBoolBinding(
+        _ binding: Binding<Bool>,
+        componentId: String,
+        bindingKey: String?,
+        path: String?
+    ) -> Binding<Bool> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                binding.wrappedValue = newValue
+                sendUserAction(
+                    name: "input.change",
+                    componentId: componentId,
+                    context: inputContext(bindingKey: bindingKey, path: path, value: .bool(newValue))
+                )
+            }
+        )
+    }
+
+    private func wrapIntBinding(
+        _ binding: Binding<Int>,
+        componentId: String,
+        bindingKey: String?,
+        path: String?
+    ) -> Binding<Int> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                binding.wrappedValue = newValue
+                sendUserAction(
+                    name: "input.change",
+                    componentId: componentId,
+                    context: inputContext(bindingKey: bindingKey, path: path, value: .number(Double(newValue)))
+                )
+            }
+        )
     }
 
     private func bindingKey(from value: JSONValue?) -> String? {
@@ -2959,21 +3387,31 @@ struct ServicesView: View {
     private let surfaceId = "prune_services"
 
     var body: some View {
+        let bindingProvider = ServicesBindingProvider(appModel: appModel)
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: ServicesBindingProvider(appModel: appModel)
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: surfaceId,
                 store: store,
                 template: ServicesSurface.buildMessages(surfaceId: surfaceId),
                 context: servicesContext()
             )
+        }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
         }
     }
 
@@ -2982,6 +3420,16 @@ struct ServicesView: View {
         let sync = appModel.serviceStatus(for: .sync).state.label
         let mcp = appModel.serviceStatus(for: .mcp).state.label
         return "tunnel=\(tunnel), sync=\(sync), mcp=\(mcp)"
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: ServicesSurface.buildMessages(surfaceId: surfaceId),
+            context: servicesContext(),
+            event: event
+        )
     }
 }
 
@@ -3338,19 +3786,29 @@ struct IntegrationsView: View {
     private let surfaceId = "prune_integrations"
 
     var body: some View {
+        let bindingProvider = IntegrationsBindingProvider(appModel: appModel)
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: IntegrationsBindingProvider(appModel: appModel)
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             renderIntegrations()
         }
         .onChange(of: appModel.webhooks.map(\.id)) { _, _ in
             renderIntegrations()
+        }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
         }
     }
 
@@ -3363,6 +3821,16 @@ struct IntegrationsView: View {
                 webhooks: appModel.webhooks
             ),
             context: "repo=\(appModel.config.repoFullName), webhooks=\(appModel.webhooks.count)"
+        )
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: IntegrationsSurface.buildMessages(surfaceId: surfaceId, webhooks: appModel.webhooks),
+            context: "repo=\(appModel.config.repoFullName), webhooks=\(appModel.webhooks.count)",
+            event: event
         )
     }
 }
@@ -3788,23 +4256,27 @@ struct A2UIDiagnosticsView: View {
     private let surfaceId = "prune_a2ui_diagnostics"
 
     var body: some View {
+        let bindingProvider = DiagnosticsBindingProvider(
+            inputMode: inputModeBinding,
+            fixtureVersion: fixtureVersionBinding,
+            filePath: $filePath,
+            streamURL: $streamURLText,
+            statusMessage: { statusMessage },
+            errorMessage: { errorMessage },
+            activityMessage: { activityMessage },
+            isRunning: { isRunning },
+            reportSummary: { reportSummaryText },
+            streamLabel: { streamButtonLabel },
+            actions: handleAction
+        )
         ScrollView {
             A2UISurfaceView(
                 store: uiStore,
                 surfaceId: surfaceId,
-                bindingProvider: DiagnosticsBindingProvider(
-                    inputMode: inputModeBinding,
-                    fixtureVersion: fixtureVersionBinding,
-                    filePath: $filePath,
-                    streamURL: $streamURLText,
-                    statusMessage: { statusMessage },
-                    errorMessage: { errorMessage },
-                    activityMessage: { activityMessage },
-                    isRunning: { isRunning },
-                    reportSummary: { reportSummaryText },
-                    streamLabel: { streamButtonLabel },
-                    actions: handleAction
-                )
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .padding()
         }
@@ -3829,6 +4301,9 @@ struct A2UIDiagnosticsView: View {
             }
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             renderSurface()
             guard report == nil, !isRunning, !isStreaming else { return }
             DispatchQueue.main.async {
@@ -3849,6 +4324,7 @@ struct A2UIDiagnosticsView: View {
         }
         .onDisappear {
             stopStreaming()
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
         }
     }
 
@@ -4149,6 +4625,16 @@ struct A2UIDiagnosticsView: View {
                 inputMode: inputMode
             ),
             context: "mode=\(inputMode.rawValue), fixture=\(fixtureVersion.rawValue)"
+        )
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: uiStore,
+            template: DiagnosticsSurface.buildMessages(surfaceId: surfaceId, inputMode: inputMode),
+            context: "mode=\(inputMode.rawValue), fixture=\(fixtureVersion.rawValue)",
+            event: event
         )
     }
 }
@@ -4485,20 +4971,30 @@ struct HelpView: View {
     private let surfaceId = "prune_help"
 
     var body: some View {
+        let bindingProvider = HelpBindingProvider(appModel: appModel)
         ScrollView {
             A2UISurfaceView(
                 store: store,
                 surfaceId: surfaceId,
-                bindingProvider: HelpBindingProvider(appModel: appModel)
+                bindingProvider: bindingProvider,
+                interactionHandler: { event in
+                    handleInteraction(event)
+                }
             )
             .padding()
         }
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             appModel.refreshGitAvailability()
             renderHelp()
         }
         .onChange(of: appModel.gitAvailability) { _, _ in
             renderHelp()
+        }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
         }
     }
 
@@ -4517,6 +5013,16 @@ struct HelpView: View {
             context: "gitMissing=\(isMissingGit)"
         )
     }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: HelpSurface.buildMessages(surfaceId: surfaceId, missingGit: isMissingGit),
+            context: "gitMissing=\(isMissingGit)",
+            event: event
+        )
+    }
 }
 
 struct PrivacyView: View {
@@ -4526,13 +5032,20 @@ struct PrivacyView: View {
     private let surfaceId = "prune_privacy"
 
     var body: some View {
+        let bindingProvider = PrivacyBindingProvider(appModel: appModel)
         A2UISurfaceView(
             store: store,
             surfaceId: surfaceId,
-            bindingProvider: PrivacyBindingProvider(appModel: appModel)
+            bindingProvider: bindingProvider,
+            interactionHandler: { event in
+                handleInteraction(event)
+            }
         )
         .padding()
         .onAppear {
+            a2uiAgent.registerActionHandler(surfaceId: surfaceId) { action, _ in
+                bindingProvider.perform(action: action)
+            }
             a2uiAgent.render(
                 surfaceId: surfaceId,
                 store: store,
@@ -4540,6 +5053,19 @@ struct PrivacyView: View {
                 context: "analyticsOptIn=\(appModel.analyticsOptIn)"
             )
         }
+        .onDisappear {
+            a2uiAgent.removeActionHandler(surfaceId: surfaceId)
+        }
+    }
+
+    private func handleInteraction(_ event: A2UIUserActionEvent) {
+        a2uiAgent.handleUserAction(
+            surfaceId: surfaceId,
+            store: store,
+            template: PrivacySurface.buildMessages(surfaceId: surfaceId),
+            context: "analyticsOptIn=\(appModel.analyticsOptIn)",
+            event: event
+        )
     }
 }
 
