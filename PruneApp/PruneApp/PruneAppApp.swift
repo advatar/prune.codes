@@ -12,11 +12,13 @@ import SwiftUI
 struct PruneAppApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
+    @StateObject private var a2uiAgent = A2UIAgent()
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(appModel)
+                .environmentObject(a2uiAgent)
         } label: {
             MenuBarLabel(status: appModel.appStatus)
         }
@@ -24,6 +26,7 @@ struct PruneAppApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appModel)
+                .environmentObject(a2uiAgent)
         }
     }
 }

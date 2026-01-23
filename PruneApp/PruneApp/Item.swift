@@ -471,7 +471,44 @@ struct BundledBinaryLocator {
                 return candidate
             }
         }
-        return Bundle.main.url(forResource: name, withExtension: nil)
+        if let fallback = Bundle.main.url(forResource: name, withExtension: nil) {
+            return fallback
+        }
+        if name == "cloudflared",
+           let path = locateCloudflared() {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
+    }
+
+    private static func locateCloudflared() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/cloudflared",
+            "/opt/homebrew/opt/cloudflared/bin/cloudflared",
+            "/usr/local/bin/cloudflared"
+        ]
+        if let found = findExecutable(named: "cloudflared", extraPaths: candidates) {
+            return found
+        }
+        return nil
+    }
+
+    private static func findExecutable(named name: String, extraPaths: [String]) -> String? {
+        let fileManager = FileManager.default
+        for path in extraPaths {
+            if fileManager.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
+            for dir in pathEnv.split(separator: ":") {
+                let candidate = String(dir).appending("/").appending(name)
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+        }
+        return nil
     }
 }
 
@@ -502,7 +539,7 @@ struct Installer {
         logStore: LogStore
     ) throws -> InstallResult {
         let fileManager = FileManager.default
-        var result = InstallResult()
+        let result = InstallResult()
 
         if !reinstallOnly {
             try fileManager.createDirectory(at: paths.appSupport, withIntermediateDirectories: true, attributes: nil)

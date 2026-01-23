@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 import A2UIRuntime
@@ -43,6 +44,7 @@ struct MenuBarLabel: View {
 
 struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_menu"
 
@@ -108,13 +110,23 @@ struct MenuBarView: View {
             )
         )
         .onAppear {
-            resetSurface(store, messages: MenuBarSurface.buildMessages(surfaceId: surfaceId))
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: MenuBarSurface.buildMessages(surfaceId: surfaceId),
+                context: menuContext()
+            )
         }
+    }
+
+    private func menuContext() -> String {
+        "status=\(appModel.statusLabel), canStart=\(appModel.canStart), canStop=\(appModel.canStop)"
     }
 }
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var navStore = NormalizedSurfaceStore()
     private let navSurfaceId = "prune_settings_nav"
 
@@ -131,7 +143,12 @@ struct SettingsView: View {
         .padding(20)
         .frame(minWidth: 760, minHeight: 540)
         .onAppear {
-            resetSurface(navStore, messages: SettingsNavSurface.buildMessages(surfaceId: navSurfaceId))
+            a2uiAgent.render(
+                surfaceId: navSurfaceId,
+                store: navStore,
+                template: SettingsNavSurface.buildMessages(surfaceId: navSurfaceId),
+                context: "selectedTab=\(appModel.selectedTab)"
+            )
         }
     }
 
@@ -158,6 +175,7 @@ struct SettingsView: View {
 
 struct SetupView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_setup"
 
@@ -171,8 +189,17 @@ struct SetupView: View {
             .padding()
         }
         .onAppear {
-            resetSurface(store, messages: SetupSurface.buildMessages(surfaceId: surfaceId))
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: SetupSurface.buildMessages(surfaceId: surfaceId),
+                context: setupContext()
+            )
         }
+    }
+
+    private func setupContext() -> String {
+        "installState=\(appModel.installStateLabel), repo=\(appModel.config.repoFullName)"
     }
 }
 
@@ -306,6 +333,339 @@ private func toneString(_ tone: StatusTone) -> String {
         return "bad"
     case .neutral:
         return "neutral"
+    }
+}
+
+private func encodeJSONL(_ messages: [NormalizedMsg]) -> String {
+    messages.compactMap { jsonLine(for: $0) }.joined(separator: "\n")
+}
+
+private func jsonLine(for message: NormalizedMsg) -> String? {
+    guard let obj = jsonObject(for: message),
+          JSONSerialization.isValidJSONObject(obj),
+          let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
+          let text = String(data: data, encoding: .utf8) else {
+        return nil
+    }
+    return text
+}
+
+private func jsonObject(for message: NormalizedMsg) -> [String: Any]? {
+    switch message {
+    case .createSurface(let info):
+        var payload: [String: Any] = ["surfaceId": info.surfaceId]
+        if let catalogId = info.catalogId {
+            payload["catalogId"] = catalogId
+        }
+        if let root = info.rootComponentId {
+            payload["rootComponentId"] = root
+        }
+        return ["createSurface": payload]
+    case .updateComponents(let surfaceId, let components):
+        let encodedComponents = components.map { component -> [String: Any] in
+            var dict: [String: Any] = [
+                "id": component.id,
+                "component": component.kind
+            ]
+            for (key, value) in component.props {
+                dict[key] = value.toAny()
+            }
+            return dict
+        }
+        return [
+            "updateComponents": [
+                "surfaceId": surfaceId,
+                "components": encodedComponents
+            ]
+        ]
+    case .updateDataModel(let surfaceId, let updates):
+        let encodedUpdates = updates.map { update -> [String: Any] in
+            var dict: [String: Any] = [
+                "path": update.path,
+                "value": update.value.toAny()
+            ]
+            if let metadata = update.metadata {
+                dict["metadata"] = metadata.toAny()
+            }
+            return dict
+        }
+        return [
+            "updateDataModel": [
+                "surfaceId": surfaceId,
+                "updates": encodedUpdates
+            ]
+        ]
+    case .deleteSurface(let surfaceId):
+        return ["deleteSurface": ["surfaceId": surfaceId]]
+    case .error:
+        return nil
+    }
+}
+
+private func a2uiPrompt(surfaceId: String, context: String, template: [NormalizedMsg]) -> String {
+    let jsonl = encodeJSONL(template)
+    return """
+You are a local A2UI UI generator. Output ONLY JSONL lines (one JSON object per line). Do not include Markdown or extra text.
+Use A2UI v0.9 messages: createSurface, updateComponents, updateDataModel.
+Keep all component IDs, binding keys, and action IDs exactly as in the template. You may reorder lines but must not change the structure.
+
+SurfaceId: \(surfaceId)
+Context: \(context)
+
+TEMPLATE_JSONL:
+\(jsonl)
+"""
+}
+
+final class A2UIAgent: ObservableObject {
+    enum Mode {
+        case live
+        case preview
+    }
+
+    let objectWillChange = ObservableObjectPublisher()
+    private let adapter = A2UIProtocolAdapter(enableV09: true, preferredVersion: .v09)
+    private let mode: Mode
+    private var inflight: [String: Task<Void, Never>] = [:]
+
+    init(mode: Mode = .live) {
+        self.mode = mode
+    }
+
+    @MainActor
+    func render(
+        surfaceId: String,
+        store: NormalizedSurfaceStore,
+        template: [NormalizedMsg],
+        context: String
+    ) {
+        inflight[surfaceId]?.cancel()
+
+        let prompt = a2uiPrompt(surfaceId: surfaceId, context: context, template: template)
+        let isPreview = (mode == .preview)
+        let templateData = template.compactMap { msg -> NormalizedMsg? in
+            if case let .updateDataModel(id, updates) = msg, id == surfaceId {
+                return .updateDataModel(surfaceId: id, updates: updates)
+            }
+            return nil
+        }
+        let templateComponents = templateComponentMap(from: template, surfaceId: surfaceId)
+        let templateRootId = templateRootComponentId(from: template, surfaceId: surfaceId)
+
+        let task = Task.detached { [weak self] in
+            guard let self else { return }
+            if isPreview {
+                await MainActor.run {
+                    resetSurface(store, messages: template)
+                }
+                return
+            }
+
+            let output = await self.generateMessages(
+                prompt: prompt,
+                surfaceId: surfaceId,
+                templateData: templateData,
+                templateComponents: templateComponents,
+                templateRootId: templateRootId
+            )
+            await MainActor.run {
+                resetSurface(store, messages: output)
+            }
+        }
+
+        inflight[surfaceId] = task
+    }
+
+    private func generateMessages(
+        prompt: String,
+        surfaceId: String,
+        templateData: [NormalizedMsg],
+        templateComponents: [String: String],
+        templateRootId: String?
+    ) async -> [NormalizedMsg] {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let model = SystemLanguageModel.default
+            guard model.isAvailable else {
+                return fallbackSurface(surfaceId: surfaceId, reason: "Local model unavailable.")
+            }
+            let session = LanguageModelSession(model: model)
+            do {
+                let response = try await session.respond(to: Prompt(prompt))
+                let decoded = decodeMessages(
+                    from: response.content,
+                    surfaceId: surfaceId,
+                    templateData: templateData,
+                    templateComponents: templateComponents,
+                    templateRootId: templateRootId
+                )
+                return decoded ?? fallbackSurface(surfaceId: surfaceId, reason: "LLM returned invalid A2UI output.")
+            } catch {
+                return fallbackSurface(surfaceId: surfaceId, reason: "LLM error: \(error.localizedDescription)")
+            }
+        }
+#endif
+        return fallbackSurface(surfaceId: surfaceId, reason: "FoundationModels unavailable on this macOS.")
+    }
+
+    private func decodeMessages(
+        from text: String,
+        surfaceId: String,
+        templateData: [NormalizedMsg],
+        templateComponents: [String: String],
+        templateRootId: String?
+    ) -> [NormalizedMsg]? {
+        let lines = extractJSONLines(from: text)
+        guard !lines.isEmpty else { return nil }
+
+        var decoded: [NormalizedMsg] = []
+        var hadError = false
+        for line in lines {
+            let messages = adapter.decode(line: line)
+            for message in messages {
+                if case .error = message {
+                    hadError = true
+                } else {
+                    decoded.append(message)
+                }
+            }
+        }
+
+        guard !hadError,
+              validate(
+                messages: decoded,
+                surfaceId: surfaceId,
+                templateComponents: templateComponents,
+                templateRootId: templateRootId
+              ) else {
+            return nil
+        }
+
+        if !templateData.isEmpty,
+           !decoded.contains(where: { msg in
+               if case let .updateDataModel(id, _) = msg {
+                   return id == surfaceId
+               }
+               return false
+           }) {
+            decoded.append(contentsOf: templateData)
+        }
+
+        return decoded
+    }
+
+    private func validate(
+        messages: [NormalizedMsg],
+        surfaceId: String,
+        templateComponents: [String: String],
+        templateRootId: String?
+    ) -> Bool {
+        var hasCreate = false
+        var hasComponents = false
+        var rootMatches = templateRootId == nil
+        var outputComponents: [String: String] = [:]
+        for message in messages {
+            switch message {
+            case .createSurface(let info):
+                if info.surfaceId == surfaceId {
+                    hasCreate = true
+                    if let templateRootId {
+                        rootMatches = info.rootComponentId == templateRootId
+                    }
+                }
+            case .updateComponents(let id, let components):
+                if id == surfaceId {
+                    hasComponents = true
+                    for component in components {
+                        outputComponents[component.id] = component.kind
+                    }
+                }
+            default:
+                break
+            }
+        }
+        guard hasCreate, hasComponents, rootMatches else {
+            return false
+        }
+        if !templateComponents.isEmpty {
+            for (id, kind) in templateComponents {
+                guard outputComponents[id] == kind else {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    private func extractJSONLines(from text: String) -> [String] {
+        let stripped = text
+            .replacingOccurrences(of: "```jsonl", with: "")
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+
+        return stripped
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.hasPrefix("{") && $0.hasSuffix("}") }
+    }
+
+    private func fallbackSurface(surfaceId: String, reason: String) -> [NormalizedMsg] {
+        let rootId = "\(surfaceId)_llm_error_root"
+        let titleId = "\(surfaceId)_llm_error_title"
+        let detailId = "\(surfaceId)_llm_error_detail"
+
+        let components = [
+            NormalizedComponent(
+                id: rootId,
+                type: "Column",
+                props: [
+                    "children": .array([.string(titleId), .string(detailId)])
+                ]
+            ),
+            NormalizedComponent(id: titleId, type: "Text", props: [
+                "text": .string("A2UI LLM unavailable"),
+                "style": .string("headline")
+            ]),
+            NormalizedComponent(id: detailId, type: "Text", props: [
+                "text": .string(reason),
+                "style": .string("secondary")
+            ])
+        ]
+
+        let info = NormalizedSurfaceInfo(
+            surfaceId: surfaceId,
+            catalogId: "prune.llm.error",
+            rootComponentId: rootId,
+            protocolVersion: .v09
+        )
+
+        return [
+            .createSurface(info),
+            .updateComponents(surfaceId: surfaceId, components: components)
+        ]
+    }
+
+    private func templateComponentMap(from template: [NormalizedMsg], surfaceId: String) -> [String: String] {
+        var components: [String: String] = [:]
+        for message in template {
+            guard case let .updateComponents(id, items) = message, id == surfaceId else {
+                continue
+            }
+            for component in items {
+                components[component.id] = component.kind
+            }
+        }
+        return components
+    }
+
+    private func templateRootComponentId(from template: [NormalizedMsg], surfaceId: String) -> String? {
+        for message in template {
+            guard case let .createSurface(info) = message, info.surfaceId == surfaceId else {
+                continue
+            }
+            return info.rootComponentId
+        }
+        return nil
     }
 }
 
@@ -1199,6 +1559,7 @@ private final class InceptionLandingBindingProvider: A2UIBindingProvider {
 
 struct InceptionView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
 
     @State private var template: InceptionTemplate = .web
     @State private var cliSubtype: Bool = false
@@ -1235,11 +1596,21 @@ struct InceptionView: View {
             .padding()
         }
         .onAppear {
-            resetSurface(store, messages: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: mirror != nil))
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: mirror != nil),
+                context: inceptionContext(hasRepo: mirror != nil)
+            )
         }
-        .onChange(of: appModel.config.repoFullName) { _ in
+        .onChange(of: appModel.config.repoFullName) { _, _ in
             let hasRepo = appModel.normalizedRepoFullName() != nil
-            resetSurface(store, messages: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: hasRepo))
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: hasRepo),
+                context: inceptionContext(hasRepo: hasRepo)
+            )
         }
         .sheet(isPresented: $showInterview) {
             if let mirror {
@@ -1257,8 +1628,8 @@ struct InceptionView: View {
                 .environmentObject(appModel)
                 .frame(minWidth: 720, minHeight: 560)
             } else {
-                Text("No workspace configured.")
-                    .padding()
+                NoWorkspaceSheet()
+                    .frame(minWidth: 480, minHeight: 220)
             }
         }
     }
@@ -1273,10 +1644,36 @@ struct InceptionView: View {
             }
         )
     }
+
+    private func inceptionContext(hasRepo: Bool) -> String {
+        "hasRepo=\(hasRepo), template=\(template.rawValue), cliSubtype=\(cliSubtype)"
+    }
+}
+
+private struct NoWorkspaceSheet: View {
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
+    @StateObject private var store = NormalizedSurfaceStore()
+    private let surfaceId = "prune_inception_no_repo"
+
+    var body: some View {
+        ScrollView {
+            A2UISurfaceView(store: store, surfaceId: surfaceId)
+                .padding()
+        }
+        .onAppear {
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: InceptionLandingSurface.buildMessages(surfaceId: surfaceId, hasRepo: false),
+                context: "hasRepo=false"
+            )
+        }
+    }
 }
 
 private struct InceptionInterviewSheet: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
 
     let template: InceptionTemplate
     let cliSubtype: Bool
@@ -1314,7 +1711,12 @@ private struct InceptionInterviewSheet: View {
         .onAppear {
             store.reset()
             let msgs = buildInitialMsgs()
-            for m in msgs { store.apply(m) }
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: msgs,
+                context: "template=\(template.rawValue), cliSubtype=\(cliSubtype), repo=\(repoURL.path)"
+            )
         }
     }
 
@@ -1905,9 +2307,7 @@ private struct A2UISurfaceView: View {
         if let root = store.rootComponentId(for: surfaceId) {
             render(componentId: root)
         } else {
-            Text("No surface")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            AnyView(EmptyView())
         }
     }
 
@@ -1983,7 +2383,7 @@ private struct A2UISurfaceView: View {
             return AnyView(view)
 
         case "TextField":
-            let label = resolved["label"]?.stringValue ?? ""
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
             let isMultiline = (component.props["multiline"]?.boolValue) ?? false
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
@@ -2036,7 +2436,7 @@ private struct A2UISurfaceView: View {
             return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
 
         case "SecureField":
-            let label = resolved["label"]?.stringValue ?? ""
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
@@ -2053,7 +2453,7 @@ private struct A2UISurfaceView: View {
             return applyTextFieldStyle(field, style: style, readOnly: isReadOnly)
 
         case "Toggle":
-            let label = resolved["label"]?.stringValue ?? ""
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             if let bindingKey, let binding = bindingProvider?.boolBinding(for: bindingKey) {
@@ -2067,7 +2467,7 @@ private struct A2UISurfaceView: View {
             )
 
         case "Select":
-            let label = resolved["label"]?.stringValue ?? ""
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
             let bindingKey = bindingKey(from: rawProps["value"])
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             let options = (component.props["options"]?.arrayValue ?? []).compactMap { opt -> (String, String)? in
@@ -2102,7 +2502,7 @@ private struct A2UISurfaceView: View {
             )
 
         case "NumberField":
-            let label = resolved["label"]?.stringValue ?? ""
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
             let bindingKey = bindingKey(from: rawProps["value"])
             let style = resolved["style"]?.stringValue ?? rawProps["style"]?.stringValue
             if let bindingKey, let binding = bindingProvider?.intBinding(for: bindingKey) {
@@ -2112,7 +2512,7 @@ private struct A2UISurfaceView: View {
             return AnyView(EmptyView())
 
         case "Button":
-            let label = resolved["label"]?.stringValue ?? rawProps["label"]?.stringValue ?? "Action"
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? "Action"
             let actionId = resolved["action"]?.stringValue ?? rawProps["action"]?.stringValue ?? ""
             let variant = resolved["variant"]?.stringValue ?? rawProps["variant"]?.stringValue
             let disabled = resolveBool(from: rawProps["disabled"], fallback: resolved["disabled"]) ?? false
@@ -2554,6 +2954,7 @@ private final class ServicesBindingProvider: A2UIBindingProvider {
 
 struct ServicesView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_services"
 
@@ -2567,8 +2968,20 @@ struct ServicesView: View {
             .padding()
         }
         .onAppear {
-            resetSurface(store, messages: ServicesSurface.buildMessages(surfaceId: surfaceId))
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: ServicesSurface.buildMessages(surfaceId: surfaceId),
+                context: servicesContext()
+            )
         }
+    }
+
+    private func servicesContext() -> String {
+        let tunnel = appModel.serviceStatus(for: .tunnel).state.label
+        let sync = appModel.serviceStatus(for: .sync).state.label
+        let mcp = appModel.serviceStatus(for: .mcp).state.label
+        return "tunnel=\(tunnel), sync=\(sync), mcp=\(mcp)"
     }
 }
 
@@ -2920,6 +3333,7 @@ private final class IntegrationsBindingProvider: A2UIBindingProvider {
 
 struct IntegrationsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_integrations"
 
@@ -2933,23 +3347,23 @@ struct IntegrationsView: View {
             .padding()
         }
         .onAppear {
-            resetSurface(
-                store,
-                messages: IntegrationsSurface.buildMessages(
-                    surfaceId: surfaceId,
-                    webhooks: appModel.webhooks
-                )
-            )
+            renderIntegrations()
         }
-        .onChange(of: appModel.webhooks.map(\.id)) { _ in
-            resetSurface(
-                store,
-                messages: IntegrationsSurface.buildMessages(
-                    surfaceId: surfaceId,
-                    webhooks: appModel.webhooks
-                )
-            )
+        .onChange(of: appModel.webhooks.map(\.id)) { _, _ in
+            renderIntegrations()
         }
+    }
+
+    private func renderIntegrations() {
+        a2uiAgent.render(
+            surfaceId: surfaceId,
+            store: store,
+            template: IntegrationsSurface.buildMessages(
+                surfaceId: surfaceId,
+                webhooks: appModel.webhooks
+            ),
+            context: "repo=\(appModel.config.repoFullName), webhooks=\(appModel.webhooks.count)"
+        )
     }
 }
 
@@ -2997,15 +3411,11 @@ private struct DiagnosticsReportSummary: Equatable {
 private enum DiagnosticsSurface {
     static func buildMessages(
         surfaceId: String,
-        inputMode: DiagnosticsInputMode,
-        fixtureVersion: DiagnosticsFixtureVersion,
-        isRunning: Bool,
-        isStreaming: Bool,
-        report: DiagnosticsReportSummary?
+        inputMode: DiagnosticsInputMode
     ) -> [NormalizedMsg] {
         var components: [NormalizedComponent] = []
 
-        var rootChildren: [String] = [
+        let rootChildren: [String] = [
             "diag_title",
             "diag_subtitle",
             "diag_input",
@@ -3162,8 +3572,8 @@ private enum DiagnosticsSurface {
             )
             components.append(
                 NormalizedComponent(id: "diag_stream_toggle", type: "Button", props: [
-                    "label": .string(isStreaming ? "Stop Stream" : "Start Stream"),
-                    "action": .string(isStreaming ? "diag.stopStream" : "diag.startStream"),
+                    "label": binding("diag.streamButtonLabel"),
+                    "action": .string("diag.toggleStream"),
                     "variant": .string("primary")
                 ])
             )
@@ -3226,127 +3636,30 @@ private enum DiagnosticsSurface {
             ])
         )
 
-        if let report {
-            components.append(
-                NormalizedComponent(id: "diag_output", type: "Column", props: [
-                    "children": children([
-                        "diag_output_title",
-                        "diag_surface_info",
-                        "diag_resolved_title",
-                        "diag_resolved_text",
-                        "diag_model_title",
-                        "diag_model_text",
-                        "diag_errors_title",
-                        "diag_errors_list"
-                    ])
+        components.append(
+            NormalizedComponent(id: "diag_output", type: "Column", props: [
+                "children": children([
+                    "diag_output_title",
+                    "diag_output_summary"
                 ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_output_title", type: "Text", props: [
-                    "text": .string("Output"),
-                    "style": .string("subheadline")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_surface_info", type: "Column", props: [
-                    "children": children([
-                        "diag_surface_id",
-                        "diag_surface_protocol",
-                        "diag_surface_root",
-                        "diag_surface_components"
-                    ])
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_surface_id", type: "Text", props: [
-                    "text": .string("Surface ID: \(report.surfaceId)")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_surface_protocol", type: "Text", props: [
-                    "text": .string("Protocol: \(report.protocolVersion ?? "unknown")")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_surface_root", type: "Text", props: [
-                    "text": .string("Root component: \(report.rootComponentId ?? "unknown")")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_surface_components", type: "Text", props: [
-                    "text": .string("Components: \(report.componentCount)")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_resolved_title", type: "Text", props: [
-                    "text": .string("Resolved Text"),
-                    "style": .string("subheadline")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_resolved_text", type: "Text", props: [
-                    "text": .string(report.resolvedText ?? "No bound text resolved.")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_model_title", type: "Text", props: [
-                    "text": .string("Data Model"),
-                    "style": .string("subheadline")
-                ])
-            )
-            components.append(
-                NormalizedComponent(id: "diag_model_text", type: "Text", props: [
-                    "text": .string(report.dataModelJSON),
-                    "style": .string("monospace"),
-                    "selectable": .bool(true)
-                ])
-            )
-
-            if report.errors.isEmpty {
-                components.append(
-                    NormalizedComponent(id: "diag_errors_title", type: "Text", props: [
-                        "text": .string("Adapter Errors"),
-                        "style": .string("subheadline"),
-                        "hiddenWhenEmpty": .bool(true)
-                    ])
-                )
-                components.append(
-                    NormalizedComponent(id: "diag_errors_list", type: "Column", props: [
-                        "children": .array([])
-                    ])
-                )
-            } else {
-                components.append(
-                    NormalizedComponent(id: "diag_errors_title", type: "Text", props: [
-                        "text": .string("Adapter Errors"),
-                        "style": .string("subheadline")
-                    ])
-                )
-                let errorChildren = report.errors.enumerated().map { idx, _ in
-                    JSONValue.string("diag_error_\(idx)")
-                }
-                components.append(
-                    NormalizedComponent(id: "diag_errors_list", type: "Column", props: [
-                        "children": .array(errorChildren)
-                    ])
-                )
-                for (idx, error) in report.errors.enumerated() {
-                    components.append(
-                        NormalizedComponent(id: "diag_error_\(idx)", type: "Text", props: [
-                            "text": .string(error),
-                            "style": .string("error")
-                        ])
-                    )
-                }
-            }
-        } else {
-            components.append(
-                NormalizedComponent(id: "diag_output", type: "Text", props: [
-                    "text": .string("No A2UI output yet."),
-                    "style": .string("secondary")
-                ])
-            )
-        }
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_output_title", type: "Text", props: [
+                "text": .string("Output"),
+                "style": .string("subheadline")
+            ])
+        )
+        components.append(
+            NormalizedComponent(id: "diag_output_summary", type: "TextField", props: [
+                "label": .string("Summary"),
+                "multiline": .bool(true),
+                "readOnly": .bool(true),
+                "style": .string("monospace"),
+                "minHeight": .number(200),
+                "value": binding("diag.reportSummary")
+            ])
+        )
 
         let info = NormalizedSurfaceInfo(
             surfaceId: surfaceId,
@@ -3372,6 +3685,8 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
     private let errorMessage: () -> String?
     private let activityMessage: () -> String?
     private let isRunning: () -> Bool
+    private let reportSummaryProvider: () -> String
+    private let streamLabelProvider: () -> String
     private let actions: (String) -> Void
 
     init(
@@ -3383,6 +3698,8 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
         errorMessage: @escaping () -> String?,
         activityMessage: @escaping () -> String?,
         isRunning: @escaping () -> Bool,
+        reportSummary: @escaping () -> String,
+        streamLabel: @escaping () -> String,
         actions: @escaping (String) -> Void
     ) {
         self.inputMode = inputMode
@@ -3393,6 +3710,8 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
         self.errorMessage = errorMessage
         self.activityMessage = activityMessage
         self.isRunning = isRunning
+        self.reportSummaryProvider = reportSummary
+        self.streamLabelProvider = streamLabel
         self.actions = actions
     }
 
@@ -3406,6 +3725,8 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
             return filePath
         case "diag.streamURL":
             return streamURL
+        case "diag.reportSummary":
+            return Binding(get: { self.reportSummary() }, set: { _ in })
         default:
             return nil
         }
@@ -3419,6 +3740,8 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
             return errorMessage() ?? ""
         case "diag.activity":
             return activityMessage() ?? ""
+        case "diag.streamButtonLabel":
+            return streamLabel()
         default:
             return nil
         }
@@ -3436,9 +3759,18 @@ private final class DiagnosticsBindingProvider: A2UIBindingProvider {
     func perform(action: String) {
         actions(action)
     }
+
+    private func reportSummary() -> String {
+        return reportSummaryProvider()
+    }
+
+    private func streamLabel() -> String {
+        return streamLabelProvider()
+    }
 }
 
 struct A2UIDiagnosticsView: View {
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @State private var inputMode: DiagnosticsInputMode = .fixture
     @State private var fixtureVersion: DiagnosticsFixtureVersion = .v09
     @State private var filePath: String = ""
@@ -3469,6 +3801,8 @@ struct A2UIDiagnosticsView: View {
                     errorMessage: { errorMessage },
                     activityMessage: { activityMessage },
                     isRunning: { isRunning },
+                    reportSummary: { reportSummaryText },
+                    streamLabel: { streamButtonLabel },
                     actions: handleAction
                 )
             )
@@ -3483,32 +3817,35 @@ struct A2UIDiagnosticsView: View {
                 let needsAccess = url.startAccessingSecurityScopedResource()
                 if needsAccess {
                     defer { url.stopAccessingSecurityScopedResource() }
+                    filePath = url.path
+                    loadJSONL(from: url)
+                } else {
+                    filePath = url.path
+                    loadJSONL(from: url)
                 }
-                filePath = url.path
-                loadJSONL(from: url)
             case .failure(let error):
                 errorMessage = "File import failed: \(error.localizedDescription)"
-                refreshSurface()
+                renderSurface()
             }
         }
         .onAppear {
-            refreshSurface()
+            renderSurface()
             guard report == nil, !isRunning, !isStreaming else { return }
             DispatchQueue.main.async {
                 runFixture()
             }
         }
-        .onChange(of: inputMode) { _ in
-            refreshSurface()
+        .onChange(of: inputMode) { _, _ in
+            renderSurface()
         }
-        .onChange(of: fixtureVersion) { _ in
-            refreshSurface()
+        .onChange(of: fixtureVersion) { _, _ in
+            renderSurface()
         }
-        .onChange(of: isRunning) { _ in
-            refreshSurface()
+        .onChange(of: isRunning) { _, _ in
+            renderSurface()
         }
-        .onChange(of: isStreaming) { _ in
-            refreshSurface()
+        .onChange(of: isStreaming) { _, _ in
+            renderSurface()
         }
         .onDisappear {
             stopStreaming()
@@ -3558,13 +3895,40 @@ struct A2UIDiagnosticsView: View {
             isFileImporterPresented = true
         case "diag.loadFile":
             loadJSONLFromPath()
-        case "diag.startStream":
-            startStreaming()
-        case "diag.stopStream":
-            stopStreaming()
+        case "diag.toggleStream":
+            if isStreaming {
+                stopStreaming()
+            } else {
+                startStreaming()
+            }
         default:
             break
         }
+    }
+
+    private var reportSummaryText: String {
+        guard let report else { return "No A2UI output yet." }
+        var lines: [String] = []
+        lines.append("Surface ID: \(report.surfaceId)")
+        lines.append("Protocol: \(report.protocolVersion ?? "unknown")")
+        lines.append("Root component: \(report.rootComponentId ?? "unknown")")
+        lines.append("Components: \(report.componentCount)")
+        lines.append("")
+        lines.append("Resolved Text:")
+        lines.append(report.resolvedText ?? "No bound text resolved.")
+        lines.append("")
+        lines.append("Data Model:")
+        lines.append(report.dataModelJSON)
+        if !report.errors.isEmpty {
+            lines.append("")
+            lines.append("Adapter Errors:")
+            lines.append(contentsOf: report.errors)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private var streamButtonLabel: String {
+        isStreaming ? "Stop Stream" : "Start Stream"
     }
 
     @MainActor
@@ -3587,7 +3951,7 @@ struct A2UIDiagnosticsView: View {
         let trimmed = filePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Enter a JSONL file path."
-            refreshSurface()
+            renderSurface()
             return
         }
         loadJSONL(from: URL(fileURLWithPath: trimmed))
@@ -3600,7 +3964,7 @@ struct A2UIDiagnosticsView: View {
             let lines = content.split(whereSeparator: \.isNewline).map(String.init)
             guard !lines.isEmpty else {
                 errorMessage = "No JSONL lines found in \(url.lastPathComponent)."
-                refreshSurface()
+                renderSurface()
                 return
             }
             runLines(
@@ -3610,7 +3974,7 @@ struct A2UIDiagnosticsView: View {
             )
         } catch {
             errorMessage = "Failed to read file: \(error.localizedDescription)"
-            refreshSurface()
+            renderSurface()
         }
     }
 
@@ -3619,21 +3983,21 @@ struct A2UIDiagnosticsView: View {
         stopStreaming()
         guard let url = URL(string: streamURLText), url.scheme != nil else {
             errorMessage = "Invalid stream URL."
-            refreshSurface()
+            renderSurface()
             return
         }
 
         resetState()
         isStreaming = true
         statusMessage = "Connecting to stream..."
-        refreshSurface()
+        renderSurface()
 
         let adapter = A2UIProtocolAdapter(enableV09: true)
         streamTask = Task { @MainActor in
             do {
                 let (bytes, _) = try await URLSession.shared.bytes(from: url)
                 statusMessage = "Streaming..."
-                refreshSurface()
+                renderSurface()
                 for try await line in bytes.lines {
                     if Task.isCancelled {
                         break
@@ -3648,7 +4012,7 @@ struct A2UIDiagnosticsView: View {
                 statusMessage = "Stream error: \(error.localizedDescription)"
             }
             isStreaming = false
-            refreshSurface()
+            renderSurface()
         }
     }
 
@@ -3659,7 +4023,7 @@ struct A2UIDiagnosticsView: View {
         if isStreaming {
             isStreaming = false
             statusMessage = "Stream stopped."
-            refreshSurface()
+            renderSurface()
         }
     }
 
@@ -3672,7 +4036,7 @@ struct A2UIDiagnosticsView: View {
         isRunning = true
         resetState()
         statusMessage = label
-        refreshSurface()
+        renderSurface()
 
         let adapter = A2UIProtocolAdapter(enableV09: true, preferredVersion: preferredVersion)
         for line in lines {
@@ -3683,7 +4047,7 @@ struct A2UIDiagnosticsView: View {
         }
 
         isRunning = false
-        refreshSurface()
+        renderSurface()
     }
 
     @MainActor
@@ -3704,7 +4068,7 @@ struct A2UIDiagnosticsView: View {
         guard let surfaceId = fixtureStore.surfaces.keys.sorted().first,
               let surface = fixtureStore.surfaces[surfaceId] else {
             report = nil
-            refreshSurface()
+            renderSurface()
             return
         }
 
@@ -3725,7 +4089,7 @@ struct A2UIDiagnosticsView: View {
             dataModelJSON: prettyJSON(surface.dataModel),
             errors: errors
         )
-        refreshSurface()
+        renderSurface()
     }
 
     @MainActor
@@ -3735,7 +4099,7 @@ struct A2UIDiagnosticsView: View {
         report = nil
         errorMessage = nil
         statusMessage = nil
-        refreshSurface()
+        renderSurface()
     }
 
     private func prettyJSON(_ value: JSONValue) -> String {
@@ -3776,17 +4140,15 @@ struct A2UIDiagnosticsView: View {
     ]
 
     @MainActor
-    private func refreshSurface() {
-        resetSurface(
-            uiStore,
-            messages: DiagnosticsSurface.buildMessages(
+    private func renderSurface() {
+        a2uiAgent.render(
+            surfaceId: surfaceId,
+            store: uiStore,
+            template: DiagnosticsSurface.buildMessages(
                 surfaceId: surfaceId,
-                inputMode: inputMode,
-                fixtureVersion: fixtureVersion,
-                isRunning: isRunning,
-                isStreaming: isStreaming,
-                report: report
-            )
+                inputMode: inputMode
+            ),
+            context: "mode=\(inputMode.rawValue), fixture=\(fixtureVersion.rawValue)"
         )
     }
 }
@@ -4118,6 +4480,7 @@ private final class PrivacyBindingProvider: A2UIBindingProvider {
 
 struct HelpView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_help"
 
@@ -4132,22 +4495,10 @@ struct HelpView: View {
         }
         .onAppear {
             appModel.refreshGitAvailability()
-            resetSurface(
-                store,
-                messages: HelpSurface.buildMessages(
-                    surfaceId: surfaceId,
-                    missingGit: isMissingGit
-                )
-            )
+            renderHelp()
         }
-        .onChange(of: appModel.gitAvailability) { _ in
-            resetSurface(
-                store,
-                messages: HelpSurface.buildMessages(
-                    surfaceId: surfaceId,
-                    missingGit: isMissingGit
-                )
-            )
+        .onChange(of: appModel.gitAvailability) { _, _ in
+            renderHelp()
         }
     }
 
@@ -4157,10 +4508,20 @@ struct HelpView: View {
         }
         return false
     }
+
+    private func renderHelp() {
+        a2uiAgent.render(
+            surfaceId: surfaceId,
+            store: store,
+            template: HelpSurface.buildMessages(surfaceId: surfaceId, missingGit: isMissingGit),
+            context: "gitMissing=\(isMissingGit)"
+        )
+    }
 }
 
 struct PrivacyView: View {
     @EnvironmentObject private var appModel: AppModel
+    @EnvironmentObject private var a2uiAgent: A2UIAgent
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_privacy"
 
@@ -4172,122 +4533,12 @@ struct PrivacyView: View {
         )
         .padding()
         .onAppear {
-            resetSurface(store, messages: PrivacySurface.buildMessages(surfaceId: surfaceId))
-        }
-    }
-}
-
-struct StatusBadge: View {
-    let title: String
-    let value: String
-    let tone: StatusTone
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(tone.color)
-                .frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.headline)
-            }
-        }
-        .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct PathRow: View {
-    let title: String
-    let path: String
-    let onCopy: () -> Void
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(path)
-                    .font(.system(.body, design: .monospaced))
-            }
-            Spacer()
-            Button("Copy") {
-                onCopy()
-            }
-        }
-    }
-}
-
-struct ArgumentsEditor: View {
-    let title: String
-    @Binding var text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextEditor(text: $text)
-                .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 70)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.2))
-                )
-        }
-    }
-}
-
-struct ServiceRow: View {
-    let name: String
-    let status: ServiceStatus
-
-    var body: some View {
-        HStack {
-            Text(name)
-                .font(.headline)
-            Spacer()
-            StatusPill(text: status.state.label, tone: status.state.tone)
-        }
-        if !status.detail.isEmpty {
-            Text(status.detail)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-struct StatusPill: View {
-    let text: String
-    let tone: StatusTone
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(tone.color.opacity(0.15), in: Capsule())
-            .foregroundStyle(tone.color)
-    }
-}
-
-struct StatusBanner: View {
-    let message: String?
-    let error: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let message {
-                Text(message)
-                    .foregroundStyle(.secondary)
-            }
-            if let error {
-                Text(error)
-                    .foregroundStyle(.red)
-            }
+            a2uiAgent.render(
+                surfaceId: surfaceId,
+                store: store,
+                template: PrivacySurface.buildMessages(surfaceId: surfaceId),
+                context: "analyticsOptIn=\(appModel.analyticsOptIn)"
+            )
         }
     }
 }
@@ -4295,4 +4546,5 @@ struct StatusBanner: View {
 #Preview {
     SettingsView()
         .environmentObject(AppModel.preview())
+        .environmentObject(A2UIAgent(mode: .preview))
 }

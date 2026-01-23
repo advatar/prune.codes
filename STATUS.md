@@ -6,6 +6,8 @@
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
 - Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
 - Fix tray install status by auto-installing bundled dependencies on first launch.
+- Make all human interaction LLM-driven via A2UI (LLM-generated surfaces, Q/A overrides).
+- Ensure cloudflared is bundled/installed for dashboard flows.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -55,6 +57,8 @@
 - Tightened dashboard window activation so it is raised to the front on menu bar open.
 - Converted all PruneApp UI to A2UI-driven surfaces (menu bar, settings nav, and all tabs).
 - Extended the A2UI renderer to support SecureField/read-only inputs and multiline sizing.
+- Added LLM-driven A2UI render validation and a no-repo A2UI sheet for inception flows.
+- Let Install.command and the runtime installer locate system cloudflared when the bundle is missing it.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.
