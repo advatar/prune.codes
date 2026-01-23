@@ -1,0 +1,631 @@
+Below is a **GitHub-ready Epic + sub-issues** for adding an **embedded SurrealDB backend** to Prune, with enough **actual code** (Rust + SurrealQL) to start implementing immediately.
+
+This plan assumes:
+
+- SQLite remains the **default** backend (fast, zero-friction).
+- SurrealDB becomes an **optional embedded backend** (graph + vectors + full‑text in one store).
+- We use **SurrealKV** as the default embedded persistent engine because it’s fully Rust (good for distribution), and **Mem** for tests; optionally allow **RocksDB** for users who want it (but note compile deps).  [oai_citation:0‡SurrealDB](https://surrealdb.com/docs/surrealkv)
+
+SurrealDB capabilities we’ll leverage:
+- Graph edges with `RELATE` (edges can hold metadata).  [oai_citation:1‡SurrealDB](https://surrealdb.com/docs/surrealql/statements/relate)  
+- Vector embeddings + HNSW index + `<|k,effort|>` query syntax + `vector::distance::knn()` reuse.  [oai_citation:2‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)  
+- Full-text search with analyzers + `BM25`/`HIGHLIGHTS` + `search::score`.  [oai_citation:3‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/full-text-search)  
+- Optional hybrid fusion in-db using `search::rrf`.  [oai_citation:4‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)  
+
+---
+
+# Epic: Embedded SurrealDB backend for Prune graphs + embeddings + hybrid search
+
+## Goal
+Add a **SurrealDB embedded backend** so Prune can store:
+
+- fragments (text + metadata)
+- embeddings per fragment
+- graph relations (imports/refs/defines/calls/etc.)
+- optional full-text index + BM25 scoring
+- optional hybrid retrieval (vector + lexical fusion)
+
+…while keeping SQLite as the default backend.
+
+## Why
+This enables “one store” workflows:
+- Graph traversal queries
+- Vector KNN similarity
+- Full text search / scoring
+- Hybrid retrieval (optionally inside DB)
+
+SurrealDB supports all of these in a unified engine.  [oai_citation:5‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+
+## Non-goals
+- Not replacing Prune’s AST slicing, pack budgeting, or strategy evolution logic
+- Not running SurrealDB as a network server (this epic is **embedded**)
+- Not supporting multi-user sync/conflict resolution
+
+## Deliverables
+- New optional backend: `--store surreal`
+- Embedded persistent engine: `surrealkv://…` by default
+- Parity with existing index/search/pack behaviors
+- Benchmarks + tests that compare to SQLite backend
+
+---
+
+# Sub-issue 1: Storage abstraction so Prune can swap backends
+
+## Summary
+Introduce a small “store API” trait used by indexing + retrieval, implemented by:
+- existing SQLite store
+- new SurrealDB store
+
+## Files
+- `crates/ce-store-core/src/lib.rs` (new)
+- `crates/ce-store-sqlite/…` (adapter wrapper around existing DB)
+- `crates/ce-store-surreal/…` (new)
+
+## Code: `ce-store-core` trait
+```rust
+// crates/ce-store-core/src/lib.rs
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RepoIdentity {
+    pub repo_id: String,      // e.g. hash of repo root contents
+    pub root_path: String,    // absolute path for local-only use
+    pub default_branch: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileRecord {
+    pub file_id: String,      // stable id (e.g. hash(repo_id + path))
+    pub repo_id: String,
+    pub path: String,
+    pub lang: String,         // "rust" | "ts" | "tsx" | "swift" | ...
+    pub blob_hash: String,    // content hash
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FragmentRecord {
+    pub frag_id: String,      // stable id (hash of file + span + kind)
+    pub repo_id: String,
+    pub file_id: String,
+    pub kind: String,         // "api_summary" | "function" | "type" | ...
+    pub symbol: Option<String>,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub text: String,
+    pub embedding: Option<Vec<f32>>,
+    pub token_estimate: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EdgeRecord {
+    pub repo_id: String,
+    pub from_id: String,      // record id (file_id or frag_id or symbol_id)
+    pub edge_type: String,    // "ts_import" | "defines" | "refs" | ...
+    pub to_id: String,
+    pub weight: f32,
+    pub meta: serde_json::Value,
+}
+
+#[derive(Clone, Debug)]
+pub struct SearchHit {
+    pub frag_id: String,
+    pub score: f32,
+    pub reason: String,       // "vector" | "fts" | "hybrid"
+}
+
+#[derive(Clone, Debug)]
+pub struct PackRequest {
+    pub repo_id: String,
+    pub query: String,
+    pub k: usize,
+    pub token_budget: usize,
+    pub include_kinds: Vec<String>,
+    pub expand_edges: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PackResult {
+    pub fragments: Vec<FragmentRecord>,
+    pub total_tokens_estimate: usize,
+    pub debug: serde_json::Value,
+}
+
+#[async_trait]
+pub trait CeStore: Send + Sync {
+    async fn init_repo(&self, repo: &RepoIdentity) -> anyhow::Result<()>;
+
+    async fn upsert_files(&self, files: &[FileRecord]) -> anyhow::Result<()>;
+    async fn upsert_fragments(&self, frags: &[FragmentRecord]) -> anyhow::Result<()>;
+    async fn upsert_edges(&self, edges: &[EdgeRecord]) -> anyhow::Result<()>;
+
+    async fn delete_missing_files(&self, repo_id: &str, keep_file_ids: &[String]) -> anyhow::Result<usize>;
+    async fn delete_missing_fragments(&self, repo_id: &str, keep_frag_ids: &[String]) -> anyhow::Result<usize>;
+
+    async fn vector_search(&self, repo_id: &str, query_vec: &[f32], k: usize) -> anyhow::Result<Vec<SearchHit>>;
+    async fn fts_search(&self, repo_id: &str, query: &str, k: usize) -> anyhow::Result<Vec<SearchHit>>;
+    async fn hybrid_search_rrf(&self, repo_id: &str, query: &str, query_vec: &[f32], k: usize) -> anyhow::Result<Vec<SearchHit>>;
+
+    async fn fetch_fragments(&self, repo_id: &str, frag_ids: &[String]) -> anyhow::Result<Vec<FragmentRecord>>;
+    async fn expand_graph(&self, repo_id: &str, seed_ids: &[String], edge_types: &[String], max_nodes: usize) -> anyhow::Result<Vec<String>>;
+
+    async fn pack(&self, req: PackRequest) -> anyhow::Result<PackResult>;
+}
+```
+
+## Acceptance criteria
+- Indexing and packing code depends on `CeStore` only
+- SQLite backend still works unchanged (adapter)
+- New backend can be added without touching indexer logic
+
+---
+
+# Sub-issue 2: Add embedded SurrealDB backend crate
+
+## Summary
+Create `ce-store-surreal` implementing `CeStore` using embedded SurrealDB.
+
+We will support engine selection:
+- `mem` (tests)
+- `surrealkv` default persistent engine
+- optional `rocksdb` for users who prefer it
+
+Embedded mode is supported by SurrealDB’s Rust SDK.  [oai_citation:6‡SurrealDB](https://surrealdb.com/docs/surrealdb/embedding/rust)  
+SurrealKV is file-backed and Rust-native, but the SurrealKV docs note it’s considered beta.  [oai_citation:7‡SurrealDB](https://surrealdb.com/docs/surrealkv)  
+RocksDB is common but may require external deps and can be heavy to compile.  [oai_citation:8‡Docs.rs](https://docs.rs/surrealdb/latest/surrealdb/engine/any/index.html)
+
+## Cargo features
+Add behind a feature flag so default builds stay lean:
+
+```toml
+# crates/ce-store-surreal/Cargo.toml
+[features]
+default = []
+surreal = []
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# behind feature "surreal"
+surrealdb = { version = "2", default-features = false, features = ["kv-mem", "surreal-kv"], optional = true }
+```
+
+Notes:
+- SurrealDB embedded examples use `Surreal::new::<Mem>(())` and also show local engines like RocksDB.  [oai_citation:9‡SurrealDB](https://surrealdb.com/docs/surrealdb/embedding/rust)  
+- SurrealKV with versioning is shown using `SurrealKv` and `.versioned()`.  [oai_citation:10‡SurrealDB](https://surrealdb.com/docs/sdk/rust/methods/new)
+
+## Code: Surreal store config + connector
+```rust
+// crates/ce-store-surreal/src/lib.rs
+use anyhow::Context;
+use surrealdb::Surreal;
+
+#[derive(Clone, Debug)]
+pub enum SurrealEngine {
+    Mem,
+    SurrealKv { path: String, versioned: bool },
+    // Optional later:
+    // RocksDb { path: String },
+}
+
+#[derive(Clone, Debug)]
+pub struct SurrealConfig {
+    pub ns: String,
+    pub db: String,
+    pub engine: SurrealEngine,
+    pub embedding_dim: usize,
+}
+
+pub struct SurrealStore {
+    pub cfg: SurrealConfig,
+    pub db: Surreal<surrealdb::engine::any::Any>,
+}
+
+impl SurrealStore {
+    pub async fn connect(cfg: SurrealConfig) -> anyhow::Result<Self> {
+        // We use Surreal<Any> so we can select engine by endpoint string at runtime.  [oai_citation:11‡Docs.rs](https://docs.rs/surrealdb/latest/surrealdb/engine/any/index.html)
+        let endpoint = match &cfg.engine {
+            SurrealEngine::Mem => "mem://".to_string(),
+            SurrealEngine::SurrealKv { path, versioned } => {
+                if *versioned {
+                    format!("surrealkv+versioned://{}", path)
+                } else {
+                    format!("surrealkv://{}", path)
+                }
+            }
+        };
+
+        let db = surrealdb::engine::any::connect(endpoint).await
+            .context("Failed to connect to embedded SurrealDB")?;
+
+        db.use_ns(&cfg.ns).use_db(&cfg.db).await
+            .context("Failed to select namespace/db")?;
+
+        Ok(Self { cfg, db })
+    }
+}
+```
+
+## Acceptance criteria
+- `SurrealStore::connect` works for `mem://` and `surrealkv://…`
+- CI tests can run with in-memory engine
+- Local use can point at `.ce/surreal/` directory and persist across runs
+
+---
+
+# Sub-issue 3: Define the Surreal schema (tables + indexes + graph relations)
+
+## Summary
+Create a deterministic schema for:
+- repos, files, fragments
+- optional symbols
+- graph edges via `RELATE`
+- vector index for embeddings (HNSW)
+- full-text index for fragment text (BM25 + optional HIGHLIGHTS)
+- optional hybrid fusion helpers
+
+SurrealDB vector docs show defining an HNSW index and querying with `<|k,effort|>` while using `vector::distance::knn()`.  [oai_citation:12‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)  
+Full text docs show `DEFINE ANALYZER`, `DEFINE INDEX … FULLTEXT … BM25 HIGHLIGHTS`, and queries using match operators + `search::score`.  [oai_citation:13‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/full-text-search)  
+Graph relations are created using `RELATE` and edges can store extra fields.  [oai_citation:14‡SurrealDB](https://surrealdb.com/docs/surrealql/statements/relate)
+
+## SurrealQL schema (stored in repo as a .surql file)
+Create: `crates/ce-store-surreal/schema/prune.surql`
+
+```sql
+-- Namespace/db are selected by the Rust client using use_ns/use_db.
+
+-- Core tables (schemaless is fine for derived index data)
+DEFINE TABLE repo SCHEMALESS;
+DEFINE TABLE file SCHEMALESS;
+DEFINE TABLE frag SCHEMALESS;
+
+-- Optional symbol table
+DEFINE TABLE symbol SCHEMALESS;
+
+-- Full-text analyzer for code-ish text
+DEFINE ANALYZER code_analyzer
+  TOKENIZERS class, blank, punct, camel
+  FILTERS lowercase, ascii;
+
+-- Full-text index for fragments (BM25)
+DEFINE INDEX frag_text_idx
+  ON TABLE frag
+  FIELDS text
+  FULLTEXT ANALYZER code_analyzer
+  BM25;
+
+-- Vector index for embeddings
+-- Use DIST COSINE for semantic embeddings; DIMENSION must match embedding model output.  [oai_citation:15‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+-- TYPE F32 is supported in docs (default is F64).  [oai_citation:16‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+DEFINE INDEX frag_vec_idx
+  ON TABLE frag
+  FIELDS embedding
+  HNSW DIMENSION $EMBED_DIM DIST COSINE TYPE F32;
+
+-- Helpful field indexes (optional)
+DEFINE INDEX file_repo_path ON TABLE file FIELDS repo_id, path;
+DEFINE INDEX frag_repo_file ON TABLE frag FIELDS repo_id, file_id;
+```
+
+### Notes
+- We parameterize `$EMBED_DIM` at install time by text substitution in Rust (or run a second statement).
+- If you want `search::highlight`, add `HIGHLIGHTS` to the FTS index.  [oai_citation:17‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/full-text-search)
+
+## Rust code: schema install
+```rust
+// crates/ce-store-surreal/src/schema.rs
+use anyhow::Context;
+
+pub async fn ensure_schema(db: &surrealdb::Surreal<surrealdb::engine::any::Any>, embed_dim: usize) -> anyhow::Result<()> {
+    let raw = include_str!("../schema/prune.surql");
+    let rendered = raw.replace("$EMBED_DIM", &embed_dim.to_string());
+    db.query(rendered).await.context("Failed to apply schema")?;
+    Ok(())
+}
+```
+
+Call `ensure_schema` in `SurrealStore::connect`.
+
+## Acceptance criteria
+- On first run, schema installs cleanly
+- On subsequent runs, schema is idempotent (use `OVERWRITE` or tolerate errors)
+- Vector KNN queries succeed once embeddings exist
+- FTS queries succeed once fragment text exists
+
+---
+
+# Sub-issue 4: Write-path implementation (upserts + deletes + batching)
+
+## Summary
+Implement upsert paths for files/fragments/edges with batching so indexing stays fast.
+
+We’ll keep record IDs stable:
+- `repo:<repo_id>`
+- `file:<file_id>`
+- `frag:<frag_id>`
+- `symbol:<symbol_id>`
+
+## Rust code: upsert fragments (batch)
+```rust
+// crates/ce-store-surreal/src/write.rs
+use anyhow::Context;
+use serde_json::json;
+
+pub async fn upsert_fragments(
+    db: &surrealdb::Surreal<surrealdb::engine::any::Any>,
+    frags: &[ce_store_core::FragmentRecord],
+) -> anyhow::Result<()> {
+    // Batch insert as one query to reduce overhead.
+    // Use UPSERT to overwrite by id.
+    // We store embedding as an array of numbers; SurrealDB supports numeric arrays for vectors.  [oai_citation:18‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+    let mut q = String::new();
+    for f in frags {
+        let rid = format!("frag:{}", f.frag_id);
+        let content = json!({
+            "repo_id": f.repo_id,
+            "file_id": f.file_id,
+            "kind": f.kind,
+            "symbol": f.symbol,
+            "start_line": f.start_line,
+            "end_line": f.end_line,
+            "text": f.text,
+            "embedding": f.embedding.as_ref().map(|v| v.iter().map(|x| *x as f64).collect::<Vec<f64>>()),
+            "token_estimate": f.token_estimate,
+        });
+        q.push_str(&format!("UPSERT {} CONTENT {};\n", rid, content));
+    }
+    db.query(q).await.context("Failed upserting fragments")?;
+    Ok(())
+}
+```
+
+## Edges via `RELATE`
+Graph edges are created with `RELATE` and can contain metadata fields.  [oai_citation:19‡SurrealDB](https://surrealdb.com/docs/surrealql/statements/relate)
+
+```rust
+pub async fn upsert_edges(
+    db: &surrealdb::Surreal<surrealdb::engine::any::Any>,
+    edges: &[ce_store_core::EdgeRecord],
+) -> anyhow::Result<()> {
+    let mut q = String::new();
+    for e in edges {
+        // from/to may refer to file or frag or symbol; we prefix by caller contract:
+        // e.from_id must already be like "file:..." / "frag:..." / "symbol:..."
+        let meta = serde_json::to_string(&e.meta)?;
+        q.push_str(&format!(
+            "RELATE {}->{}->{} SET repo_id = {}, weight = {}, meta = {};\n",
+            e.from_id,
+            e.edge_type,
+            e.to_id,
+            serde_json::to_string(&e.repo_id)?,
+            e.weight,
+            meta
+        ));
+    }
+    db.query(q).await?;
+    Ok(())
+}
+```
+
+## Deletes (stale cleanup)
+Implement `delete_missing_*` with a set-based delete:
+- delete where `repo_id = $repo` and `id NOT IN $keep_ids`
+
+## Acceptance criteria
+- Indexing completes without per-record round trips
+- Stale cleanup works and is fast enough for monorepos
+- Edge writes create traversable relations
+
+---
+
+# Sub-issue 5: Read-path implementation (vector, FTS, hybrid, graph expansion)
+
+## Summary
+Implement:
+- vector KNN search
+- full-text BM25 search
+- hybrid fusion (RRF) optionally inside DB
+- graph expansion from seed IDs along edge types
+
+### Vector search
+SurrealDB vector docs show:
+- `DEFINE INDEX … HNSW DIMENSION …`
+- query using `embedding <|k,effort|> $qvec` and reuse distance via `vector::distance::knn()`  [oai_citation:20‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+
+```rust
+pub async fn vector_search(
+    db: &surrealdb::Surreal<surrealdb::engine::any::Any>,
+    repo_id: &str,
+    qvec: &[f32],
+    k: usize,
+) -> anyhow::Result<Vec<ce_store_core::SearchHit>> {
+    let qvec64: Vec<f64> = qvec.iter().map(|x| *x as f64).collect();
+    let sql = r#"
+      LET $repo = $repo_id;
+      LET $qvec = $qvec;
+      SELECT id, vector::distance::knn() AS distance
+      FROM frag
+      WHERE repo_id = $repo
+        AND embedding <|$k,100|> $qvec
+      ORDER BY distance ASC
+      LIMIT $k;
+    "#;
+    let mut res = db.query(sql)
+        .bind(("repo_id", repo_id))
+        .bind(("qvec", qvec64))
+        .bind(("k", k as i64))
+        .await?;
+
+    #[derive(serde::Deserialize)]
+    struct Row { id: String, distance: f64 }
+
+    let rows: Vec<Row> = res.take(0)?;
+    Ok(rows.into_iter().map(|r| ce_store_core::SearchHit {
+        frag_id: r.id.trim_start_matches("frag:").to_string(),
+        score: (1.0 / (1.0 + r.distance)) as f32,
+        reason: "vector".to_string(),
+    }).collect())
+}
+```
+
+### Full-text search (BM25 score)
+FTS docs show:
+- `DEFINE INDEX … FULLTEXT … BM25 HIGHLIGHTS`
+- use `@0@` operator to pair with `search::score(0)`  [oai_citation:21‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/full-text-search)
+
+```rust
+pub async fn fts_search(
+    db: &surrealdb::Surreal<surrealdb::engine::any::Any>,
+    repo_id: &str,
+    query: &str,
+    k: usize,
+) -> anyhow::Result<Vec<ce_store_core::SearchHit>> {
+    let sql = r#"
+      SELECT id, search::score(0) AS score
+      FROM frag
+      WHERE repo_id = $repo_id
+        AND text @0@ $q
+      ORDER BY score DESC
+      LIMIT $k;
+    "#;
+
+    let mut res = db.query(sql)
+        .bind(("repo_id", repo_id))
+        .bind(("q", query))
+        .bind(("k", k as i64))
+        .await?;
+
+    #[derive(serde::Deserialize)]
+    struct Row { id: String, score: f64 }
+
+    let rows: Vec<Row> = res.take(0)?;
+    Ok(rows.into_iter().map(|r| ce_store_core::SearchHit {
+        frag_id: r.id.trim_start_matches("frag:").to_string(),
+        score: r.score as f32,
+        reason: "fts".to_string(),
+    }).collect())
+}
+```
+
+### Hybrid fusion (optional): `search::rrf`
+SurrealDB’s vector docs include an example fusing vector + fulltext results via `search::rrf`.  [oai_citation:22‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+
+You can implement `hybrid_search_rrf` in-db like:
+1) run a vector SELECT list `$vs`
+2) run an FTS SELECT list `$ft`
+3) `search::rrf([$vs, $ft], $k, 60)`  [oai_citation:23‡SurrealDB](https://surrealdb.com/docs/surrealdb/models/vector)
+
+### Graph expansion
+Use traversal syntax:
+- `SELECT ->edge_type->target FROM record`
+or query edge tables produced by `RELATE`.  [oai_citation:24‡SurrealDB](https://surrealdb.com/docs/surrealql/statements/relate)
+
+Implement expansion as:
+- iterative BFS in Rust:
+  - for each layer, query outgoing edges of types in `edge_types`
+  - accumulate until `max_nodes`
+
+## Acceptance criteria
+- vector search returns results with embeddings present
+- fts search returns results with text present + index installed
+- hybrid returns stable fused results (optional flag)
+- graph expansion returns connected neighbors for pack building
+
+---
+
+# Sub-issue 6: CLI + MCP wiring
+
+## Summary
+Expose store selection and Surreal configuration:
+
+### CLI flags
+- `--store sqlite|surreal`
+- `--surreal-path .ce/surreal` (directory)
+- `--surreal-engine surrealkv|mem` (default surrealkv for persistent)
+- `--embedding-dim 1536` (or whatever your embedder uses)
+- `--fts on|off` (default on)
+- `--hybrid rrf|client` (default client-side fusion, optional in-db)
+
+### Example
+```bash
+ce index --repo . --store surreal --surreal-path .ce/surreal --embedding-dim 1536
+ce pack  --repo . --store surreal --query "…" --k 32
+```
+
+### MCP server
+`ce mcp serve` should accept:
+- `--store`
+- `--surreal-path`
+…and expose them to tools.
+
+## Acceptance criteria
+- Switching backends requires no code changes, only a flag
+- `doctor` reports store backend and where it’s stored
+- Default behavior remains SQLite unless explicitly requested
+
+---
+
+# Sub-issue 7: Tests + benchmarks (parity + performance)
+
+## Summary
+Add:
+- Unit tests for schema install
+- Integration tests for vector + fts + edges
+- Bench harness to compare:
+  - index time
+  - query latency
+  - DB size on disk
+  - pack quality metrics (Stage A) and optionally SWE-bench Stage B
+
+### Test engine
+Use embedded **Mem** for CI tests:
+- SurrealDB docs show `Surreal::new::<Mem>(()).await?`.  [oai_citation:25‡SurrealDB](https://surrealdb.com/docs/surrealdb/embedding/rust)
+
+### Required tests
+1) **Schema install is idempotent**
+2) Insert fragments with embeddings, run vector query
+3) Insert fragments with text, run fts query
+4) Create graph edges with `RELATE`, traverse or query to confirm connectivity  [oai_citation:26‡SurrealDB](https://surrealdb.com/docs/surrealql/statements/relate)
+
+### Bench
+Create `ce bench store` with:
+- `--store sqlite|surreal`
+- `--workload index|query|pack`
+
+## Acceptance criteria
+- CI passes with Mem engine
+- Bench produces a simple report (JSON + markdown)
+
+---
+
+# Sub-issue 8: Documentation + “derived index safety” notes
+
+## Summary
+Document:
+- why SurrealKV beta is acceptable for Prune (derived index)  [oai_citation:27‡SurrealDB](https://surrealdb.com/docs/surrealkv)
+- how to choose between SurrealKV and RocksDB (optional)  [oai_citation:28‡Docs.rs](https://docs.rs/surrealdb/latest/surrealdb/engine/any/index.html)
+- how to reset/rebuild store (delete `.ce/surreal/`)
+
+Include:
+- `docs/store-surreal.md`
+- `docs/store-compare.md` (sqlite vs surreal)
+
+## Acceptance criteria
+- Users can enable Surreal backend in <5 minutes
+- Recovery story is clear (“delete and reindex”)
+
+---
+
+## Epic “Definition of Done”
+- `--store surreal` works end-to-end for: `index`, `search`, `pack`, `mcp serve`
+- Feature flags prevent SurrealDB from being a default dependency
+- CI has tests (Mem engine) + at least one bench harness
+- Docs exist and explain how to use/disable
+
+---
+
+If you want, next I can also draft the **exact SurrealQL edge taxonomy** for Prune (file->imports, frag->refs, frag->defines, symbol->declared_in, etc.) and a recommended “connected subgraph selection” query approach for SurrealDB traversal.
