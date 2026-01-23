@@ -74,6 +74,7 @@ All generated or modified code must follow these rules to avoid runtime crashes 
 - Keep going without pausing for confirmation; only ask when a decision is blocking progress.
 - Never stage, commit, or alter files you did not edit for the task; leave unrelated changes for their owner.
 - Other agents may be working in the same repo; mind your own business and avoid unrelated investigation or edits.
+- Xcode may update `PruneApp/PruneApp.xcodeproj/project.pbxproj` automatically when files are added/removed. It is safe to commit these changes when they directly correspond to your edits.
 
 ---
 
