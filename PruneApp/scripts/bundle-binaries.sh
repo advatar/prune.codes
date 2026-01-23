@@ -39,8 +39,8 @@ if [ -z "${SOURCE_DIR}" ]; then
   CARGO_BIN="${CARGO:-cargo}"
   CARGO_TARGET_DIR="${TARGET_TEMP_DIR}/cargo-target"
 
-  "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p ce-cli --bin ce
-  "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p ce-mcp --bin ce-mcp
+  "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p ce-cli --bin ce --features surreal
+  "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p ce-mcp --bin ce-mcp --features surreal
   "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p prune-mcp --bin prune-mcp
   "${CARGO_BIN}" build ${BUILD_FLAG} --target-dir "${CARGO_TARGET_DIR}" --manifest-path "${PRUNE_ROOT}/Cargo.toml" -p prune-sync --bin prune-sync
 
@@ -52,8 +52,20 @@ if [ -z "${CLOUDFLARED_SOURCE}" ] && [ -f "${SRCROOT}/vendor/cloudflared" ]; the
   CLOUDFLARED_SOURCE="${SRCROOT}/vendor/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -f "${REPO_ROOT}/vendor/cloudflared" ]; then
   CLOUDFLARED_SOURCE="${REPO_ROOT}/vendor/cloudflared"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/opt/cloudflared/bin/cloudflared" ]; then
+  CLOUDFLARED_SOURCE="/usr/local/opt/cloudflared/bin/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && command -v cloudflared >/dev/null 2>&1; then
   CLOUDFLARED_SOURCE="$(command -v cloudflared)"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/opt/homebrew/bin/brew" ]; then
+  BREW_PREFIX="$(/opt/homebrew/bin/brew --prefix cloudflared 2>/dev/null || true)"
+  if [ -n "${BREW_PREFIX}" ] && [ -x "${BREW_PREFIX}/bin/cloudflared" ]; then
+    CLOUDFLARED_SOURCE="${BREW_PREFIX}/bin/cloudflared"
+  fi
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/bin/brew" ]; then
+  BREW_PREFIX="$(/usr/local/bin/brew --prefix cloudflared 2>/dev/null || true)"
+  if [ -n "${BREW_PREFIX}" ] && [ -x "${BREW_PREFIX}/bin/cloudflared" ]; then
+    CLOUDFLARED_SOURCE="${BREW_PREFIX}/bin/cloudflared"
+  fi
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/opt/homebrew/bin/cloudflared" ]; then
   CLOUDFLARED_SOURCE="/opt/homebrew/bin/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/bin/cloudflared" ]; then

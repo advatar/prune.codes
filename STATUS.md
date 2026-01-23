@@ -12,6 +12,7 @@
 - Add starter A2UI catalog (CATALOG.md + Swift file) and wire it into the renderer.
 - Document Xcode project file auto-updates in AGENTS.md.
 - Resolve A2UI starter catalog build errors and clean ce-cli/ce-mcp warnings.
+- Ensure cloudflared is found during bundling/install and enable Surreal features in bundled ce binaries.
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
@@ -65,6 +66,7 @@
 - Let Install.command and the runtime installer locate system cloudflared when the bundle is missing it.
 - Routed A2UI interactions through userAction → LLM responses with action requests + data-model baselines.
 - Fixed A2UI starter catalog SwiftUI builder errors and gated Surreal-only Rust code to clear ce-cli/ce-mcp warnings.
+- Enabled Surreal features for bundled ce binaries and expanded cloudflared discovery in bundle/install/runtime.
 
 ## Next Steps
 - Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.

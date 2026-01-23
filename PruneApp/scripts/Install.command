@@ -29,6 +29,8 @@ elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/opt/homebrew/bin/cloudflared" ]; t
   CLOUDFLARED_SOURCE="/opt/homebrew/bin/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/opt/homebrew/opt/cloudflared/bin/cloudflared" ]; then
   CLOUDFLARED_SOURCE="/opt/homebrew/opt/cloudflared/bin/cloudflared"
+elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/opt/cloudflared/bin/cloudflared" ]; then
+  CLOUDFLARED_SOURCE="/usr/local/opt/cloudflared/bin/cloudflared"
 elif [ -z "${CLOUDFLARED_SOURCE}" ] && [ -x "/usr/local/bin/cloudflared" ]; then
   CLOUDFLARED_SOURCE="/usr/local/bin/cloudflared"
 fi

@@ -485,6 +485,7 @@ struct BundledBinaryLocator {
         let candidates = [
             "/opt/homebrew/bin/cloudflared",
             "/opt/homebrew/opt/cloudflared/bin/cloudflared",
+            "/usr/local/opt/cloudflared/bin/cloudflared",
             "/usr/local/bin/cloudflared"
         ]
         if let found = findExecutable(named: "cloudflared", extraPaths: candidates) {
