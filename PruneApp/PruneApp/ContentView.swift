@@ -109,6 +109,7 @@ struct MenuBarView: View {
             store: store,
             surfaceId: surfaceId,
             bindingProvider: bindingProvider,
+            style: .menu,
             interactionHandler: { event in
                 handleInteraction(event)
             }
@@ -2598,40 +2599,46 @@ private extension A2UIBindingProvider {
     func perform(action: String) {}
 }
 
+private enum A2UISurfaceStyle {
+    case standard
+    case menu
+}
+
 @MainActor
 private struct A2UISurfaceView: View {
     @ObservedObject var store: NormalizedSurfaceStore
     let surfaceId: String
     let bindingProvider: (any A2UIBindingProvider)?
+    let style: A2UISurfaceStyle
     let interactionHandler: ((A2UIUserActionEvent) -> Void)?
 
     init(
         store: NormalizedSurfaceStore,
         surfaceId: String,
         bindingProvider: (any A2UIBindingProvider)? = nil,
+        style: A2UISurfaceStyle = .standard,
         interactionHandler: ((A2UIUserActionEvent) -> Void)? = nil
     ) {
         self.store = store
         self.surfaceId = surfaceId
         self.bindingProvider = bindingProvider
+        self.style = style
         self.interactionHandler = interactionHandler
     }
 
     var body: some View {
         if let root = store.rootComponentId(for: surfaceId) {
-            if shouldUseStarterCatalog {
-                A2UIStarterCatalogSurfaceView(
+            let content: AnyView = shouldUseStarterCatalog
+                ? AnyView(A2UIStarterCatalogSurfaceView(
                     store: store,
                     surfaceId: surfaceId,
                     rootComponentId: root,
                     interactionHandler: interactionHandler
-                )
-            } else {
-                render(componentId: root)
-            }
-        } else {
-            EmptyView()
+                ))
+                : render(componentId: root)
+            return applySurfaceStyle(content)
         }
+        return AnyView(EmptyView())
     }
 
     private var shouldUseStarterCatalog: Bool {
@@ -2655,7 +2662,7 @@ private struct A2UISurfaceView: View {
         case "Column":
             let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
             return AnyView(
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: columnSpacing) {
                     ForEach(children, id: \.self) { cid in
                         render(componentId: cid)
                     }
@@ -2665,7 +2672,7 @@ private struct A2UISurfaceView: View {
         case "Row":
             let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
             return AnyView(
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: rowSpacing) {
                     ForEach(children, id: \.self) { cid in
                         render(componentId: cid)
                     }
@@ -2673,6 +2680,13 @@ private struct A2UISurfaceView: View {
             )
 
         case "Divider":
+            if isMenuStyle {
+                return AnyView(
+                    Divider()
+                        .padding(.horizontal, menuItemHorizontalPadding)
+                        .padding(.vertical, 4)
+                )
+            }
             return AnyView(Divider())
 
         case "Text":
@@ -2709,10 +2723,11 @@ private struct A2UISurfaceView: View {
                     break
                 }
             }
-            if selectable {
-                return AnyView(view.textSelection(.enabled))
+            let rendered: AnyView = selectable ? AnyView(view.textSelection(.enabled)) : AnyView(view)
+            if isMenuStyle {
+                return menuItem(rendered, verticalPadding: 2)
             }
-            return AnyView(view)
+            return rendered
 
         case "TextField":
             let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? ""
@@ -2883,6 +2898,11 @@ private struct A2UISurfaceView: View {
                 sendUserAction(name: actionId, componentId: componentId)
             }
             .disabled(disabled)
+            if isMenuStyle {
+                return AnyView(
+                    button.buttonStyle(MenuBarButtonStyle(isPrimary: variant == "primary"))
+                )
+            }
             if variant == "primary" {
                 return AnyView(button.buttonStyle(.borderedProminent))
             }
@@ -3042,6 +3062,64 @@ private struct A2UISurfaceView: View {
             result = AnyView(result.disabled(true))
         }
         return result
+    }
+
+    private var isMenuStyle: Bool {
+        style == .menu
+    }
+
+    private var columnSpacing: CGFloat {
+        isMenuStyle ? 6 : 12
+    }
+
+    private var rowSpacing: CGFloat {
+        isMenuStyle ? 8 : 12
+    }
+
+    private var menuItemHorizontalPadding: CGFloat {
+        10
+    }
+
+    private func applySurfaceStyle(_ view: AnyView) -> AnyView {
+        guard isMenuStyle else { return view }
+        return AnyView(
+            view
+                .padding(.vertical, 8)
+                .frame(minWidth: 240, alignment: .leading)
+        )
+    }
+
+    private func menuItem(_ view: AnyView, verticalPadding: CGFloat) -> AnyView {
+        AnyView(
+            view
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, menuItemHorizontalPadding)
+                .padding(.vertical, verticalPadding)
+        )
+    }
+
+    private struct MenuBarButtonStyle: ButtonStyle {
+        let isPrimary: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .font(.system(size: 13, weight: isPrimary ? .semibold : .regular))
+                .foregroundStyle(isPrimary ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(backgroundColor(pressed: configuration.isPressed))
+                )
+        }
+
+        private func backgroundColor(pressed: Bool) -> Color {
+            if isPrimary {
+                return Color.accentColor.opacity(pressed ? 0.65 : 0.55)
+            }
+            return Color.primary.opacity(pressed ? 0.18 : 0.1)
+        }
     }
 }
 

@@ -6,6 +6,7 @@
 - Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
 - Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
 - Fix tray install status by auto-installing bundled dependencies on first launch.
+- Fix menu bar popover layout/spacing so controls and buttons align cleanly.
 - Make all human interaction LLM-driven via A2UI (LLM-generated surfaces, Q/A overrides).
 - Ensure cloudflared is bundled/installed for dashboard flows.
 - Route all UI interactions through A2UI userAction → LLM → UI updates.
