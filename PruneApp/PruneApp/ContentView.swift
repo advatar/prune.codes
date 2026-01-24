@@ -681,10 +681,15 @@ final class A2UIAgent: ObservableObject {
                 surfaceId: surfaceId,
                 allowedActions: allowedActionSet
             )
+            let resolvedActions = self.fallbackActionRequests(
+                existing: actionRequests,
+                event: event,
+                allowedActions: allowedActionSet
+            )
             await MainActor.run {
                 resetSurface(store, messages: mergedOutput)
                 if let handler = self.actionHandlers[surfaceId] {
-                    for request in actionRequests {
+                    for request in resolvedActions {
                         handler(request.name, request.payload)
                     }
                 }
@@ -925,6 +930,17 @@ final class A2UIAgent: ObservableObject {
             }
         }
         return requests
+    }
+
+    nonisolated private func fallbackActionRequests(
+        existing: [A2UIActionRequest],
+        event: A2UIUserActionEvent,
+        allowedActions: Set<String>
+    ) -> [A2UIActionRequest] {
+        guard existing.isEmpty else { return existing }
+        guard allowedActions.contains(event.name) else { return existing }
+        let payload: JSONValue? = event.context.isEmpty ? nil : .object(event.context)
+        return [A2UIActionRequest(name: event.name, payload: payload)]
     }
 
     nonisolated private func applyBaselineModel(
