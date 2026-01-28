@@ -55,8 +55,14 @@ fn main() -> Result<()> {
         .spawn()
         .with_context(|| format!("failed to spawn {}", args.ce_mcp_path))?;
 
-    let stdin = child.stdin.take().ok_or_else(|| anyhow!("missing ce-mcp stdin"))?;
-    let stdout = child.stdout.take().ok_or_else(|| anyhow!("missing ce-mcp stdout"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("missing ce-mcp stdin"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("missing ce-mcp stdout"))?;
     thread::spawn(move || {
         let _ = child.wait();
     });
@@ -66,8 +72,7 @@ fn main() -> Result<()> {
         stdout: BufReader::new(stdout),
     }));
 
-    let server = Server::http(&args.bind)
-        .map_err(|err| anyhow!("bind server failed: {err}"))?;
+    let server = Server::http(&args.bind).map_err(|err| anyhow!("bind server failed: {err}"))?;
     println!("prune-mcp listening on {}", args.bind);
 
     for request in server.incoming_requests() {
@@ -178,7 +183,8 @@ fn forward_to_sync(request: Request, args: &Args) -> Result<()> {
     for header in request.headers() {
         let name = header.field.as_str();
         let name_str = name.as_str();
-        if name_str.eq_ignore_ascii_case("host") || name_str.eq_ignore_ascii_case("content-length") {
+        if name_str.eq_ignore_ascii_case("host") || name_str.eq_ignore_ascii_case("content-length")
+        {
             continue;
         }
         proxy = proxy.set(name_str, header.value.as_str());
@@ -198,7 +204,9 @@ fn forward_to_sync(request: Request, args: &Args) -> Result<()> {
     };
 
     let status = response.status();
-    let content_type = response.header("Content-Type").map(|value| value.to_string());
+    let content_type = response
+        .header("Content-Type")
+        .map(|value| value.to_string());
     let mut response_body = Vec::new();
     response
         .into_reader()

@@ -1,7 +1,6 @@
-
 use anyhow::Result;
-use clap::ValueEnum;
 use ce_store::Db;
+use clap::ValueEnum;
 use std::fs;
 use std::path::Path;
 
@@ -27,19 +26,48 @@ pub enum ProjectSubtype {
 /// - .ce/strategies/{inception,failure_fix}.toml
 ///
 /// If `force` is false, existing files are not overwritten.
-pub fn apply_template(repo: &Path, template: ProjectTemplate, subtype: Option<ProjectSubtype>, force: bool) -> Result<()> {
+pub fn apply_template(
+    repo: &Path,
+    template: ProjectTemplate,
+    subtype: Option<ProjectSubtype>,
+    force: bool,
+) -> Result<()> {
     let prune_dir = repo.join(".prune");
     fs::create_dir_all(&prune_dir)?;
     let ce_strat_dir = repo.join(".ce").join("strategies");
     fs::create_dir_all(&ce_strat_dir)?;
 
-    write_if_missing_or_force(&prune_dir.join("prune.preferences.json"), &default_preferences(template, subtype)?, force)?;
-    write_if_missing_or_force(&prune_dir.join("prune.decisions.md"), &default_decisions(template, subtype), force)?;
-    write_if_missing_or_force(&prune_dir.join("prune.intent_router.json"), &default_intent_router(), force)?;
-    write_if_missing_or_force(&prune_dir.join("prune.reference_sources.json"), &default_reference_sources(template), force)?;
+    write_if_missing_or_force(
+        &prune_dir.join("prune.preferences.json"),
+        &default_preferences(template, subtype)?,
+        force,
+    )?;
+    write_if_missing_or_force(
+        &prune_dir.join("prune.decisions.md"),
+        &default_decisions(template, subtype),
+        force,
+    )?;
+    write_if_missing_or_force(
+        &prune_dir.join("prune.intent_router.json"),
+        &default_intent_router(),
+        force,
+    )?;
+    write_if_missing_or_force(
+        &prune_dir.join("prune.reference_sources.json"),
+        &default_reference_sources(template),
+        force,
+    )?;
 
-    write_if_missing_or_force(&ce_strat_dir.join("inception.toml"), &default_inception_strategy(template), force)?;
-    write_if_missing_or_force(&ce_strat_dir.join("failure_fix.toml"), &default_failure_strategy(template), force)?;
+    write_if_missing_or_force(
+        &ce_strat_dir.join("inception.toml"),
+        &default_inception_strategy(template),
+        force,
+    )?;
+    write_if_missing_or_force(
+        &ce_strat_dir.join("failure_fix.toml"),
+        &default_failure_strategy(template),
+        force,
+    )?;
 
     Ok(())
 }
@@ -56,16 +84,18 @@ pub fn write_onboarding(repo: &Path, db: &Db, template: ProjectTemplate) -> Resu
 
     let mut candidates: Vec<&str> = match template {
         ProjectTemplate::Web => vec![
-            "src/main.tsx","src/App.tsx","src/main.ts","src/App.ts",
-            "vite.config.ts","tailwind.config.js","tailwind.config.ts",
-            "supabase/functions","supabase/edge-functions"
+            "src/main.tsx",
+            "src/App.tsx",
+            "src/main.ts",
+            "src/App.ts",
+            "vite.config.ts",
+            "tailwind.config.js",
+            "tailwind.config.ts",
+            "supabase/functions",
+            "supabase/edge-functions",
         ],
-        ProjectTemplate::Mobile => vec![
-            "Package.swift",
-        ],
-        ProjectTemplate::Rust => vec![
-            "Cargo.toml","src/main.rs","src/lib.rs"
-        ],
+        ProjectTemplate::Mobile => vec!["Package.swift"],
+        ProjectTemplate::Rust => vec!["Cargo.toml", "src/main.rs", "src/lib.rs"],
     };
 
     // Include files that exist in the index (path match) when possible.
@@ -83,12 +113,22 @@ pub fn write_onboarding(repo: &Path, db: &Db, template: ProjectTemplate) -> Resu
     for p in &api_paths {
         match template {
             ProjectTemplate::Web => {
-                if p.contains("src/") && (p.contains("lib/") || p.contains("hooks/") || p.contains("components/") || p.contains("supabase")) {
+                if p.contains("src/")
+                    && (p.contains("lib/")
+                        || p.contains("hooks/")
+                        || p.contains("components/")
+                        || p.contains("supabase"))
+                {
                     chosen.push(p.clone());
                 }
             }
             ProjectTemplate::Mobile => {
-                if p.ends_with(".swift") && (p.contains("App") || p.contains("View") || p.contains("Model") || p.contains("Service")) {
+                if p.ends_with(".swift")
+                    && (p.contains("App")
+                        || p.contains("View")
+                        || p.contains("Model")
+                        || p.contains("Service"))
+                {
                     chosen.push(p.clone());
                 }
             }
@@ -98,7 +138,9 @@ pub fn write_onboarding(repo: &Path, db: &Db, template: ProjectTemplate) -> Resu
                 }
             }
         }
-        if chosen.len() >= 8 { break; }
+        if chosen.len() >= 8 {
+            break;
+        }
     }
 
     if chosen.is_empty() {
@@ -132,9 +174,9 @@ pub fn write_golden_paths(repo: &Path, db: &Db, template: ProjectTemplate) -> Re
 
     // Entry points
     let entry_candidates: Vec<&str> = match template {
-        ProjectTemplate::Web => vec!["src/main.tsx","src/App.tsx","src/main.ts","src/App.ts"],
-        ProjectTemplate::Mobile => vec!["App.swift","ContentView.swift"],
-        ProjectTemplate::Rust => vec!["src/main.rs","src/lib.rs"],
+        ProjectTemplate::Web => vec!["src/main.tsx", "src/App.tsx", "src/main.ts", "src/App.ts"],
+        ProjectTemplate::Mobile => vec!["App.swift", "ContentView.swift"],
+        ProjectTemplate::Rust => vec!["src/main.rs", "src/lib.rs"],
     };
     for c in entry_candidates {
         if let Some(p) = paths.iter().find(|p| p.ends_with(c)) {
@@ -147,14 +189,18 @@ pub fn write_golden_paths(repo: &Path, db: &Db, template: ProjectTemplate) -> Re
         for p in &paths {
             if p.contains("supabase") && (p.contains("client") || p.contains("supabase")) {
                 picks.push(p.clone());
-                if picks.len() >= 8 { break; }
+                if picks.len() >= 8 {
+                    break;
+                }
             }
         }
     }
 
     // Fill remaining with a few representative paths
     for p in &paths {
-        if picks.len() >= 12 { break; }
+        if picks.len() >= 12 {
+            break;
+        }
         if !picks.contains(p) {
             // prefer src/ and non-test
             if p.contains("src/") && !p.contains("test") && !p.contains("__tests__") {
@@ -187,11 +233,32 @@ fn write_if_missing_or_force(path: &Path, content: &str, force: bool) -> Result<
     Ok(())
 }
 
-fn default_preferences(template: ProjectTemplate, subtype: Option<ProjectSubtype>) -> Result<String> {
+fn default_preferences(
+    template: ProjectTemplate,
+    subtype: Option<ProjectSubtype>,
+) -> Result<String> {
     let (project_type, stack, thin_slice) = match template {
-        ProjectTemplate::Web => ("web", vec!["react","vite","tailwind","supabase","supabase_edge_functions"], "A minimal working UI flow + one data call with basic error handling."),
-        ProjectTemplate::Mobile => ("mobile", vec!["swiftui","swift6","xcode_multiplatform"], "One screen end-to-end with navigation + a data stub + error state."),
-        ProjectTemplate::Rust => ("rust", vec!["rust"], "A small end-to-end command or API surface with one test."),
+        ProjectTemplate::Web => (
+            "web",
+            vec![
+                "react",
+                "vite",
+                "tailwind",
+                "supabase",
+                "supabase_edge_functions",
+            ],
+            "A minimal working UI flow + one data call with basic error handling.",
+        ),
+        ProjectTemplate::Mobile => (
+            "mobile",
+            vec!["swiftui", "swift6", "xcode_multiplatform"],
+            "One screen end-to-end with navigation + a data stub + error state.",
+        ),
+        ProjectTemplate::Rust => (
+            "rust",
+            vec!["rust"],
+            "A small end-to-end command or API surface with one test.",
+        ),
     };
 
     let subtype_val = subtype.map(|s| format!("{:?}", s));
@@ -256,7 +323,7 @@ fn default_reference_sources(template: ProjectTemplate) -> String {
             serde_json::json!({"name":"React","type":"official","url":"https://react.dev/"}),
             serde_json::json!({"name":"Vite","type":"official","url":"https://vitejs.dev/"}),
             serde_json::json!({"name":"Tailwind","type":"official","url":"https://tailwindcss.com/docs"}),
-            serde_json::json!({"name":"Supabase","type":"official","url":"https://supabase.com/docs"})
+            serde_json::json!({"name":"Supabase","type":"official","url":"https://supabase.com/docs"}),
         ],
         ProjectTemplate::Mobile => vec![
             serde_json::json!({"name":"SwiftUI","type":"official","url":"https://developer.apple.com/documentation/swiftui"}),

@@ -185,7 +185,8 @@ pub async fn shortest_path_frags(
             continue;
         }
 
-        let sql = "SELECT out FROM rel WHERE repo_id = $repo_id AND etype INSIDE $etypes AND in = $node";
+        let sql =
+            "SELECT out FROM rel WHERE repo_id = $repo_id AND etype INSIDE $etypes AND in = $node";
         let mut res = db
             .query(sql)
             .bind(("repo_id", repo_id.to_string()))

@@ -1,17 +1,19 @@
 use anyhow::{anyhow, Result};
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
 #[cfg(feature = "surreal")]
 use ce_core::model::FragKind;
+use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
-use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
 use ce_core::snippet;
+use ce_core::tokenizer::TokenCounter;
 use ce_lang_rust::RustAdapter;
-use ce_store::{Db, Embedder};
 use ce_store::query;
+use ce_store::{Db, Embedder};
 #[cfg(feature = "surreal")]
-use ce_store_core::{file_id_for_path, CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
+use ce_store_core::{
+    file_id_for_path, CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity,
+};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -19,12 +21,16 @@ use std::fs;
 #[cfg(feature = "surreal")]
 use std::path::Component;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use ce_lsp::config::{merge_value_with_default, LspConfig, LspTemplate};
+use ce_lsp::{run_doctor, LspSession};
 use serde_json as json;
+use tokio::runtime::Runtime;
+use url::Url as StdUrl;
 
-mod tasks;
 mod inception;
+mod tasks;
 use ce_cli::integrations;
 
 #[cfg(feature = "surreal")]
@@ -39,6 +45,20 @@ enum PackFormat {
     Text,
     Json,
     Both,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+enum LspMode {
+    Off,
+    Auto,
+    On,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LspInitTemplate {
+    Web,
+    Mobile,
+    Rust,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -264,6 +284,10 @@ enum Cmd {
         #[arg(long)]
         alpha: Option<f32>,
 
+        /// LSP pack integration mode (off/auto/on).
+        #[arg(long, value_enum, default_value_t = LspMode::Off)]
+        lsp: LspMode,
+
         /// Output format for the pack.
         #[arg(long, value_enum, default_value_t = PackFormat::Text)]
         format: PackFormat,
@@ -344,6 +368,12 @@ enum Cmd {
         cmd: TasksCmd,
     },
 
+    /// LSP tooling for repo diagnostics / on-demand semantic resolution.
+    Lsp {
+        #[command(subcommand)]
+        cmd: LspCmd,
+    },
+
     /// Integrate Prune with a specific coding agent (Codex/OpenCode/Claude).
     Integrate {
         #[arg(long)]
@@ -389,7 +419,45 @@ enum McpCmd {
         /// If the index is missing, build it automatically.
         #[arg(long, default_value_t = true)]
         auto_index: bool,
-    }
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum LspCmd {
+    /// Initialize per-repo LSP config.
+    Init {
+        #[arg(long)]
+        repo: String,
+        #[arg(long, value_enum, default_value_t = LspInitTemplate::Web)]
+        template: LspInitTemplate,
+    },
+    /// Validate configured servers.
+    Doctor {
+        #[arg(long)]
+        repo: String,
+    },
+    /// Resolve a symbol definition from a file+position.
+    ResolveDefinition {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        line: u32,
+        #[arg(long)]
+        col: u32,
+    },
+    /// Resolve a symbol's type definition.
+    ResolveType {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        line: u32,
+        #[arg(long)]
+        col: u32,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -563,41 +631,145 @@ enum StrategyCmd {
 fn main() -> Result<()> {
     let args = CliArgs::parse();
     match args.cmd {
-        Cmd::Index { repo, store, full, prune, skip_edges, skip_grammar_checks, max_files } => {
-            cmd_index(&repo, &store, full, prune, skip_edges, skip_grammar_checks, max_files)
-        }
-        Cmd::Bootstrap { repo, store, template, subtype, force, skip_index, full, prune, skip_edges, skip_grammar_checks, max_files, skip_onboarding, skip_golden_paths } => {
-            cmd_bootstrap(&repo, &store, template, subtype, force, skip_index, full, prune, skip_edges, skip_grammar_checks, max_files, skip_onboarding, skip_golden_paths)
-        },
-        Cmd::Search { store, query, k, alpha } => cmd_search(&store, &query, k, alpha),
-        Cmd::Pack { store, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
-            cmd_pack(&store, &task, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), budget_chars, budget_tokens, tokenizer.as_deref(), max_bodies, alpha, format)
-        }
+        Cmd::Index {
+            repo,
+            store,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+        } => cmd_index(
+            &repo,
+            &store,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+        ),
+        Cmd::Bootstrap {
+            repo,
+            store,
+            template,
+            subtype,
+            force,
+            skip_index,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+            skip_onboarding,
+            skip_golden_paths,
+        } => cmd_bootstrap(
+            &repo,
+            &store,
+            template,
+            subtype,
+            force,
+            skip_index,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+            skip_onboarding,
+            skip_golden_paths,
+        ),
+        Cmd::Search {
+            store,
+            query,
+            k,
+            alpha,
+        } => cmd_search(&store, &query, k, alpha),
+        Cmd::Pack {
+            store,
+            task,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            budget_chars,
+            budget_tokens,
+            tokenizer,
+            max_bodies,
+            alpha,
+            lsp,
+            format,
+        } => cmd_pack(
+            &store,
+            &task,
+            strategy_id.as_deref(),
+            strategy_file.as_deref(),
+            strategy_json.as_deref(),
+            strategy_toml.as_deref(),
+            budget_chars,
+            budget_tokens,
+            tokenizer.as_deref(),
+            max_bodies,
+            alpha,
+            lsp,
+            format,
+        ),
 
-        Cmd::Eval { store, tasks, strategy_id, strategy_file, strategy_json, strategy_toml, limit, out } => {
-            cmd_eval(&store, &tasks, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), limit, out.as_deref())
-        }
-        Cmd::Bench { store, repo, workload, query, k, out } => {
-            cmd_bench(&store, &repo, workload, query.as_deref(), k, out.as_deref())
-        }
+        Cmd::Eval {
+            store,
+            tasks,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            limit,
+            out,
+        } => cmd_eval(
+            &store,
+            &tasks,
+            strategy_id.as_deref(),
+            strategy_file.as_deref(),
+            strategy_json.as_deref(),
+            strategy_toml.as_deref(),
+            limit,
+            out.as_deref(),
+        ),
+        Cmd::Bench {
+            store,
+            repo,
+            workload,
+            query,
+            k,
+            out,
+        } => cmd_bench(&store, &repo, workload, query.as_deref(), k, out.as_deref()),
 
         Cmd::Recipe { cmd } => cmd_recipe(cmd),
         Cmd::Strategy { cmd } => cmd_strategy(cmd),
         Cmd::Tasks { cmd } => cmd_tasks(cmd),
+        Cmd::Lsp { cmd } => cmd_lsp(cmd),
 
-        Cmd::Integrate { repo, agent, write_global, dry_run } => {
-            integrations::cmd_integrate(&repo, agent, write_global, dry_run)
-        }
+        Cmd::Integrate {
+            repo,
+            agent,
+            write_global,
+            dry_run,
+        } => integrations::cmd_integrate(&repo, agent, write_global, dry_run),
         Cmd::Doctor { repo, store, agent } => cmd_doctor(&repo, &store, agent),
         Cmd::Mcp { cmd } => match cmd {
-            McpCmd::Serve { repo, store, ce_mcp_path, auto_index } => {
-                cmd_mcp_serve(&repo, &store, ce_mcp_path.as_deref(), auto_index)
-            }
+            McpCmd::Serve {
+                repo,
+                store,
+                ce_mcp_path,
+                auto_index,
+            } => cmd_mcp_serve(&repo, &store, ce_mcp_path.as_deref(), auto_index),
         },
     }
 }
 
-fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_index: bool) -> Result<()> {
+fn cmd_mcp_serve(
+    repo: &str,
+    store: &StoreArgs,
+    ce_mcp_path: Option<&str>,
+    auto_index: bool,
+) -> Result<()> {
     let repo_path = PathBuf::from(repo);
     if !repo_path.exists() {
         return Err(anyhow!("repo not found: {repo}"));
@@ -647,7 +819,8 @@ fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_
                 }
             }
             cmd.arg("--store").arg("surreal");
-            cmd.arg("--surreal-path").arg(surreal_path_for_repo(&repo_path, store));
+            cmd.arg("--surreal-path")
+                .arg(surreal_path_for_repo(&repo_path, store));
             cmd.arg("--surreal-engine").arg(match store.surreal_engine {
                 SurrealEngineArg::Surrealkv => "surrealkv",
                 SurrealEngineArg::Mem => "mem",
@@ -673,6 +846,187 @@ fn cmd_mcp_serve(repo: &str, store: &StoreArgs, ce_mcp_path: Option<&str>, auto_
         Ok(st) if st.success() => Ok(()),
         Ok(st) => Err(anyhow!("ce-mcp exited with status {st}")),
         Err(e) => Err(anyhow!("failed to start ce-mcp ({bin}): {e}")),
+    }
+}
+
+fn cmd_lsp(cmd: LspCmd) -> Result<()> {
+    match cmd {
+        LspCmd::Init { repo, template } => cmd_lsp_init(&repo, template),
+        LspCmd::Doctor { repo } => cmd_lsp_doctor(&repo),
+        LspCmd::ResolveDefinition {
+            repo,
+            file,
+            line,
+            col,
+        } => cmd_lsp_resolve(&repo, &file, line, col, ResolveKind::Definition),
+        LspCmd::ResolveType {
+            repo,
+            file,
+            line,
+            col,
+        } => cmd_lsp_resolve(&repo, &file, line, col, ResolveKind::Type),
+    }
+}
+
+fn cmd_lsp_init(repo: &str, template: LspInitTemplate) -> Result<()> {
+    let repo_path = PathBuf::from(repo);
+    if !repo_path.exists() {
+        return Err(anyhow!("repo not found: {repo}"));
+    }
+    let cfg_path = LspConfig::path_for_repo(&repo_path);
+    if let Some(dir) = cfg_path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let defaults = template_to_lsp(template).default_config();
+    let default_value = json::to_value(&defaults)?;
+    if cfg_path.exists() {
+        let existing_text = fs::read_to_string(&cfg_path)?;
+        let existing_value: json::Value = json::from_str(&existing_text)?;
+        let merged = merge_value_with_default(existing_value, &default_value);
+        fs::write(&cfg_path, json::to_string_pretty(&merged)?)?;
+        println!("Updated existing LSP config at {}", cfg_path.display());
+    } else {
+        fs::write(&cfg_path, json::to_string_pretty(&default_value)?)?;
+        println!("Created new LSP config at {}", cfg_path.display());
+    }
+    Ok(())
+}
+
+fn cmd_lsp_doctor(repo: &str) -> Result<()> {
+    let repo_path = PathBuf::from(repo);
+    if !repo_path.exists() {
+        return Err(anyhow!("repo not found: {repo}"));
+    }
+    let config = LspConfig::load(&repo_path)?
+        .ok_or_else(|| anyhow!("missing .prune/lsp.json; run `ce lsp init`"))?;
+    println!(
+        "LSP config: enabled={} servers={}",
+        config.enabled,
+        config.servers.len()
+    );
+    if !config.enabled {
+        println!("LSP support is disabled in the config; diagnostics will still run but servers will not power packs.");
+    }
+    let rt = Runtime::new()?;
+    let reports = rt.block_on(run_doctor(&config, &repo_path));
+    for report in reports {
+        println!("\nServer: {}", report.name);
+        println!("  command: {}", report.command.join(" "));
+        if let Some(path) = &report.command_path {
+            println!("  binary: {}", path.display());
+        } else {
+            println!("  binary: not found in PATH");
+        }
+        if let Some(root) = &report.root_marker {
+            println!("  root marker: {}", root.display());
+        } else {
+            println!("  root marker: missing");
+        }
+        println!(
+            "  initialized: {}",
+            if report.init_ok { "✅" } else { "❌" }
+        );
+        if let Some(err) = &report.error {
+            println!("  error: {err}");
+        }
+        if let Some(caps) = &report.capabilities {
+            if let Ok(pretty) = json::to_string_pretty(caps) {
+                println!("  capabilities:\n{}", indent(&pretty, 4));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ResolveKind {
+    Definition,
+    Type,
+}
+
+fn cmd_lsp_resolve(repo: &str, file: &str, line: u32, col: u32, kind: ResolveKind) -> Result<()> {
+    let repo_path = PathBuf::from(repo);
+    if !repo_path.exists() {
+        return Err(anyhow!("repo not found: {repo}"));
+    }
+    let config = LspConfig::load(&repo_path)?
+        .ok_or_else(|| anyhow!("missing .prune/lsp.json; run `ce lsp init`"))?;
+    if !config.enabled {
+        return Err(anyhow!("LSP is disabled in .prune/lsp.json"));
+    }
+    let target_path = {
+        let candidate = PathBuf::from(file);
+        if candidate.is_absolute() {
+            candidate
+        } else {
+            repo_path.join(candidate)
+        }
+    };
+    if !target_path.exists() {
+        return Err(anyhow!("file not found: {}", target_path.display()));
+    }
+    let (server_name, server) = config
+        .find_server_for_path(&repo_path, &target_path)
+        .ok_or_else(|| anyhow!("no LSP server configured for {}", target_path.display()))?;
+    let default_timeout = Duration::from_millis(config.default_timeout_ms);
+    let init_timeout = Duration::from_millis(config.initialize_timeout_ms);
+    let rt = Runtime::new()?;
+    let locations = rt.block_on(async {
+        let session = LspSession::start(
+            server_name,
+            server,
+            &repo_path,
+            &config.features,
+            default_timeout,
+            init_timeout,
+            config.max_requests_per_pack,
+        )
+        .await?;
+        let line0 = line.saturating_sub(1);
+        let col0 = col.saturating_sub(1);
+        match kind {
+            ResolveKind::Definition => session.resolve_definition(&target_path, line0, col0).await,
+            ResolveKind::Type => {
+                session
+                    .resolve_type_definition(&target_path, line0, col0)
+                    .await
+            }
+        }
+    })?;
+    if locations.is_empty() {
+        println!("LSP returned no locations");
+        return Ok(());
+    }
+    for loc in locations {
+        println!("{}", format_location(&loc, &repo_path));
+    }
+    Ok(())
+}
+
+fn format_location(loc: &lsp_types::Location, repo_root: &Path) -> String {
+    let line = loc.range.start.line + 1;
+    let col = loc.range.start.character + 1;
+    let uri_str = loc.uri.as_str();
+    if let Ok(url) = StdUrl::parse(uri_str) {
+        if url.scheme() == "file" {
+            if let Ok(path) = url.to_file_path() {
+                let display_path = match path.strip_prefix(repo_root) {
+                    Ok(rel) => rel.display().to_string(),
+                    Err(_) => path.display().to_string(),
+                };
+                return format!("{display_path}:{line}:{col}");
+            }
+        }
+        return format!("{}:{}:{}", url, line, col);
+    }
+    format!("{}:{}:{}", uri_str, line, col)
+}
+
+fn template_to_lsp(template: LspInitTemplate) -> LspTemplate {
+    match template {
+        LspInitTemplate::Web => LspTemplate::Web,
+        LspInitTemplate::Mobile => LspTemplate::Mobile,
+        LspInitTemplate::Rust => LspTemplate::Rust,
     }
 }
 
@@ -717,11 +1071,19 @@ fn cmd_index(
         StoreKind::Sqlite => {
             let repo_path = PathBuf::from(repo);
             let (db_path, hnsw_dir) = sqlite_paths_for_repo(&repo_path, store);
-            cmd_index_sqlite(repo, &db_path, &hnsw_dir, full, prune, skip_edges, max_files)
+            cmd_index_sqlite(
+                repo, &db_path, &hnsw_dir, full, prune, skip_edges, max_files,
+            )
         }
-        StoreKind::Surreal => {
-            cmd_index_surreal(repo, store, full, prune, skip_edges, skip_grammar_checks, max_files)
-        }
+        StoreKind::Surreal => cmd_index_surreal(
+            repo,
+            store,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+        ),
     }
 }
 
@@ -859,7 +1221,10 @@ fn cmd_index_sqlite(
             };
 
             if let Some(lang) = lang {
-                files.push(CandidateFile { disk_path: path.to_path_buf(), language: lang.to_string() });
+                files.push(CandidateFile {
+                    disk_path: path.to_path_buf(),
+                    language: lang.to_string(),
+                });
                 if files.len() >= max_files {
                     truncated = true;
                     break;
@@ -872,8 +1237,14 @@ fn cmd_index_sqlite(
     let n_swift = files.iter().filter(|f| f.language == "swift").count();
     let n_ts = files.iter().filter(|f| f.language == "ts").count();
     let n_tsx = files.iter().filter(|f| f.language == "tsx").count();
-    println!("Indexing {} files (rust={}, swift={}, ts={}, tsx={})…", files.len(), n_rust, n_swift, n_ts, n_tsx);
-
+    println!(
+        "Indexing {} files (rust={}, swift={}, ts={}, tsx={})…",
+        files.len(),
+        n_rust,
+        n_swift,
+        n_ts,
+        n_tsx
+    );
 
     #[derive(Clone)]
     struct FileInfo {
@@ -896,7 +1267,9 @@ fn cmd_index_sqlite(
             let language = p.language.clone();
 
             // Store repo-relative paths in the DB so the index is stable across clones.
-            let rel = disk_path.strip_prefix(&repo_path).unwrap_or(disk_path.as_path());
+            let rel = disk_path
+                .strip_prefix(&repo_path)
+                .unwrap_or(disk_path.as_path());
             let index_path_str = rel.to_string_lossy().to_string().replace('\\', "/");
             let index_path = PathBuf::from(&index_path_str);
 
@@ -910,7 +1283,8 @@ fn cmd_index_sqlite(
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
 
-            let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
+            let content_hash =
+                ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
 
             Some(FileInfo {
                 index_path,
@@ -943,7 +1317,12 @@ fn cmd_index_sqlite(
         to_index.push(fi);
     }
 
-    println!("Files to (re)index: {} (full={}, prune={})", to_index.len(), full, prune);
+    println!(
+        "Files to (re)index: {} (full={}, prune={})",
+        to_index.len(),
+        full,
+        prune
+    );
 
     // Parse only changed files (in parallel) into fragments.
     let parsed: Vec<(FileInfo, Vec<ce_core::model::Fragment>)> = to_index
@@ -1003,14 +1382,24 @@ fn cmd_index_sqlite(
 
     // Insert into DB and embed.
     for (fi, frags) in parsed {
-        let file_id = db.upsert_file(&fi.index_path_str, &fi.language, fi.size_bytes, fi.mtime_ms, &fi.content_hash)?;
+        let file_id = db.upsert_file(
+            &fi.index_path_str,
+            &fi.language,
+            fi.size_bytes,
+            fi.mtime_ms,
+            &fi.content_hash,
+        )?;
         touched_file_ids.push(file_id);
         // Clear existing fragments for this file to avoid stale index entries.
         db.delete_fragments_by_file_id(file_id)?;
 
         // Embed in small batches for this file.
         let texts: Vec<String> = frags.iter().map(|f| f.retrieval_text.clone()).collect();
-        let vectors = if texts.is_empty() { vec![] } else { embedder.embed_passages(&texts)? };
+        let vectors = if texts.is_empty() {
+            vec![]
+        } else {
+            embedder.embed_passages(&texts)?
+        };
 
         for (frag, vec) in frags.into_iter().zip(vectors.into_iter()) {
             let rowid = db.upsert_fragment(file_id, &frag)?;
@@ -1078,8 +1467,15 @@ fn cmd_index_sqlite(
             let n = db.rebuild_ref_edges_all(max_refs_per_fragment, max_defs_per_ref)?;
             println!("Rebuilt resolved edges (full): {n}");
         } else {
-            let n = db.rebuild_ref_edges_incremental(&touched_file_ids, max_refs_per_fragment, max_defs_per_ref)?;
-            println!("Rebuilt resolved edges (incremental; touched_files={}): {n}", touched_file_ids.len());
+            let n = db.rebuild_ref_edges_incremental(
+                &touched_file_ids,
+                max_refs_per_fragment,
+                max_defs_per_ref,
+            )?;
+            println!(
+                "Rebuilt resolved edges (incremental; touched_files={}): {n}",
+                touched_file_ids.len()
+            );
         }
     } else {
         println!("Skipped edge rebuild (--skip-edges)");
@@ -1304,7 +1700,9 @@ fn cmd_index_surreal(
             let disk_path = p.disk_path.clone();
             let language = p.language.clone();
 
-            let rel = disk_path.strip_prefix(&repo_path).unwrap_or(disk_path.as_path());
+            let rel = disk_path
+                .strip_prefix(&repo_path)
+                .unwrap_or(disk_path.as_path());
             let index_path_str = rel.to_string_lossy().to_string().replace('\\', "/");
             let index_path = PathBuf::from(&index_path_str);
 
@@ -1318,7 +1716,8 @@ fn cmd_index_surreal(
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
 
-            let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
+            let content_hash =
+                ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
 
             Some(FileInfo {
                 index_path,
@@ -1335,7 +1734,10 @@ fn cmd_index_surreal(
     let mut stem_map: HashMap<String, Vec<String>> = HashMap::new();
     for fi in &file_infos {
         if let Some(stem) = fi.index_path.file_stem().and_then(|s| s.to_str()) {
-            stem_map.entry(stem.to_string()).or_default().push(fi.index_path_str.clone());
+            stem_map
+                .entry(stem.to_string())
+                .or_default()
+                .push(fi.index_path_str.clone());
         }
     }
 
@@ -1503,9 +1905,8 @@ fn cmd_index_surreal(
         })?;
 
         let sql = "SELECT id, file_id, kind, symbol, start_line, end_line, signature, refs FROM frag WHERE repo_id = $repo_id";
-        let mut res = rt.block_on(async {
-            store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await
-        })?;
+        let mut res =
+            rt.block_on(async { store.db.query(sql).bind(("repo_id", SURREAL_REPO_ID)).await })?;
         #[derive(serde::Deserialize)]
         struct FragRow {
             id: Thing,
@@ -1664,11 +2065,17 @@ fn cmd_index_surreal(
                 .trim_matches('"')
                 .to_string();
             if let Some(sym) = &row.symbol {
-                symbol_map.entry(sym.clone()).or_default().push(frag_id.clone());
+                symbol_map
+                    .entry(sym.clone())
+                    .or_default()
+                    .push(frag_id.clone());
                 if let Some((_, tail)) = sym.rsplit_once("::") {
                     let tail = tail.trim();
                     if !tail.is_empty() && tail != sym {
-                        symbol_map.entry(tail.to_string()).or_default().push(frag_id.clone());
+                        symbol_map
+                            .entry(tail.to_string())
+                            .or_default()
+                            .push(frag_id.clone());
                     }
                 }
             }
@@ -1740,7 +2147,8 @@ fn cmd_index_surreal(
             for path in &scanned {
                 keep_file_ids.push(file_id_for_path(SURREAL_REPO_ID, path));
             }
-            let removed = rt.block_on(store.delete_missing_files(SURREAL_REPO_ID, &keep_file_ids))?;
+            let removed =
+                rt.block_on(store.delete_missing_files(SURREAL_REPO_ID, &keep_file_ids))?;
             if removed > 0 {
                 println!("Pruned {removed} stale files from Surreal index.");
             }
@@ -1761,24 +2169,65 @@ fn cmd_index_surreal(
     _skip_grammar_checks: bool,
     _max_files: usize,
 ) -> Result<()> {
-    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+    Err(anyhow!(
+        "Surreal support not enabled (build with --features surreal)"
+    ))
 }
 
 #[cfg(feature = "surreal")]
 fn is_stop_ref(s: &str) -> bool {
     matches!(
         s,
-        "self" | "Self" | "super" | "crate" | "std" | "core" | "alloc" |
-        "new" | "default" | "len" | "iter" | "into_iter" | "as_ref" | "as_mut" |
-        "Ok" | "Err" | "Some" | "None" |
-        "Result" | "Option" | "Vec" | "String" |
-        "str" | "bool" | "char" |
-        "u8" | "u16" | "u32" | "u64" | "usize" |
-        "i8" | "i16" | "i32" | "i64" | "isize" |
-        "f32" | "f64" |
-        "Clone" | "Copy" | "Debug" | "Default" | "Send" | "Sync" |
-        "Into" | "From" | "TryFrom" | "Iterator" | "IntoIterator" |
-        "HashMap" | "HashSet"
+        "self"
+            | "Self"
+            | "super"
+            | "crate"
+            | "std"
+            | "core"
+            | "alloc"
+            | "new"
+            | "default"
+            | "len"
+            | "iter"
+            | "into_iter"
+            | "as_ref"
+            | "as_mut"
+            | "Ok"
+            | "Err"
+            | "Some"
+            | "None"
+            | "Result"
+            | "Option"
+            | "Vec"
+            | "String"
+            | "str"
+            | "bool"
+            | "char"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "usize"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "isize"
+            | "f32"
+            | "f64"
+            | "Clone"
+            | "Copy"
+            | "Debug"
+            | "Default"
+            | "Send"
+            | "Sync"
+            | "Into"
+            | "From"
+            | "TryFrom"
+            | "Iterator"
+            | "IntoIterator"
+            | "HashMap"
+            | "HashSet"
     )
 }
 
@@ -1839,7 +2288,11 @@ fn contains_edge_weight(kind: FragKind, signature: &str) -> f32 {
         || sig.contains("pub(crate")
         || sig.contains("pub(super")
         || sig.contains("pub(self");
-    if is_public { 0.3 } else { 0.1 }
+    if is_public {
+        0.3
+    } else {
+        0.1
+    }
 }
 
 #[cfg(feature = "surreal")]
@@ -1876,8 +2329,11 @@ fn parse_ts_imports(source: &str) -> Vec<ParsedImport> {
             continue;
         }
 
-        let is_import = line.starts_with("import ") || line.starts_with("import\t") || line.starts_with("import{");
-        let is_export_from = (line.starts_with("export ") || line.starts_with("export\t")) && line.contains(" from ");
+        let is_import = line.starts_with("import ")
+            || line.starts_with("import\t")
+            || line.starts_with("import{");
+        let is_export_from = (line.starts_with("export ") || line.starts_with("export\t"))
+            && line.contains(" from ");
         if is_import || is_export_from {
             meaningful_seen += 1;
             if let Some(spec) = extract_string_literal(line) {
@@ -2040,7 +2496,11 @@ fn resolve_rust_import(
     if path.is_empty() {
         return None;
     }
-    let mut segments: Vec<String> = path.split("::").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let mut segments: Vec<String> = path
+        .split("::")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     if segments.is_empty() {
         return None;
     }
@@ -2149,7 +2609,11 @@ fn extract_rust_mod_name(line: &str) -> Option<String> {
         .next()
         .unwrap_or("")
         .trim();
-    if name.is_empty() { None } else { Some(name.to_string()) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 #[cfg(feature = "surreal")]
@@ -2175,7 +2639,11 @@ fn extract_rust_use_path(line: &str) -> Option<String> {
         s = before.trim();
     }
     s = s.trim().trim_end_matches("::").trim();
-    if s.is_empty() { None } else { Some(s.to_string()) }
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
 }
 
 #[cfg(feature = "surreal")]
@@ -2209,13 +2677,20 @@ fn cmd_search(store: &StoreArgs, query: &str, k: usize, alpha: f32) -> Result<()
     }
 }
 
-fn cmd_search_sqlite(db_path: &Path, hnsw_dir: &Path, query: &str, k: usize, alpha: f32) -> Result<()> {
+fn cmd_search_sqlite(
+    db_path: &Path,
+    hnsw_dir: &Path,
+    query: &str,
+    k: usize,
+    alpha: f32,
+) -> Result<()> {
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
 
     let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
-    let hits = query::hybrid_search_with_index(&db, &embedder, Some(&vec_index), query, 50, 50, k, alpha)?;
+    let hits =
+        query::hybrid_search_with_index(&db, &embedder, Some(&vec_index), query, 50, 50, k, alpha)?;
     for h in hits {
         println!("\n[{:.3}] {} {:?} {}", h.score, h.frag_id, h.kind, h.path);
         if let Some(sym) = &h.symbol {
@@ -2273,7 +2748,9 @@ fn cmd_search_surreal(store: &StoreArgs, query: &str, k: usize) -> Result<()> {
 
 #[cfg(not(feature = "surreal"))]
 fn cmd_search_surreal(_store: &StoreArgs, _query: &str, _k: usize) -> Result<()> {
-    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+    Err(anyhow!(
+        "Surreal support not enabled (build with --features surreal)"
+    ))
 }
 
 fn cmd_pack(
@@ -2288,6 +2765,7 @@ fn cmd_pack(
     tokenizer: Option<&str>,
     max_bodies: Option<usize>,
     alpha: Option<f32>,
+    lsp_mode: LspMode,
     format: PackFormat,
 ) -> Result<()> {
     match store.store {
@@ -2306,6 +2784,7 @@ fn cmd_pack(
                 tokenizer,
                 max_bodies,
                 alpha,
+                lsp_mode,
                 format,
             )
         }
@@ -2321,6 +2800,7 @@ fn cmd_pack(
             tokenizer,
             max_bodies,
             alpha,
+            lsp_mode,
             format,
         ),
     }
@@ -2339,12 +2819,19 @@ fn cmd_pack_sqlite(
     tokenizer: Option<&str>,
     max_bodies: Option<usize>,
     alpha: Option<f32>,
+    lsp_mode: LspMode,
     format: PackFormat,
 ) -> Result<()> {
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
 
-    let mut strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
+    let mut strategy = load_strategy_for_pack(
+        &db,
+        strategy_id,
+        strategy_file,
+        strategy_json,
+        strategy_toml,
+    )?;
 
     if let Some(b) = budget_chars {
         strategy.budget_chars = b;
@@ -2358,17 +2845,35 @@ fn cmd_pack_sqlite(
     if let Some(m) = max_bodies {
         strategy.max_bodies = m;
     }
+    if lsp_mode != LspMode::Off {
+        println!(
+            "LSP mode {:?} requested, but pack-time LSP wiring is not yet active.",
+            lsp_mode
+        );
+    }
     if let Some(a) = alpha {
         strategy.hybrid_alpha = a;
     }
 
-    if strategy_id.is_none() && strategy_file.is_none() && strategy_json.is_none() && strategy_toml.is_none() {
+    if strategy_id.is_none()
+        && strategy_file.is_none()
+        && strategy_json.is_none()
+        && strategy_toml.is_none()
+    {
         strategy.budget_chars = strategy.budget_chars.max(2000);
     }
 
     let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
-    let pack = build_pack(&db, &embedder, Some(&vec_index), task, &strategy, None)?;
+    let pack = build_pack(
+        &db,
+        &embedder,
+        Some(&vec_index),
+        task,
+        &strategy,
+        None,
+        lsp_mode,
+    )?;
 
     render_pack_result(&pack, format)
 }
@@ -2386,6 +2891,7 @@ fn cmd_pack_surreal(
     tokenizer: Option<&str>,
     max_bodies: Option<usize>,
     alpha: Option<f32>,
+    lsp_mode: LspMode,
     format: PackFormat,
 ) -> Result<()> {
     if strategy_id.is_some() {
@@ -2440,6 +2946,13 @@ fn cmd_pack_surreal(
         strategy.budget_chars = strategy.budget_chars.max(2000);
     }
 
+    if lsp_mode != LspMode::Off {
+        println!(
+            "LSP mode {:?} requested, but Surreal pack support is not yet available.",
+            lsp_mode
+        );
+    }
+
     let qvec = embedder.embed_query(task)?;
     let req = PackRequest {
         repo_id: SURREAL_REPO_ID.to_string(),
@@ -2466,9 +2979,12 @@ fn cmd_pack_surreal(
     _tokenizer: Option<&str>,
     _max_bodies: Option<usize>,
     _alpha: Option<f32>,
+    _lsp_mode: LspMode,
     _format: PackFormat,
 ) -> Result<()> {
-    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+    Err(anyhow!(
+        "Surreal support not enabled (build with --features surreal)"
+    ))
 }
 
 fn render_pack_result(pack: &ContextPack, format: PackFormat) -> Result<()> {
@@ -2541,7 +3057,13 @@ fn cmd_eval_sqlite(
 
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
-    let strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
+    let strategy = load_strategy_for_pack(
+        &db,
+        strategy_id,
+        strategy_file,
+        strategy_json,
+        strategy_toml,
+    )?;
 
     let vec_index = query::load_or_build_hnsw(&db, hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
 
@@ -2585,9 +3107,21 @@ fn cmd_eval_sqlite(
         let v: json::Value = json::from_str(line)?;
         let t = crate::tasks::parse_eval_task(&v)?;
 
-        let mut pack = build_pack(&db, &embedder, Some(&vec_index), &t.task, &strategy, Some(&seen_ids))?;
+        let mut pack = build_pack(
+            &db,
+            &embedder,
+            Some(&vec_index),
+            &t.task,
+            &strategy,
+            Some(&seen_ids),
+            LspMode::Off,
+        )?;
 
-        let repeated = pack.items.iter().filter(|it| seen_ids.contains(&it.id)).count();
+        let repeated = pack
+            .items
+            .iter()
+            .filter(|it| seen_ids.contains(&it.id))
+            .count();
         let redundancy_pct = if pack.items.is_empty() {
             0.0
         } else {
@@ -2624,9 +3158,9 @@ fn cmd_eval_sqlite(
         } else {
             sym_cases += 1;
             let hit = t.expect_symbols.iter().any(|s| {
-                pack.items.iter().any(|it| {
-                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
-                })
+                pack.items
+                    .iter()
+                    .any(|it| it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s))
             });
             if hit {
                 sym_hits += 1;
@@ -2653,7 +3187,12 @@ fn cmd_eval_sqlite(
         }
 
         if let Some(w) = out_file.as_mut() {
-            let top_paths: Vec<String> = pack.items.iter().take(8).map(|it| it.path.clone()).collect();
+            let top_paths: Vec<String> = pack
+                .items
+                .iter()
+                .take(8)
+                .map(|it| it.path.clone())
+                .collect();
             let r = json::json!({
                 "id": t.id,
                 "path_hit": path_hit,
@@ -2676,31 +3215,62 @@ fn cmd_eval_sqlite(
     println!("[ce-eval v0]");
     println!("tasks: {}", total);
     if total > 0 {
-        println!("avg_used_chars: {:.1}", sum_used_chars as f64 / total as f64);
-        println!("avg_used_tokens: {:.1}", sum_used_tokens as f64 / total as f64);
-        println!("avg_unbound_symbol_count: {:.2}", sum_unbound as f64 / total as f64);
+        println!(
+            "avg_used_chars: {:.1}",
+            sum_used_chars as f64 / total as f64
+        );
+        println!(
+            "avg_used_tokens: {:.1}",
+            sum_used_tokens as f64 / total as f64
+        );
+        println!(
+            "avg_unbound_symbol_count: {:.2}",
+            sum_unbound as f64 / total as f64
+        );
         if baseline_cases > 0 {
-            println!("avg_baseline_tokens: {:.1}", sum_baseline_tokens as f64 / baseline_cases as f64);
-            println!("avg_saved_pct: {:.1}", sum_saved_pct / baseline_cases as f64);
+            println!(
+                "avg_baseline_tokens: {:.1}",
+                sum_baseline_tokens as f64 / baseline_cases as f64
+            );
+            println!(
+                "avg_saved_pct: {:.1}",
+                sum_saved_pct / baseline_cases as f64
+            );
         }
     }
     if path_cases > 0 {
-        println!("path_hit_rate: {:.3} ({}/{})", path_hits as f64 / path_cases as f64, path_hits, path_cases);
+        println!(
+            "path_hit_rate: {:.3} ({}/{})",
+            path_hits as f64 / path_cases as f64,
+            path_hits,
+            path_cases
+        );
     } else {
         println!("path_hit_rate: n/a (no expect_paths)");
     }
     if iteration_cases > 0 {
-        println!("avg_iterations_per_fix: {:.2}", sum_iterations / iteration_cases as f64);
+        println!(
+            "avg_iterations_per_fix: {:.2}",
+            sum_iterations / iteration_cases as f64
+        );
     } else {
         println!("avg_iterations_per_fix: n/a (no iterations)");
     }
     if redundancy_cases > 0 {
-        println!("avg_redundancy_pct: {:.1}", sum_redundancy / redundancy_cases as f64);
+        println!(
+            "avg_redundancy_pct: {:.1}",
+            sum_redundancy / redundancy_cases as f64
+        );
     } else {
         println!("avg_redundancy_pct: n/a (no tasks)");
     }
     if sym_cases > 0 {
-        println!("symbol_hit_rate: {:.3} ({}/{})", sym_hits as f64 / sym_cases as f64, sym_hits, sym_cases);
+        println!(
+            "symbol_hit_rate: {:.3} ({}/{})",
+            sym_hits as f64 / sym_cases as f64,
+            sym_hits,
+            sym_cases
+        );
     } else {
         println!("symbol_hit_rate: n/a (no expect_symbols)");
     }
@@ -2801,7 +3371,11 @@ fn cmd_eval_surreal(
         };
         let mut pack = rt.block_on(store.pack(req))?.pack;
 
-        let repeated = pack.items.iter().filter(|it| seen_ids.contains(&it.id)).count();
+        let repeated = pack
+            .items
+            .iter()
+            .filter(|it| seen_ids.contains(&it.id))
+            .count();
         let redundancy_pct = if pack.items.is_empty() {
             0.0
         } else {
@@ -2838,9 +3412,9 @@ fn cmd_eval_surreal(
         } else {
             sym_cases += 1;
             let hit = t.expect_symbols.iter().any(|s| {
-                pack.items.iter().any(|it| {
-                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
-                })
+                pack.items
+                    .iter()
+                    .any(|it| it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s))
             });
             if hit {
                 sym_hits += 1;
@@ -2857,7 +3431,12 @@ fn cmd_eval_surreal(
         sum_used_tokens += pack.used_tokens;
 
         if let Some(w) = out_file.as_mut() {
-            let top_paths: Vec<String> = pack.items.iter().take(8).map(|it| it.path.clone()).collect();
+            let top_paths: Vec<String> = pack
+                .items
+                .iter()
+                .take(8)
+                .map(|it| it.path.clone())
+                .collect();
             let r = json::json!({
                 "id": t.id,
                 "path_hit": path_hit,
@@ -2878,21 +3457,40 @@ fn cmd_eval_surreal(
     println!("[ce-eval v0]");
     println!("tasks: {}", total);
     if total > 0 {
-        println!("avg_used_chars: {:.1}", sum_used_chars as f64 / total as f64);
-        println!("avg_used_tokens: {:.1}", sum_used_tokens as f64 / total as f64);
+        println!(
+            "avg_used_chars: {:.1}",
+            sum_used_chars as f64 / total as f64
+        );
+        println!(
+            "avg_used_tokens: {:.1}",
+            sum_used_tokens as f64 / total as f64
+        );
     }
     if path_cases > 0 {
-        println!("path_hit_rate: {:.3} ({}/{})", path_hits as f64 / path_cases as f64, path_hits, path_cases);
+        println!(
+            "path_hit_rate: {:.3} ({}/{})",
+            path_hits as f64 / path_cases as f64,
+            path_hits,
+            path_cases
+        );
     } else {
         println!("path_hit_rate: n/a (no expect_paths)");
     }
     if redundancy_cases > 0 {
-        println!("avg_redundancy_pct: {:.1}", sum_redundancy / redundancy_cases as f64);
+        println!(
+            "avg_redundancy_pct: {:.1}",
+            sum_redundancy / redundancy_cases as f64
+        );
     } else {
         println!("avg_redundancy_pct: n/a (no tasks)");
     }
     if sym_cases > 0 {
-        println!("symbol_hit_rate: {:.3} ({}/{})", sym_hits as f64 / sym_cases as f64, sym_hits, sym_cases);
+        println!(
+            "symbol_hit_rate: {:.3} ({}/{})",
+            sym_hits as f64 / sym_cases as f64,
+            sym_hits,
+            sym_cases
+        );
     } else {
         println!("symbol_hit_rate: n/a (no expect_symbols)");
     }
@@ -2915,7 +3513,9 @@ fn cmd_eval_surreal(
     _limit: usize,
     _out_path: Option<&str>,
 ) -> Result<()> {
-    Err(anyhow!("Surreal support not enabled (build with --features surreal)"))
+    Err(anyhow!(
+        "Surreal support not enabled (build with --features surreal)"
+    ))
 }
 
 fn cmd_bench(
@@ -2950,6 +3550,7 @@ fn cmd_bench(
                 None,
                 None,
                 None,
+                LspMode::Off,
                 PackFormat::Json,
             )?;
         }
@@ -2992,7 +3593,11 @@ fn cmd_bench(
         let md_path = json_path.with_extension("md");
         fs::write(&json_path, serde_json::to_string_pretty(&report)?)?;
         fs::write(&md_path, markdown)?;
-        println!("wrote bench report: {} {}", json_path.display(), md_path.display());
+        println!(
+            "wrote bench report: {} {}",
+            json_path.display(),
+            md_path.display()
+        );
     } else {
         println!("{}", serde_json::to_string_pretty(&report)?);
         println!("\n---\n{markdown}");
@@ -3003,9 +3608,25 @@ fn cmd_bench(
 
 fn cmd_recipe(cmd: RecipeCmd) -> Result<()> {
     match cmd {
-        RecipeCmd::Add { db, failure, failure_file, pack_summary, patch_meta, tags, success_tokens, iterations } => {
-            cmd_recipe_add(&db, failure, failure_file, pack_summary, patch_meta, tags, success_tokens, iterations)
-        }
+        RecipeCmd::Add {
+            db,
+            failure,
+            failure_file,
+            pack_summary,
+            patch_meta,
+            tags,
+            success_tokens,
+            iterations,
+        } => cmd_recipe_add(
+            &db,
+            failure,
+            failure_file,
+            pack_summary,
+            patch_meta,
+            tags,
+            success_tokens,
+            iterations,
+        ),
         RecipeCmd::List { db, limit, offset } => cmd_recipe_list(&db, limit, offset),
         RecipeCmd::Export { db, out } => cmd_recipe_export(&db, &out),
     }
@@ -3028,8 +3649,7 @@ fn cmd_recipe_add(
     let failure_text = if let Some(text) = failure {
         text
     } else if let Some(path) = failure_file {
-        fs::read_to_string(&path)
-            .map_err(|e| anyhow!("failed to read failure_file {path}: {e}"))?
+        fs::read_to_string(&path).map_err(|e| anyhow!("failed to read failure_file {path}: {e}"))?
     } else {
         return Err(anyhow!("missing --failure or --failure_file"));
     };
@@ -3050,7 +3670,11 @@ fn cmd_recipe_add(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        if cleaned.is_empty() { None } else { Some(cleaned.join(",")) }
+        if cleaned.is_empty() {
+            None
+        } else {
+            Some(cleaned.join(","))
+        }
     });
 
     let db = Db::open(db_path)?;
@@ -3116,13 +3740,21 @@ fn cmd_recipe_export(db_path: &str, out_path: &str) -> Result<()> {
 
 fn cmd_tasks(cmd: TasksCmd) -> Result<()> {
     match cmd {
-        TasksCmd::ImportSweBench { input, out, limit, derive_symbols } => {
-            cmd_tasks_import_swebench(&input, &out, limit, derive_symbols)
-        }
+        TasksCmd::ImportSweBench {
+            input,
+            out,
+            limit,
+            derive_symbols,
+        } => cmd_tasks_import_swebench(&input, &out, limit, derive_symbols),
     }
 }
 
-fn cmd_tasks_import_swebench(input: &str, out: &str, limit: usize, derive_symbols: bool) -> Result<()> {
+fn cmd_tasks_import_swebench(
+    input: &str,
+    out: &str,
+    limit: usize,
+    derive_symbols: bool,
+) -> Result<()> {
     use std::io::{BufRead, BufReader, Write};
 
     let in_file = fs::File::open(input)?;
@@ -3253,7 +3885,15 @@ fn eval_strategy(
         let v: json::Value = json::from_str(line)?;
         let t = crate::tasks::parse_eval_task(&v)?;
 
-        let pack = build_pack(db, embedder, Some(vec_index), &t.task, strategy, Some(&seen_ids))?;
+        let pack = build_pack(
+            db,
+            embedder,
+            Some(vec_index),
+            &t.task,
+            strategy,
+            Some(&seen_ids),
+            LspMode::Off,
+        )?;
 
         if !t.expect_paths.is_empty() {
             path_cases += 1;
@@ -3270,9 +3910,9 @@ fn eval_strategy(
         if !t.expect_symbols.is_empty() {
             sym_cases += 1;
             let hit = t.expect_symbols.iter().any(|s| {
-                pack.items.iter().any(|it| {
-                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
-                })
+                pack.items
+                    .iter()
+                    .any(|it| it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s))
             });
             if hit {
                 sym_hits += 1;
@@ -3286,10 +3926,22 @@ fn eval_strategy(
         }
     }
 
-    let avg_used_tokens = if total == 0 { 0.0 } else { sum_used_tokens as f64 / total as f64 };
+    let avg_used_tokens = if total == 0 {
+        0.0
+    } else {
+        sum_used_tokens as f64 / total as f64
+    };
 
-    let path_hr = if path_cases == 0 { 0.0 } else { path_hits as f64 / path_cases as f64 };
-    let sym_hr = if sym_cases == 0 { 0.0 } else { sym_hits as f64 / sym_cases as f64 };
+    let path_hr = if path_cases == 0 {
+        0.0
+    } else {
+        path_hits as f64 / path_cases as f64
+    };
+    let sym_hr = if sym_cases == 0 {
+        0.0
+    } else {
+        sym_hits as f64 / sym_cases as f64
+    };
 
     // Fitness: prioritize retrieval correctness, lightly penalize token usage.
     let score = (0.6 * path_hr + 0.4 * sym_hr) - (avg_used_tokens / 200_000.0);
@@ -3323,16 +3975,31 @@ fn cmd_strategy_evolve(
     // Build HNSW once for the whole evolution run.
     let (vec_index, _map) = query::build_hnsw_from_db(&db)?;
 
-    let base = load_strategy_for_pack(&db, base_strategy_id, base_strategy_file, base_strategy_json, base_strategy_toml)?;
+    let base = load_strategy_for_pack(
+        &db,
+        base_strategy_id,
+        base_strategy_file,
+        base_strategy_json,
+        base_strategy_toml,
+    )?;
 
     let mut rng = Rng64::new(seed);
 
     let base_eval = eval_strategy(&db, &embedder, &vec_index, tasks_path, &base, limit)?;
     println!("[ce-evolve v0]");
-    println!("base: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1}",
+    println!(
+        "base: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1}",
         base_eval.score,
-        if base_eval.path_cases == 0 { 0.0 } else { base_eval.path_hits as f64 / base_eval.path_cases as f64 },
-        if base_eval.sym_cases == 0 { 0.0 } else { base_eval.sym_hits as f64 / base_eval.sym_cases as f64 },
+        if base_eval.path_cases == 0 {
+            0.0
+        } else {
+            base_eval.path_hits as f64 / base_eval.path_cases as f64
+        },
+        if base_eval.sym_cases == 0 {
+            0.0
+        } else {
+            base_eval.sym_hits as f64 / base_eval.sym_cases as f64
+        },
         base_eval.avg_used_tokens,
     );
 
@@ -3365,14 +4032,28 @@ fn cmd_strategy_evolve(
         let cfg_json = json::to_string(&gen_best_cfg)?;
         let strategy_id = ce_core::util::hash_text_hex(&cfg_json);
         let name = format!("{}_g{:02}", name_prefix, gen);
-        db.upsert_strategy(&strategy_id, &name, &cfg_json, best_id.as_deref(), Some(gen_best_eval.score))?;
+        db.upsert_strategy(
+            &strategy_id,
+            &name,
+            &cfg_json,
+            best_id.as_deref(),
+            Some(gen_best_eval.score),
+        )?;
 
         best_id = Some(strategy_id.clone());
         best_cfg = gen_best_cfg;
         best_eval = gen_best_eval;
 
-        let path_hr = if best_eval.path_cases == 0 { 0.0 } else { best_eval.path_hits as f64 / best_eval.path_cases as f64 };
-        let sym_hr = if best_eval.sym_cases == 0 { 0.0 } else { best_eval.sym_hits as f64 / best_eval.sym_cases as f64 };
+        let path_hr = if best_eval.path_cases == 0 {
+            0.0
+        } else {
+            best_eval.path_hits as f64 / best_eval.path_cases as f64
+        };
+        let sym_hr = if best_eval.sym_cases == 0 {
+            0.0
+        } else {
+            best_eval.sym_hits as f64 / best_eval.sym_cases as f64
+        };
         println!(
             "gen {:02}: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1} id={}",
             gen,
@@ -3387,25 +4068,45 @@ fn cmd_strategy_evolve(
     if let Some(id) = best_id {
         println!("best_strategy_id: {id}");
     }
-    println!("best_strategy_json:\n{}", json::to_string_pretty(&best_cfg)?);
+    println!(
+        "best_strategy_json:\n{}",
+        json::to_string_pretty(&best_cfg)?
+    );
     Ok(())
 }
 
 fn cmd_strategy(cmd: StrategyCmd) -> Result<()> {
     match cmd {
-        StrategyCmd::Add { db, name, config, config_json, config_toml, parent_id } => {
+        StrategyCmd::Add {
+            db,
+            name,
+            config,
+            config_json,
+            config_toml,
+            parent_id,
+        } => {
             let db = Db::open(&db)?;
-            let cfg = load_strategy_from_sources(config.as_deref(), config_json.as_deref(), config_toml.as_deref())?;
+            let cfg = load_strategy_from_sources(
+                config.as_deref(),
+                config_json.as_deref(),
+                config_toml.as_deref(),
+            )?;
             let cfg_json = json::to_string(&cfg)?;
             let id = db.add_strategy(&name, &cfg_json, parent_id.as_deref())?;
             println!("strategy_id: {id}");
             Ok(())
         }
-        StrategyCmd::List { db, limit, offset, show_config } => {
+        StrategyCmd::List {
+            db,
+            limit,
+            offset,
+            show_config,
+        } => {
             let db = Db::open(&db)?;
             let rows = db.list_strategies(limit, offset)?;
             for r in rows {
-                println!("- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}",
+                println!(
+                    "- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}",
                     short_id(&r.strategy_id),
                     r.name,
                     r.score,
@@ -3438,9 +4139,31 @@ fn cmd_strategy(cmd: StrategyCmd) -> Result<()> {
             Ok(())
         }
 
-        StrategyCmd::Evolve { db, tasks, base_strategy_id, base_strategy_file, base_strategy_json, base_strategy_toml, generations, population, limit, seed, name_prefix } => {
-            cmd_strategy_evolve(&db, &tasks, base_strategy_id.as_deref(), base_strategy_file.as_deref(), base_strategy_json.as_deref(), base_strategy_toml.as_deref(), generations, population, limit, seed, &name_prefix)
-        }
+        StrategyCmd::Evolve {
+            db,
+            tasks,
+            base_strategy_id,
+            base_strategy_file,
+            base_strategy_json,
+            base_strategy_toml,
+            generations,
+            population,
+            limit,
+            seed,
+            name_prefix,
+        } => cmd_strategy_evolve(
+            &db,
+            &tasks,
+            base_strategy_id.as_deref(),
+            base_strategy_file.as_deref(),
+            base_strategy_json.as_deref(),
+            base_strategy_toml.as_deref(),
+            generations,
+            population,
+            limit,
+            seed,
+            &name_prefix,
+        ),
     }
 }
 
@@ -3495,7 +4218,11 @@ fn load_strategy_from_sources(
 }
 
 fn short_id(id: &str) -> String {
-    if id.len() <= 12 { id.to_string() } else { id[..12].to_string() }
+    if id.len() <= 12 {
+        id.to_string()
+    } else {
+        id[..12].to_string()
+    }
 }
 
 fn build_pack(
@@ -3505,6 +4232,7 @@ fn build_pack(
     task: &str,
     strategy: &StrategyConfig,
     seen: Option<&HashSet<String>>,
+    _lsp_mode: LspMode,
 ) -> Result<ContextPack> {
     let span_cap = strategy.signal_max_spans.max(strategy.signal_file_line_max);
     let path_cap = strategy.signal_max_paths.max(1);
@@ -3573,11 +4301,18 @@ fn build_pack(
 
         // Optional compaction: replace full body with a slice when it saves meaningful tokens.
         if strategy.body_snippet_mode != "full" {
-            if let Some((slice_reason, slice_text)) = compute_best_slice(&frag, &file_line_hints, &task_tokens, &focus_tokens, strategy) {
+            if let Some((slice_reason, slice_text)) = compute_best_slice(
+                &frag,
+                &file_line_hints,
+                &task_tokens,
+                &focus_tokens,
+                strategy,
+            ) {
                 let decorated = decorate_slice(&frag, &slice_reason, &slice_text);
                 let full_toks = token_counter.count(&full_body);
                 let slice_toks = token_counter.count(&decorated);
-                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens {
+                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens
+                {
                     body_view = FragmentView::Slice;
                     body_text = decorated;
                 }
@@ -3610,7 +4345,9 @@ fn build_pack(
     pack.metrics.signals_used = signals_used_stats;
     pack.metrics.redundancy_pct = Some(0.0);
 
-    if let Some(baseline_tokens) = compute_baseline_tokens(db, task, &signal_bundle, &token_counter)? {
+    if let Some(baseline_tokens) =
+        compute_baseline_tokens(db, task, &signal_bundle, &token_counter)?
+    {
         pack.metrics.baseline_tokens_total = Some(baseline_tokens);
         if baseline_tokens > 0 {
             let saved = (baseline_tokens as f32 - pack.used_tokens as f32) / baseline_tokens as f32;
@@ -3677,7 +4414,11 @@ fn attach_candidate_neighbors(
             .into_iter()
             .map(|(id, weight)| CandidateNeighbor { id, weight })
             .collect();
-        neighbors.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        neighbors.sort_by(|a, b| {
+            b.weight
+                .partial_cmp(&a.weight)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         neighbors.truncate(24);
         cands[idx].neighbors = neighbors;
     }
@@ -3705,7 +4446,11 @@ fn build_recipe_excerpt(
     let recipes = db.load_recipes(200)?;
     let mut scored: Vec<(f32, ce_store::types::RecipeRecord)> = Vec::new();
     for rec in recipes {
-        let mut rec_tokens: Vec<String> = rec.tokens.split_whitespace().map(|s| s.to_string()).collect();
+        let mut rec_tokens: Vec<String> = rec
+            .tokens
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
         rec_tokens.sort();
         rec_tokens.dedup();
         let sim = ce_core::util::jaccard_sorted(&task_tokens, &rec_tokens);
@@ -3728,7 +4473,10 @@ fn build_recipe_excerpt(
         let failure = truncate_line(&rec.failure_excerpt, 160);
         let pack = truncate_line(&rec.pack_summary, 160);
         let patch = truncate_line(&rec.patch_meta, 160);
-        let block = format!("- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n", rec.recipe_id, sim, failure, pack, patch);
+        let block = format!(
+            "- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n",
+            rec.recipe_id, sim, failure, pack, patch
+        );
         let next = format!("{}{}", out, block);
         if token_counter.count(&next) > max_tokens {
             break;
@@ -3916,7 +4664,13 @@ fn compute_best_slice(
     // A) signal-driven slice
     if allow_signals {
         if !targets.is_empty() {
-            if let Some(s) = snippet::slice_by_file_lines(&frag.body, frag.span.start_line, &targets, ctx, max_lines) {
+            if let Some(s) = snippet::slice_by_file_lines(
+                &frag.body,
+                frag.span.start_line,
+                &targets,
+                ctx,
+                max_lines,
+            ) {
                 let frag_path = frag.file.display().to_string();
                 let head = targets.get(0).copied().unwrap_or(0);
                 let reason = format!("signal:{}:{}", frag_path, head);
@@ -3927,7 +4681,13 @@ fn compute_best_slice(
 
     // B) symbol-focused grep slice (narrower than full task token grep)
     if allow_symbols {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, focus_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            focus_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = focus_tokens.iter().take(8).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -3942,8 +4702,19 @@ fn compute_best_slice(
     // C) AST-based pruning slice (Rust)
     if allow_ast {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_prune_slice(&frag.body, frag.span.start_line, &targets, toks, ctx, max_lines) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_prune_slice(
+            &frag.body,
+            frag.span.start_line,
+            &targets,
+            toks,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -3958,8 +4729,19 @@ fn compute_best_slice(
     // D) AST skeletonization (Rust)
     if allow_skeleton {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_skeleton_slice(&frag.body, frag.span.start_line, frag.kind, &targets, toks, cfg) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_skeleton_slice(
+            &frag.body,
+            frag.span.start_line,
+            frag.kind,
+            &targets,
+            toks,
+            cfg,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -3973,7 +4755,11 @@ fn compute_best_slice(
 
     // E) TSX skeletonization
     if allow_tsx {
-        if let Some(s) = snippet::skeletonize_tsx(&frag.body, cfg.tsx_skeleton_max_depth, cfg.tsx_skeleton_max_props) {
+        if let Some(s) = snippet::skeletonize_tsx(
+            &frag.body,
+            cfg.tsx_skeleton_max_depth,
+            cfg.tsx_skeleton_max_props,
+        ) {
             let reason = "tsx_skeleton".to_string();
             return Some((reason, s));
         }
@@ -3981,7 +4767,11 @@ fn compute_best_slice(
 
     // F) SwiftUI skeletonization
     if allow_swiftui {
-        if let Some(s) = snippet::skeletonize_swiftui(&frag.body, cfg.swiftui_skeleton_max_depth, cfg.swiftui_skeleton_max_modifiers) {
+        if let Some(s) = snippet::skeletonize_swiftui(
+            &frag.body,
+            cfg.swiftui_skeleton_max_depth,
+            cfg.swiftui_skeleton_max_modifiers,
+        ) {
             let reason = "swiftui_skeleton".to_string();
             return Some((reason, s));
         }
@@ -3989,7 +4779,13 @@ fn compute_best_slice(
 
     // G) token-grep slice
     if allow_query {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, task_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            task_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = task_tokens.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -4014,7 +4810,10 @@ fn render_pack(pack: &ContextPack) -> String {
         out.push_str(&format!("budget_tokens: {}\n", bt));
     }
     out.push_str(&format!("used_tokens: {}\n", pack.used_tokens));
-    out.push_str(&format!("pack_tokens_total: {}\n", pack.metrics.pack_tokens_total));
+    out.push_str(&format!(
+        "pack_tokens_total: {}\n",
+        pack.metrics.pack_tokens_total
+    ));
     if let Some(bt) = pack.metrics.baseline_tokens_total {
         out.push_str(&format!("baseline_tokens_total: {}\n", bt));
     }
@@ -4039,7 +4838,10 @@ fn render_pack(pack: &ContextPack) -> String {
     if let Some(score) = pack.metrics.connectivity_score {
         out.push_str(&format!("connectivity_score: {:.2}\n", score));
     }
-    out.push_str(&format!("unbound_symbol_count: {}\n\n", pack.metrics.unbound_symbol_count));
+    out.push_str(&format!(
+        "unbound_symbol_count: {}\n\n",
+        pack.metrics.unbound_symbol_count
+    ));
 
     if let Some(recipe) = &pack.recipe_excerpt {
         out.push_str("## Recipe Memory\n\n");
@@ -4049,7 +4851,10 @@ fn render_pack(pack: &ContextPack) -> String {
 
     out.push_str("## Included\n\n");
     for it in &pack.items {
-        out.push_str(&format!("### {} ({:?}, score={:.3}, reason={})\n\n", it.id, it.view, it.score, it.reason));
+        out.push_str(&format!(
+            "### {} ({:?}, score={:.3}, reason={})\n\n",
+            it.id, it.view, it.score, it.reason
+        ));
         out.push_str(&it.content);
         out.push_str("\n\n");
     }
@@ -4057,7 +4862,10 @@ fn render_pack(pack: &ContextPack) -> String {
     if !pack.unresolved_symbols.is_empty() {
         out.push_str("\n## Unresolved Symbols\n\n");
         for sym in &pack.unresolved_symbols {
-            let reason = sym.reason.clone().unwrap_or_else(|| "unresolved".to_string());
+            let reason = sym
+                .reason
+                .clone()
+                .unwrap_or_else(|| "unresolved".to_string());
             out.push_str(&format!("- {} ({})\n", sym.symbol, reason));
         }
     }
@@ -4065,12 +4873,22 @@ fn render_pack(pack: &ContextPack) -> String {
     if !pack.deferred.is_empty() {
         out.push_str("## Deferred\n\n");
         for d in &pack.deferred {
-            let span = format!("L{}-L{}", d.span.start_line.saturating_add(1), d.span.end_line.saturating_add(1));
+            let span = format!(
+                "L{}-L{}",
+                d.span.start_line.saturating_add(1),
+                d.span.end_line.saturating_add(1)
+            );
             let sym = d.symbol.clone().unwrap_or_default();
             if sym.is_empty() {
-                out.push_str(&format!("- {} {:?} {} [{}] ({})\n", d.id, d.kind, d.path, span, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] ({})\n",
+                    d.id, d.kind, d.path, span, d.reason
+                ));
             } else {
-                out.push_str(&format!("- {} {:?} {} [{}] sym={} ({})\n", d.id, d.kind, d.path, span, sym, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] sym={} ({})\n",
+                    d.id, d.kind, d.path, span, sym, d.reason
+                ));
             }
         }
     }
@@ -4080,7 +4898,10 @@ fn render_pack(pack: &ContextPack) -> String {
 
 fn indent(s: &str, spaces: usize) -> String {
     let pad = " ".repeat(spaces);
-    s.lines().map(|l| format!("{pad}{l}")).collect::<Vec<_>>().join("\n")
+    s.lines()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // -----------------------------------------------------------------------------
@@ -4209,7 +5030,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.edge_prioritize_by_type = !cfg.edge_prioritize_by_type;
     }
     if rng.chance(0.50) {
-        cfg.edge_max_nodes_per_seed = scale_usize(rng, cfg.edge_max_nodes_per_seed, 0.6, 1.8, 16, 140);
+        cfg.edge_max_nodes_per_seed =
+            scale_usize(rng, cfg.edge_max_nodes_per_seed, 0.6, 1.8, 16, 140);
     }
     if rng.chance(0.50) {
         cfg.neighbors_k = scale_usize(rng, cfg.neighbors_k, 0.4, 2.0, 0, 12);
@@ -4313,16 +5135,26 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
             "signals_or_symbols_or_tsx_skeleton_or_query_grep",
             "signals_or_symbols_or_swiftui_skeleton_or_query_grep",
         ];
-        cfg.body_snippet_mode = modes[rng.range_usize(0, modes.len().saturating_sub(1))].to_string();
+        cfg.body_snippet_mode =
+            modes[rng.range_usize(0, modes.len().saturating_sub(1))].to_string();
     }
     if rng.chance(0.45) {
-        cfg.body_snippet_context_lines = scale_usize(rng, cfg.body_snippet_context_lines.max(0), 0.5, 1.8, 0, 20);
+        cfg.body_snippet_context_lines =
+            scale_usize(rng, cfg.body_snippet_context_lines.max(0), 0.5, 1.8, 0, 20);
     }
     if rng.chance(0.45) {
-        cfg.body_snippet_max_lines = scale_usize(rng, cfg.body_snippet_max_lines.max(20), 0.6, 1.8, 40, 400);
+        cfg.body_snippet_max_lines =
+            scale_usize(rng, cfg.body_snippet_max_lines.max(20), 0.6, 1.8, 40, 400);
     }
     if rng.chance(0.35) {
-        cfg.body_snippet_min_savings_tokens = scale_usize(rng, cfg.body_snippet_min_savings_tokens.max(0), 0.5, 2.0, 0, 300);
+        cfg.body_snippet_min_savings_tokens = scale_usize(
+            rng,
+            cfg.body_snippet_min_savings_tokens.max(0),
+            0.5,
+            2.0,
+            0,
+            300,
+        );
     }
 
     // Diversity controls
@@ -4333,7 +5165,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.mmr_top_n = scale_usize(rng, cfg.mmr_top_n, 0.6, 1.8, 10, 300);
     }
     if rng.chance(0.45) {
-        cfg.per_file_cap_signatures = scale_usize(rng, cfg.per_file_cap_signatures, 0.6, 1.8, 2, 30);
+        cfg.per_file_cap_signatures =
+            scale_usize(rng, cfg.per_file_cap_signatures, 0.6, 1.8, 2, 30);
     }
     if rng.chance(0.30) {
         cfg.per_file_cap_bodies = rng.range_usize(1, 3);
@@ -4366,7 +5199,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.recipes_enabled = !cfg.recipes_enabled;
     }
     if rng.chance(0.35) {
-        cfg.recipes_max_tokens = scale_usize(rng, cfg.recipes_max_tokens.max(32), 0.6, 1.8, 64, 800);
+        cfg.recipes_max_tokens =
+            scale_usize(rng, cfg.recipes_max_tokens.max(32), 0.6, 1.8, 64, 800);
     }
     if rng.chance(0.30) {
         cfg.recipes_min_similarity = jitter_f32(rng, cfg.recipes_min_similarity, 0.15, 0.0, 1.0);
@@ -4381,7 +5215,6 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
 }
 
 // HNSW building and hybrid retrieval utilities live in ce-store::query.
-
 
 fn cmd_bootstrap(
     repo: &str,
@@ -4405,7 +5238,15 @@ fn cmd_bootstrap(
     inception::apply_template(&repo_path, template, subtype, force)?;
 
     if !skip_index {
-        cmd_index(repo, store, full, prune, skip_edges, skip_grammar_checks, max_files)?;
+        cmd_index(
+            repo,
+            store,
+            full,
+            prune,
+            skip_edges,
+            skip_grammar_checks,
+            max_files,
+        )?;
     }
 
     if matches!(store.store, StoreKind::Sqlite) {

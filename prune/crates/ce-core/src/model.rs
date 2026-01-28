@@ -36,8 +36,8 @@ pub struct Span {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fragment {
-    pub id: FragId,              // content-addressed hash
-    pub ast_hash: String,        // structural hash (optional)
+    pub id: FragId,       // content-addressed hash
+    pub ast_hash: String, // structural hash (optional)
     pub file: PathBuf,
     pub kind: FragKind,
     pub symbol: Option<String>,
@@ -158,7 +158,6 @@ pub struct DeferredItem {
     pub span: Span,
     pub reason: String,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnresolvedSymbol {

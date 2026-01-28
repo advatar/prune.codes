@@ -1,9 +1,11 @@
 #![cfg(feature = "surreal")]
 
 use anyhow::Result;
-use ce_store_core::{CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
-use ce_store_surreal::{ImportEdgeRecord, RelEdgeRecord, SurrealConfig, SurrealEngine, SurrealStore};
 use ce_core::model::{FragKind, StrategyConfig};
+use ce_store_core::{CeStore, FileRecord, FragmentRecord, PackRequest, RepoIdentity};
+use ce_store_surreal::{
+    ImportEdgeRecord, RelEdgeRecord, SurrealConfig, SurrealEngine, SurrealStore,
+};
 use surrealdb::sql::Thing;
 
 fn sample_fragment(
@@ -83,8 +85,22 @@ async fn vector_search_returns_hits() -> Result<()> {
     store.upsert_files(&[file]).await?;
 
     let frags = vec![
-        sample_fragment(repo_id, "file1", "src/lib.rs", "fraga", "alpha", Some(vec![1.0, 0.0, 0.0])),
-        sample_fragment(repo_id, "file1", "src/lib.rs", "fragb", "beta", Some(vec![0.0, 1.0, 0.0])),
+        sample_fragment(
+            repo_id,
+            "file1",
+            "src/lib.rs",
+            "fraga",
+            "alpha",
+            Some(vec![1.0, 0.0, 0.0]),
+        ),
+        sample_fragment(
+            repo_id,
+            "file1",
+            "src/lib.rs",
+            "fragb",
+            "beta",
+            Some(vec![0.0, 1.0, 0.0]),
+        ),
     ];
     store.upsert_fragments(&frags).await?;
 
@@ -125,8 +141,22 @@ async fn fts_search_returns_hits() -> Result<()> {
     store.upsert_files(&[file]).await?;
 
     let frags = vec![
-        sample_fragment(repo_id, "file2", "src/main.rs", "fraghello", "hello world", None),
-        sample_fragment(repo_id, "file2", "src/main.rs", "fragother", "goodbye", None),
+        sample_fragment(
+            repo_id,
+            "file2",
+            "src/main.rs",
+            "fraghello",
+            "hello world",
+            None,
+        ),
+        sample_fragment(
+            repo_id,
+            "file2",
+            "src/main.rs",
+            "fragother",
+            "goodbye",
+            None,
+        ),
     ];
     store.upsert_fragments(&frags).await?;
 
@@ -252,7 +282,9 @@ async fn arrow_traversal_imports_both_directions() -> Result<()> {
         .bind(("a", "filea"))
         .await?;
     let forward: Vec<Thing> = res.take(0)?;
-    assert!(forward.iter().any(|id| id.to_string().contains("file:fileb")));
+    assert!(forward
+        .iter()
+        .any(|id| id.to_string().contains("file:fileb")));
 
     let mut res = store
         .db
@@ -260,7 +292,9 @@ async fn arrow_traversal_imports_both_directions() -> Result<()> {
         .bind(("b", "fileb"))
         .await?;
     let reverse: Vec<Thing> = res.take(0)?;
-    assert!(reverse.iter().any(|id| id.to_string().contains("file:filea")));
+    assert!(reverse
+        .iter()
+        .any(|id| id.to_string().contains("file:filea")));
 
     Ok(())
 }
@@ -512,9 +546,23 @@ async fn pack_connectivity_smoke() -> Result<()> {
     ];
     store.upsert_files(&files).await?;
 
-    let mut fraga = sample_fragment(repo_id, "filea", "src/a.ts", "fraga", "alpha", Some(vec![1.0, 0.0, 0.0]));
+    let mut fraga = sample_fragment(
+        repo_id,
+        "filea",
+        "src/a.ts",
+        "fraga",
+        "alpha",
+        Some(vec![1.0, 0.0, 0.0]),
+    );
     fraga.signature = "pub fn alpha()".to_string();
-    let mut fragb = sample_fragment(repo_id, "fileb", "src/b.ts", "fragb", "beta", Some(vec![0.0, 1.0, 0.0]));
+    let mut fragb = sample_fragment(
+        repo_id,
+        "fileb",
+        "src/b.ts",
+        "fragb",
+        "beta",
+        Some(vec![0.0, 1.0, 0.0]),
+    );
     fragb.kind = FragKind::ApiSummary;
     fragb.signature = "pub fn beta()".to_string();
 

@@ -6,8 +6,8 @@ use ce_core::signals;
 use ce_core::snippet;
 use ce_core::tokenizer::TokenCounter;
 use ce_store_core::{CeStore, PackRequest, PackResult};
-use surrealdb::sql::Thing;
 use std::collections::{HashMap, HashSet};
+use surrealdb::sql::Thing;
 
 pub async fn build_pack(store: &SurrealStore, req: PackRequest) -> Result<PackResult> {
     let query_vec = req
@@ -15,7 +15,10 @@ pub async fn build_pack(store: &SurrealStore, req: PackRequest) -> Result<PackRe
         .as_ref()
         .ok_or_else(|| anyhow!("pack requires query_vec"))?;
 
-    let span_cap = req.strategy.signal_max_spans.max(req.strategy.signal_file_line_max);
+    let span_cap = req
+        .strategy
+        .signal_max_spans
+        .max(req.strategy.signal_file_line_max);
     let path_cap = req.strategy.signal_max_paths.max(1);
     let signal_bundle = signals::extract_signals(&req.query, span_cap, path_cap);
 
@@ -33,7 +36,14 @@ pub async fn build_pack(store: &SurrealStore, req: PackRequest) -> Result<PackRe
     }
 
     if req.strategy.signals_enabled {
-        add_signal_boosts(store, &req.repo_id, &signal_bundle, &mut scores, &req.strategy).await?;
+        add_signal_boosts(
+            store,
+            &req.repo_id,
+            &signal_bundle,
+            &mut scores,
+            &req.strategy,
+        )
+        .await?;
     }
 
     if req.strategy.graph_expand {
@@ -61,7 +71,9 @@ pub async fn build_pack(store: &SurrealStore, req: PackRequest) -> Result<PackRe
 
     let mut cands: Vec<Candidate> = Vec::new();
     for (fid, score, reason) in ranked {
-        let Some(frag_rec) = frag_by_id.get(&fid) else { continue; };
+        let Some(frag_rec) = frag_by_id.get(&fid) else {
+            continue;
+        };
         let frag = frag_rec.to_fragment();
         let mut score = score;
         let mut reason = reason;
@@ -170,7 +182,10 @@ struct Accum {
 
 impl Accum {
     fn new() -> Self {
-        Self { score: 0.0, reasons: Vec::new() }
+        Self {
+            score: 0.0,
+            reasons: Vec::new(),
+        }
     }
 
     fn add(&mut self, delta: f32, reason: impl Into<String>) {
@@ -205,10 +220,10 @@ async fn add_signal_boosts(
     for span in &signals.spans {
         let ids = fragments_covering_line(store, repo_id, &span.path, span.line, 2).await?;
         for fid in ids {
-            scores
-                .entry(fid)
-                .or_insert_with(Accum::new)
-                .add(span_boost, format!("signal:span:{}:{}", span.path, span.line));
+            scores.entry(fid).or_insert_with(Accum::new).add(
+                span_boost,
+                format!("signal:span:{}:{}", span.path, span.line),
+            );
         }
     }
 
@@ -254,16 +269,24 @@ async fn expand_edges(
     }
 
     let seed_ids: Vec<String> = seed.iter().map(|(id, _)| id.clone()).collect();
-    let seed_scores: HashMap<String, f32> = seed.iter().map(|(id, score)| (id.clone(), *score)).collect();
+    let seed_scores: HashMap<String, f32> = seed
+        .iter()
+        .map(|(id, score)| (id.clone(), *score))
+        .collect();
     let seed_files = fetch_seed_files(store, &seed_ids).await?;
 
     let max_hops = cfg.edge_radius.max(1) as u32;
     let max_nodes = cfg.edge_max_nodes_per_seed.max(1);
-    let etypes: Vec<String> = crate::DEFAULT_REL_ETYPES.iter().map(|s| s.to_string()).collect();
+    let etypes: Vec<String> = crate::DEFAULT_REL_ETYPES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let mut file_scores: HashMap<String, f32> = HashMap::new();
     for (seed_id, seed_score) in &seed {
-        let Some(seed_file) = seed_files.get(seed_id) else { continue; };
+        let Some(seed_file) = seed_files.get(seed_id) else {
+            continue;
+        };
         let mut prev: HashSet<String> = HashSet::new();
         let mut added = 0usize;
 
@@ -347,9 +370,12 @@ async fn expand_edges(
     if seed_ids.len() > 1 {
         let hub = seed_ids[0].clone();
         for seed_id in seed_ids.iter().skip(1) {
-            let Some(seed_score) = seed_scores.get(seed_id) else { continue; };
-            let path = graph::shortest_path_frags(&store.db, repo_id, seed_id, &hub, &etypes, max_hops)
-                .await?;
+            let Some(seed_score) = seed_scores.get(seed_id) else {
+                continue;
+            };
+            let path =
+                graph::shortest_path_frags(&store.db, repo_id, seed_id, &hub, &etypes, max_hops)
+                    .await?;
             for (idx, id) in path.into_iter().enumerate() {
                 if id == *seed_id {
                     continue;
@@ -366,7 +392,10 @@ async fn expand_edges(
     Ok(())
 }
 
-async fn fetch_seed_files(store: &SurrealStore, seed_ids: &[String]) -> Result<HashMap<String, String>> {
+async fn fetch_seed_files(
+    store: &SurrealStore,
+    seed_ids: &[String],
+) -> Result<HashMap<String, String>> {
     if seed_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -422,7 +451,8 @@ async fn fetch_key_frags(
     let mut out: Vec<(String, String)> = Vec::new();
     let mut per_file: HashMap<String, usize> = HashMap::new();
     for row in rows {
-        let is_key = matches!(row.kind, FragKind::ApiSummary) || is_public_signature(&row.signature);
+        let is_key =
+            matches!(row.kind, FragKind::ApiSummary) || is_public_signature(&row.signature);
         if !is_key {
             continue;
         }
@@ -477,7 +507,13 @@ async fn fragments_covering_line(
     let rows: Vec<Row> = res.take(0)?;
     let mut out = Vec::new();
     for row in rows {
-        out.push(row.id.to_string().trim_start_matches("frag:").trim_matches('"').to_string());
+        out.push(
+            row.id
+                .to_string()
+                .trim_start_matches("frag:")
+                .trim_matches('"')
+                .to_string(),
+        );
     }
     Ok(out)
 }
@@ -503,7 +539,13 @@ async fn fragments_for_path(
     let rows: Vec<Row> = res.take(0)?;
     let mut out = Vec::new();
     for row in rows {
-        out.push(row.id.to_string().trim_start_matches("frag:").trim_matches('"').to_string());
+        out.push(
+            row.id
+                .to_string()
+                .trim_start_matches("frag:")
+                .trim_matches('"')
+                .to_string(),
+        );
     }
     Ok(out)
 }
@@ -546,7 +588,11 @@ async fn attach_candidate_neighbors(
         let mut neighbor_map: HashMap<String, f32> = HashMap::new();
         for row in rows {
             let weight = row.weight.unwrap_or(1.0) as f32;
-            let neighbor = if row.in_id == node_thing { row.out_id } else { row.in_id };
+            let neighbor = if row.in_id == node_thing {
+                row.out_id
+            } else {
+                row.in_id
+            };
             let neighbor = neighbor.to_string();
             let neighbor = neighbor.trim_start_matches("frag:").trim_matches('"');
             if let Some(_) = idx_by_id.get(neighbor) {
@@ -560,7 +606,11 @@ async fn attach_candidate_neighbors(
             .into_iter()
             .map(|(id, weight)| CandidateNeighbor { id, weight })
             .collect();
-        neighbors.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        neighbors.sort_by(|a, b| {
+            b.weight
+                .partial_cmp(&a.weight)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         cands[idx].neighbors = neighbors;
     }
 

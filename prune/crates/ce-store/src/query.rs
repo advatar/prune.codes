@@ -298,15 +298,15 @@ fn hybrid_scores_map_with_index(
         if vi.dim > 0 {
             let qv = embedder.embed_query(query)?;
             let nn = vi.search(&qv, semantic_k, 64);
-        for n in nn {
-            // DistCosine: smaller is closer
-            let sim = 1.0 - (n.distance as f32);
-            let sim = sim.max(0.0);
-            scores
-                .entry(n.d_id as i64)
-                .or_insert_with(Accum::new)
-                .add(alpha * sim, "semantic");
-        }
+            for n in nn {
+                // DistCosine: smaller is closer
+                let sim = 1.0 - (n.distance as f32);
+                let sim = sim.max(0.0);
+                scores
+                    .entry(n.d_id as i64)
+                    .or_insert_with(Accum::new)
+                    .add(alpha * sim, "semantic");
+            }
         }
     }
 
@@ -337,7 +337,8 @@ pub fn hybrid_search_with_index(
     k: usize,
     alpha: f32,
 ) -> Result<Vec<SearchHit>> {
-    let scores = hybrid_scores_map_with_index(db, embedder, vec_index, query, lexical_k, semantic_k, alpha)?;
+    let scores =
+        hybrid_scores_map_with_index(db, embedder, vec_index, query, lexical_k, semantic_k, alpha)?;
 
     let mut ranked: Vec<(i64, f32)> = scores.into_iter().map(|(rid, a)| (rid, a.score)).collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -350,7 +351,11 @@ pub fn hybrid_search_with_index(
     for h in hits.iter_mut() {
         h.score = *map.get(&h.rowid).unwrap_or(&0.0);
     }
-    hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    hits.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(hits)
 }
 
@@ -380,7 +385,15 @@ pub fn candidate_rowids_for_pack_with_index(
     cfg: &StrategyConfig,
     signals: Option<&SignalBundle>,
 ) -> Result<Vec<(i64, f32, String)>> {
-    let mut scores = hybrid_scores_map_with_index(db, embedder, vec_index, task, cfg.lexical_k, cfg.semantic_k, cfg.hybrid_alpha)?;
+    let mut scores = hybrid_scores_map_with_index(
+        db,
+        embedder,
+        vec_index,
+        task,
+        cfg.lexical_k,
+        cfg.semantic_k,
+        cfg.hybrid_alpha,
+    )?;
 
     // Signals first: direct file:line hints are high-precision and should seed expansion.
     if cfg.signals_enabled {
@@ -416,7 +429,11 @@ pub fn candidate_rowids_for_pack_with_index(
     Ok(ranked)
 }
 
-fn inject_api_summaries(db: &Db, scores: &mut HashMap<i64, Accum>, cfg: &StrategyConfig) -> Result<()> {
+fn inject_api_summaries(
+    db: &Db,
+    scores: &mut HashMap<i64, Accum>,
+    cfg: &StrategyConfig,
+) -> Result<()> {
     use std::collections::HashMap as StdHashMap;
 
     if cfg.api_summary_max == 0 {
@@ -475,10 +492,10 @@ fn add_signal_boosts(
     for span in &signals.spans {
         let rowids = db.fragment_rowids_covering_line(&span.path, span.line, 2)?;
         for rid in rowids {
-            scores
-                .entry(rid)
-                .or_insert_with(Accum::new)
-                .add(span_boost, format!("signal:span:{}:{}", span.path, span.line));
+            scores.entry(rid).or_insert_with(Accum::new).add(
+                span_boost,
+                format!("signal:span:{}:{}", span.path, span.line),
+            );
         }
     }
 
@@ -551,8 +568,12 @@ fn looks_like_path(path: &str) -> bool {
     p.contains('/') || (p.contains('.') && p.len() > 2)
 }
 
-
-fn expand_graph(db: &Db, task: &str, scores: &mut HashMap<i64, Accum>, cfg: &StrategyConfig) -> Result<()> {
+fn expand_graph(
+    db: &Db,
+    task: &str,
+    scores: &mut HashMap<i64, Accum>,
+    cfg: &StrategyConfig,
+) -> Result<()> {
     // pick seed rowids by current score
     let mut seed: Vec<(i64, f32)> = scores.iter().map(|(rid, a)| (*rid, a.score)).collect();
     seed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -566,7 +587,8 @@ fn expand_graph(db: &Db, task: &str, scores: &mut HashMap<i64, Accum>, cfg: &Str
         std::collections::HashMap::new()
     };
 
-    let mut expanded_file_summaries: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut expanded_file_summaries: std::collections::HashSet<i64> =
+        std::collections::HashSet::new();
 
     for (seed_rid, seed_score) in seed {
         if seed_score < 0.05 {
@@ -584,11 +606,9 @@ fn expand_graph(db: &Db, task: &str, scores: &mut HashMap<i64, Accum>, cfg: &Str
 
         // B) definition lookup for referenced identifiers
         // Pull more than needed so filtering doesn't starve us.
-        let raw_refs = db.refs_for_fragment(seed_rid, (cfg.refs_per_seed * 6).max(cfg.refs_per_seed))?;
-        let mut refs: Vec<String> = raw_refs
-            .into_iter()
-            .filter(|r| is_good_ref(r))
-            .collect();
+        let raw_refs =
+            db.refs_for_fragment(seed_rid, (cfg.refs_per_seed * 6).max(cfg.refs_per_seed))?;
+        let mut refs: Vec<String> = raw_refs.into_iter().filter(|r| is_good_ref(r)).collect();
 
         // Prefer refs that literally appear in the task/error text.
         refs.sort_by_key(|r| if task.contains(r) { 0 } else { 1 });
@@ -674,7 +694,9 @@ fn expand_edges_bfs(
         match ty {
             "refers" | "jsx_uses" => cfg.edge_refers_radius,
             "mod" | "use" | "ts_import" => cfg.edge_module_radius,
-            "imported_by" | "modded_by" | "ts_imported_by" | "jsx_used_by" => cfg.edge_reverse_radius,
+            "imported_by" | "modded_by" | "ts_imported_by" | "jsx_used_by" => {
+                cfg.edge_reverse_radius
+            }
             _ => cfg.edge_radius,
         }
     }

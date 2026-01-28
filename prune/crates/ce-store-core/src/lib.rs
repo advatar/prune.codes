@@ -161,11 +161,29 @@ pub trait CeStore: Send + Sync {
     async fn upsert_fragments(&self, frags: &[FragmentRecord]) -> anyhow::Result<()>;
     async fn upsert_edges(&self, edges: &[EdgeRecord]) -> anyhow::Result<()>;
 
-    async fn delete_missing_files(&self, repo_id: &str, keep_file_ids: &[String]) -> anyhow::Result<usize>;
-    async fn delete_missing_fragments(&self, repo_id: &str, keep_frag_ids: &[String]) -> anyhow::Result<usize>;
+    async fn delete_missing_files(
+        &self,
+        repo_id: &str,
+        keep_file_ids: &[String],
+    ) -> anyhow::Result<usize>;
+    async fn delete_missing_fragments(
+        &self,
+        repo_id: &str,
+        keep_frag_ids: &[String],
+    ) -> anyhow::Result<usize>;
 
-    async fn vector_search(&self, repo_id: &str, query_vec: &[f32], k: usize) -> anyhow::Result<Vec<SearchHit>>;
-    async fn fts_search(&self, repo_id: &str, query: &str, k: usize) -> anyhow::Result<Vec<SearchHit>>;
+    async fn vector_search(
+        &self,
+        repo_id: &str,
+        query_vec: &[f32],
+        k: usize,
+    ) -> anyhow::Result<Vec<SearchHit>>;
+    async fn fts_search(
+        &self,
+        repo_id: &str,
+        query: &str,
+        k: usize,
+    ) -> anyhow::Result<Vec<SearchHit>>;
     async fn hybrid_search_rrf(
         &self,
         repo_id: &str,
@@ -174,7 +192,11 @@ pub trait CeStore: Send + Sync {
         k: usize,
     ) -> anyhow::Result<Vec<SearchHit>>;
 
-    async fn fetch_fragments(&self, repo_id: &str, frag_ids: &[String]) -> anyhow::Result<Vec<FragmentRecord>>;
+    async fn fetch_fragments(
+        &self,
+        repo_id: &str,
+        frag_ids: &[String],
+    ) -> anyhow::Result<Vec<FragmentRecord>>;
     async fn expand_graph(
         &self,
         repo_id: &str,
@@ -186,7 +208,11 @@ pub trait CeStore: Send + Sync {
     async fn pack(&self, req: PackRequest) -> anyhow::Result<PackResult>;
 
     async fn list_files(&self, repo_id: &str) -> anyhow::Result<Vec<FileRecord>>;
-    async fn get_file_by_path(&self, repo_id: &str, path: &str) -> anyhow::Result<Option<FileRecord>>;
+    async fn get_file_by_path(
+        &self,
+        repo_id: &str,
+        path: &str,
+    ) -> anyhow::Result<Option<FileRecord>>;
 }
 
 pub fn file_id_for_path(repo_id: &str, path: &str) -> String {

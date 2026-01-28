@@ -33,16 +33,16 @@ pub fn signal_stats(bundle: &SignalBundle) -> SignalStats {
     }
 }
 
-
 pub fn signals_used(bundle: &SignalBundle, items: &[PackItem]) -> (Vec<String>, SignalStats) {
     let mut used: Vec<String> = Vec::new();
     let mut stats = SignalStats::default();
 
     for span in &bundle.spans {
-        if items.iter().any(|it| path_matches(&it.path, &span.path)
-            && span.line >= it.span.start_line.saturating_add(1)
-            && span.line <= it.span.end_line.saturating_add(1))
-        {
+        if items.iter().any(|it| {
+            path_matches(&it.path, &span.path)
+                && span.line >= it.span.start_line.saturating_add(1)
+                && span.line <= it.span.end_line.saturating_add(1)
+        }) {
             used.push(format!("span:{}:{}", span.path, span.line));
             stats.spans += 1;
         }
@@ -65,7 +65,9 @@ pub fn signals_used(bundle: &SignalBundle, items: &[PackItem]) -> (Vec<String>, 
     }
 
     for module in &bundle.modules {
-        if items.iter().any(|it| it.path.ends_with(&module.specifier) || it.content.contains(&module.specifier)) {
+        if items.iter().any(|it| {
+            it.path.ends_with(&module.specifier) || it.content.contains(&module.specifier)
+        }) {
             used.push(format!("module:{}", module.specifier));
             stats.modules += 1;
         }
@@ -133,7 +135,9 @@ pub fn extract_span_hints(text: &str, max: usize) -> Vec<SpanHint> {
                 continue;
             }
             let mut path = line[start..i].to_string();
-            path = path.trim_matches(|c: char| c == '"' || c == '\'' || c == '`').to_string();
+            path = path
+                .trim_matches(|c: char| c == '"' || c == '\'' || c == '`')
+                .to_string();
             path = path.trim_start_matches("-->").trim().to_string();
             if !looks_like_path(&path) {
                 continue;
@@ -228,7 +232,10 @@ pub fn extract_module_hints(text: &str, max: usize) -> Vec<ModuleHint> {
             if let Some(pos) = ll.find("module") {
                 let tail = line[pos + "module".len()..].trim();
                 if let Some(tok) = tail.split_whitespace().next() {
-                    candidates.push(tok.trim_matches(|c: char| c == '"' || c == '\'' || c == '`').to_string());
+                    candidates.push(
+                        tok.trim_matches(|c: char| c == '"' || c == '\'' || c == '`')
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -330,7 +337,9 @@ pub fn extract_diff_hints(text: &str, max_paths: usize) -> Vec<DiffHint> {
         }
 
         if l.starts_with("@@") {
-            let Some(path) = cur_path.as_ref() else { continue; };
+            let Some(path) = cur_path.as_ref() else {
+                continue;
+            };
             if let Some((start, end)) = parse_unified_diff_new_span(l) {
                 hunk_spans.push(DiffHunk {
                     path: path.clone(),
@@ -404,7 +413,11 @@ fn parse_number(bytes: &[u8], mut idx: usize) -> Option<(u32, usize)> {
         n = n.saturating_mul(10).saturating_add((c as u8 - b'0') as u32);
         idx += 1;
     }
-    if any && n > 0 { Some((n, idx)) } else { None }
+    if any && n > 0 {
+        Some((n, idx))
+    } else {
+        None
+    }
 }
 
 fn extract_quoted_tokens(line: &str) -> Vec<String> {
@@ -456,7 +469,10 @@ fn find_error_code(line: &str) -> Option<String> {
             if buf.len() > 8 {
                 buf.remove(0);
             }
-            if buf.len() >= 2 && buf.starts_with('E') && buf[1..].chars().all(|c| c.is_ascii_digit()) {
+            if buf.len() >= 2
+                && buf.starts_with('E')
+                && buf[1..].chars().all(|c| c.is_ascii_digit())
+            {
                 return Some(buf.clone());
             }
         } else {
@@ -467,7 +483,13 @@ fn find_error_code(line: &str) -> Option<String> {
 }
 
 fn find_error_category(line: &str) -> Option<String> {
-    for cat in ["TypeError", "ReferenceError", "AssertionError", "Fatal", "Panic"] {
+    for cat in [
+        "TypeError",
+        "ReferenceError",
+        "AssertionError",
+        "Fatal",
+        "Panic",
+    ] {
         if line.contains(cat) {
             return Some(cat.to_string());
         }

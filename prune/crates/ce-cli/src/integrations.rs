@@ -17,8 +17,15 @@ pub enum Agent {
 }
 
 pub enum DoctorStore {
-    Sqlite { db_path: PathBuf, hnsw_path: PathBuf },
-    Surreal { engine: String, path: PathBuf, persistent: bool },
+    Sqlite {
+        db_path: PathBuf,
+        hnsw_path: PathBuf,
+    },
+    Surreal {
+        engine: String,
+        path: PathBuf,
+        persistent: bool,
+    },
 }
 
 const TEMPLATE_AGENTS: &str = include_str!("../../../integrations/templates/AGENTS.md");
@@ -75,9 +82,16 @@ pub fn cmd_doctor(repo: &str, agent: Agent, store: DoctorStore) -> Result<()> {
                 ));
             }
         }
-        DoctorStore::Surreal { engine, path, persistent } => {
+        DoctorStore::Surreal {
+            engine,
+            path,
+            persistent,
+        } => {
             if *persistent {
-                println!("store: surreal (engine: {engine}, path: {})", path.display());
+                println!(
+                    "store: surreal (engine: {engine}, path: {})",
+                    path.display()
+                );
                 if !path.exists() {
                     problems.push(format!(
                         "Missing Surreal store at {} (run: ce index --repo . --store surreal --surreal-path {})",
@@ -112,7 +126,11 @@ pub fn cmd_doctor(repo: &str, agent: Agent, store: DoctorStore) -> Result<()> {
         if !repo_path.join("CLAUDE.md").exists() {
             problems.push("Missing CLAUDE.md (recommended for OpenCode compatibility; run: ce integrate opencode --repo .)".into());
         }
-        let skill = repo_path.join(".claude").join("skills").join("prune-context").join("SKILL.md");
+        let skill = repo_path
+            .join(".claude")
+            .join("skills")
+            .join("prune-context")
+            .join("SKILL.md");
         if !skill.exists() {
             problems.push("Missing .claude/skills/prune-context/SKILL.md (recommended; run: ce integrate opencode --repo .)".into());
         }
@@ -125,9 +143,16 @@ pub fn cmd_doctor(repo: &str, agent: Agent, store: DoctorStore) -> Result<()> {
         if !repo_path.join(".mcp.json").exists() {
             problems.push("Missing .mcp.json (run: ce integrate claude --repo .)".into());
         }
-        let skill = repo_path.join(".claude").join("skills").join("prune-context").join("SKILL.md");
+        let skill = repo_path
+            .join(".claude")
+            .join("skills")
+            .join("prune-context")
+            .join("SKILL.md");
         if !skill.exists() {
-            problems.push("Missing .claude/skills/prune-context/SKILL.md (run: ce integrate claude --repo .)".into());
+            problems.push(
+                "Missing .claude/skills/prune-context/SKILL.md (run: ce integrate claude --repo .)"
+                    .into(),
+            );
         }
     }
 
@@ -158,7 +183,10 @@ fn integrate_codex(repo: &Path, write_global: bool, dry_run: bool) -> Result<()>
             repo_abs.display()
         );
         if dry_run {
-            println!("[dry-run] would ensure {} exists and append prune mcp server", cfg_path.display());
+            println!(
+                "[dry-run] would ensure {} exists and append prune mcp server",
+                cfg_path.display()
+            );
         } else {
             fs::create_dir_all(&cfg_dir)?;
             let existing = fs::read_to_string(&cfg_path).unwrap_or_default();
@@ -166,7 +194,10 @@ fn integrate_codex(repo: &Path, write_global: bool, dry_run: bool) -> Result<()>
                 fs::write(&cfg_path, format!("{}{}", existing, snippet))?;
                 println!("Patched {}", cfg_path.display());
             } else {
-                println!("{} already contains [mcp_servers.prune]", cfg_path.display());
+                println!(
+                    "{} already contains [mcp_servers.prune]",
+                    cfg_path.display()
+                );
             }
         }
     }
@@ -193,8 +224,7 @@ fn integrate_opencode(repo: &Path, dry_run: bool) -> Result<()> {
     // Patch or create opencode.json with a local MCP server entry.
     let cfg_path = repo.join("opencode.json");
     let mut root: serde_json::Value = if cfg_path.exists() {
-        serde_json::from_str(&fs::read_to_string(&cfg_path)?)
-            .unwrap_or_else(|_| json!({}))
+        serde_json::from_str(&fs::read_to_string(&cfg_path)?).unwrap_or_else(|_| json!({}))
     } else {
         json!({})
     };

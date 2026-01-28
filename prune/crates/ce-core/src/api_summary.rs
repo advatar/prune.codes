@@ -78,7 +78,10 @@ pub fn build_api_summary(
         let compact = sig1.split_whitespace().collect::<Vec<_>>().join(" ");
         let label = label_for_kind(f.kind);
         let line = if compact.len() > 220 {
-            format!("- ({label}) {}…", compact.chars().take(220).collect::<String>())
+            format!(
+                "- ({label}) {}…",
+                compact.chars().take(220).collect::<String>()
+            )
         } else {
             format!("- ({label}) {compact}")
         };
@@ -105,7 +108,12 @@ pub fn build_api_summary(
         lines.extend(public_lines);
     } else {
         // If nothing looks public, include a small but useful sample.
-        lines.extend(all_lines.iter().take(opts.min_items_if_no_public.max(1)).cloned());
+        lines.extend(
+            all_lines
+                .iter()
+                .take(opts.min_items_if_no_public.max(1))
+                .cloned(),
+        );
     }
 
     // If we have room, top up with remaining lines for more coverage.
@@ -235,10 +243,23 @@ fn looks_public(language: &str, symbol: &str, sig1: &str) -> bool {
     let lower = l.to_ascii_lowercase();
 
     match language {
-        "rust" => l.contains("pub ") || l.contains("pub(") || l.starts_with("pub") || l.starts_with("extern "),
-        "ts" | "tsx" | "js" | "jsx" => lower.starts_with("export ") || lower.contains(" export ") || lower.starts_with("declare export"),
-        "java" | "kotlin" | "kt" | "cs" | "csharp" => lower.contains("public ") || lower.contains("protected "),
-        "cpp" | "c" | "h" | "hpp" => lower.contains("extern ") || lower.contains("__declspec") || lower.contains("public:"),
+        "rust" => {
+            l.contains("pub ")
+                || l.contains("pub(")
+                || l.starts_with("pub")
+                || l.starts_with("extern ")
+        }
+        "ts" | "tsx" | "js" | "jsx" => {
+            lower.starts_with("export ")
+                || lower.contains(" export ")
+                || lower.starts_with("declare export")
+        }
+        "java" | "kotlin" | "kt" | "cs" | "csharp" => {
+            lower.contains("public ") || lower.contains("protected ")
+        }
+        "cpp" | "c" | "h" | "hpp" => {
+            lower.contains("extern ") || lower.contains("__declspec") || lower.contains("public:")
+        }
         "python" | "py" => {
             // Convention: leading underscore is private.
             if symbol.is_empty() {

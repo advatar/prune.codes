@@ -9,9 +9,8 @@
 use anyhow::Result;
 use std::fmt;
 use tiktoken_rs::{
-    cl100k_base_singleton, get_bpe_from_model, o200k_base_singleton,
-    o200k_harmony_singleton, p50k_base_singleton, p50k_edit_singleton,
-    r50k_base_singleton, CoreBPE,
+    cl100k_base_singleton, get_bpe_from_model, o200k_base_singleton, o200k_harmony_singleton,
+    p50k_base_singleton, p50k_edit_singleton, r50k_base_singleton, CoreBPE,
 };
 
 enum BpeHandle {

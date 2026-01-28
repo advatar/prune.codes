@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Result};
-use clap::{Args, Parser, ValueEnum};
 use ce_core::model::{FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
+use ce_core::signals;
 use ce_core::snippet;
 use ce_core::tokenizer::TokenCounter;
-use ce_core::signals;
-use ce_store::{Db, Embedder, VecIndex};
 use ce_store::query;
+use ce_store::{Db, Embedder, VecIndex};
 #[cfg(feature = "surreal")]
 use ce_store_core::{CeStore, PackRequest};
+use clap::{Args, Parser, ValueEnum};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, Write};
@@ -87,9 +87,17 @@ struct CliArgs {
 const SURREAL_REPO_ID: &str = "default";
 
 enum Backend {
-    Sqlite { db: Db, embedder: Embedder, vec_index: VecIndex },
+    Sqlite {
+        db: Db,
+        embedder: Embedder,
+        vec_index: VecIndex,
+    },
     #[cfg(feature = "surreal")]
-    Surreal { store: SurrealStore, embedder: Embedder, rt: tokio::runtime::Runtime },
+    Surreal {
+        store: SurrealStore,
+        embedder: Embedder,
+        rt: tokio::runtime::Runtime,
+    },
 }
 
 struct App {
@@ -118,8 +126,17 @@ fn main() -> Result<()> {
                 .ok_or_else(|| anyhow!("--hnsw-dir is required for sqlite store"))?;
             let db = Db::open(db_path)?;
             let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
-            let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
-            Backend::Sqlite { db, embedder, vec_index }
+            let vec_index = query::load_or_build_hnsw(
+                &db,
+                Path::new(hnsw_dir),
+                query::DEFAULT_HNSW_BASE,
+                false,
+            )?;
+            Backend::Sqlite {
+                db,
+                embedder,
+                vec_index,
+            }
         }
         StoreKind::Surreal => {
             #[cfg(feature = "surreal")]
@@ -142,16 +159,25 @@ fn main() -> Result<()> {
                 };
                 let rt = tokio::runtime::Runtime::new()?;
                 let store = rt.block_on(SurrealStore::connect(cfg))?;
-                Backend::Surreal { store, embedder, rt }
+                Backend::Surreal {
+                    store,
+                    embedder,
+                    rt,
+                }
             }
             #[cfg(not(feature = "surreal"))]
             {
-                return Err(anyhow!("Surreal support not enabled (build with --features surreal)"));
+                return Err(anyhow!(
+                    "Surreal support not enabled (build with --features surreal)"
+                ));
             }
         }
     };
 
-    let app = App { backend, sessions: HashMap::new() };
+    let app = App {
+        backend,
+        sessions: HashMap::new(),
+    };
     serve_stdio(app)
 }
 
@@ -161,7 +187,9 @@ fn serve_stdio(mut app: App) -> Result<()> {
 
     for line in stdin.lock().lines() {
         let line = line?;
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
 
         let msg: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
@@ -186,9 +214,15 @@ fn handle_message(app: &mut App, msg: Value) -> Result<Option<Value>> {
     if let Value::Array(arr) = msg {
         let mut out = Vec::new();
         for v in arr {
-            if let Some(r) = handle_single(app, v)? { out.push(r); }
+            if let Some(r) = handle_single(app, v)? {
+                out.push(r);
+            }
         }
-        return Ok(if out.is_empty() { None } else { Some(Value::Array(out)) });
+        return Ok(if out.is_empty() {
+            None
+        } else {
+            Some(Value::Array(out))
+        });
     }
     handle_single(app, msg)
 }
@@ -224,7 +258,9 @@ fn handle_single(app: &mut App, msg: Value) -> Result<Option<Value>> {
         }
     };
 
-    Ok(Some(json!({ "jsonrpc": "2.0", "id": id, "result": result })))
+    Ok(Some(
+        json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+    ))
 }
 
 fn tools_list() -> Value {
@@ -320,7 +356,10 @@ fn tools_list() -> Value {
 }
 
 fn tools_call(app: &mut App, params: Value) -> Result<Value> {
-    let name = params.get("name").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing params.name"))?;
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing params.name"))?;
     let args = params.get("arguments").cloned().unwrap_or(Value::Null);
 
     let (text, is_error) = match name {
@@ -344,12 +383,32 @@ fn tool_search(app: &mut App, args: Value) -> Result<(String, bool)> {
     let alpha = args.get("alpha").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
 
     match &mut app.backend {
-        Backend::Sqlite { db, embedder, vec_index } => {
-            let hits = query::hybrid_search_with_index(db, embedder, Some(vec_index), query, 50, 50, 50, alpha)?;
+        Backend::Sqlite {
+            db,
+            embedder,
+            vec_index,
+        } => {
+            let hits = query::hybrid_search_with_index(
+                db,
+                embedder,
+                Some(vec_index),
+                query,
+                50,
+                50,
+                50,
+                alpha,
+            )?;
             let mut out = String::new();
             out.push_str(&format!("Top {k} hits for query: {query}\n"));
             for (i, h) in hits.into_iter().take(k).enumerate() {
-                out.push_str(&format!("\n{}. [{:.3}] {} {:?} {}\n", i + 1, h.score, h.frag_id, h.kind, h.path));
+                out.push_str(&format!(
+                    "\n{}. [{:.3}] {} {:?} {}\n",
+                    i + 1,
+                    h.score,
+                    h.frag_id,
+                    h.kind,
+                    h.path
+                ));
                 if let Some(sym) = h.symbol {
                     out.push_str(&format!("   symbol: {sym}\n"));
                 }
@@ -359,13 +418,24 @@ fn tool_search(app: &mut App, args: Value) -> Result<(String, bool)> {
             Ok((out, false))
         }
         #[cfg(feature = "surreal")]
-        Backend::Surreal { store, embedder, rt } => {
+        Backend::Surreal {
+            store,
+            embedder,
+            rt,
+        } => {
             let qvec = embedder.embed_query(query)?;
             let hits = rt.block_on(store.hybrid_search_rrf(SURREAL_REPO_ID, query, &qvec, 50))?;
             let mut out = String::new();
             out.push_str(&format!("Top {k} hits for query: {query}\n"));
             for (i, h) in hits.into_iter().take(k).enumerate() {
-                out.push_str(&format!("\n{}. [{:.3}] {} {:?} {}\n", i + 1, h.score, h.frag_id, h.kind, h.path));
+                out.push_str(&format!(
+                    "\n{}. [{:.3}] {} {:?} {}\n",
+                    i + 1,
+                    h.score,
+                    h.frag_id,
+                    h.kind,
+                    h.path
+                ));
                 if let Some(sym) = h.symbol {
                     out.push_str(&format!("   symbol: {sym}\n"));
                 }
@@ -378,9 +448,18 @@ fn tool_search(app: &mut App, args: Value) -> Result<(String, bool)> {
 }
 
 fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
-    let id = args.get("id").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing id"))?;
-    let view = args.get("view").and_then(|v| v.as_str()).unwrap_or("signature");
-    let session_id = args.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing id"))?;
+    let view = args
+        .get("view")
+        .and_then(|v| v.as_str())
+        .unwrap_or("signature");
+    let session_id = args
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let frag = match &mut app.backend {
         Backend::Sqlite { db, .. } => {
@@ -406,8 +485,14 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
         st.seen.insert(frag.id.clone());
     }
 
-    let ctx_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
-    let max_lines = args.get("max_lines").and_then(|v| v.as_u64()).unwrap_or(160) as usize;
+    let ctx_lines = args
+        .get("context_lines")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(4) as usize;
+    let max_lines = args
+        .get("max_lines")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(160) as usize;
 
     let text = match view {
         "body" => decorate_body(&frag),
@@ -415,12 +500,25 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
             // Prefer explicit line slice if provided; otherwise use grep slice from task text.
             if let Some(line) = args.get("line").and_then(|v| v.as_u64()) {
                 let targets = [line as u32];
-                if let Some(s) = snippet::slice_by_file_lines(&frag.body, frag.span.start_line, &targets, ctx_lines, max_lines) {
+                if let Some(s) = snippet::slice_by_file_lines(
+                    &frag.body,
+                    frag.span.start_line,
+                    &targets,
+                    ctx_lines,
+                    max_lines,
+                ) {
                     decorate_slice(&frag, &format!("line:{}", line), &s)
                 } else {
                     // Fallback: AST-based pruning around the target line.
                     let empty: Vec<String> = Vec::new();
-                    if let Some(s) = ce_lang_rust::ast_prune_slice(&frag.body, frag.span.start_line, &targets, &empty, ctx_lines, max_lines) {
+                    if let Some(s) = ce_lang_rust::ast_prune_slice(
+                        &frag.body,
+                        frag.span.start_line,
+                        &targets,
+                        &empty,
+                        ctx_lines,
+                        max_lines,
+                    ) {
                         decorate_slice(&frag, &format!("ast:line:{}", line), &s)
                     } else {
                         // Fallback: head slice
@@ -430,9 +528,22 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
             } else if let Some(task) = args.get("task").and_then(|v| v.as_str()) {
                 let toks = ce_core::util::extract_ident_tokens(task);
                 // Prefer AST pruning; fall back to grep.
-                if let Some(s) = ce_lang_rust::ast_prune_slice(&frag.body, frag.span.start_line, &[], &toks, ctx_lines, max_lines) {
+                if let Some(s) = ce_lang_rust::ast_prune_slice(
+                    &frag.body,
+                    frag.span.start_line,
+                    &[],
+                    &toks,
+                    ctx_lines,
+                    max_lines,
+                ) {
                     decorate_slice(&frag, "ast", &s)
-                } else if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, &toks, ctx_lines, max_lines) {
+                } else if let Some(s) = snippet::slice_by_grep(
+                    &frag.body,
+                    frag.span.start_line,
+                    &toks,
+                    ctx_lines,
+                    max_lines,
+                ) {
                     decorate_slice(&frag, "grep", &s)
                 } else {
                     decorate_slice(&frag, "head", &head_slice(&frag, max_lines))
@@ -448,12 +559,25 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
 }
 
 fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
-    let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing task"))?;
-    let session_id = args.get("session_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let remember = args.get("remember").and_then(|v| v.as_bool()).unwrap_or(true);
+    let task = args
+        .get("task")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing task"))?;
+    let session_id = args
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let remember = args
+        .get("remember")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     match &mut app.backend {
-        Backend::Sqlite { db, embedder, vec_index } => {
+        Backend::Sqlite {
+            db,
+            embedder,
+            vec_index,
+        } => {
             let mut strategy = load_strategy_for_pack(db, &args)?;
 
             if let Some(b) = args.get("budget_chars").and_then(|v| v.as_u64()) {
@@ -484,7 +608,11 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                 Some(vec_index),
                 task,
                 &strategy,
-                if session_id.is_some() { Some(&seen) } else { None },
+                if session_id.is_some() {
+                    Some(&seen)
+                } else {
+                    None
+                },
             )?;
 
             if let Some(sid) = session_id {
@@ -498,7 +626,10 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                     }
                 }
             }
-            let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("text");
+            let format = args
+                .get("format")
+                .and_then(|v| v.as_str())
+                .unwrap_or("text");
             let text = match format {
                 "json" => serde_json::to_string_pretty(&pack)?,
                 "both" => {
@@ -511,7 +642,11 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
             Ok((text, false))
         }
         #[cfg(feature = "surreal")]
-        Backend::Surreal { store, embedder, rt } => {
+        Backend::Surreal {
+            store,
+            embedder,
+            rt,
+        } => {
             let mut strategy = load_strategy_for_pack_surreal(&args)?;
 
             if let Some(b) = args.get("budget_chars").and_then(|v| v.as_u64()) {
@@ -542,7 +677,11 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                 query: task.to_string(),
                 query_vec: Some(qvec),
                 strategy,
-                seen: if session_id.is_some() { Some(seen.clone()) } else { None },
+                seen: if session_id.is_some() {
+                    Some(seen.clone())
+                } else {
+                    None
+                },
             };
             let pack = rt.block_on(store.pack(req))?.pack;
 
@@ -557,7 +696,10 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                     }
                 }
             }
-            let format = args.get("format").and_then(|v| v.as_str()).unwrap_or("text");
+            let format = args
+                .get("format")
+                .and_then(|v| v.as_str())
+                .unwrap_or("text");
             let text = match format {
                 "json" => serde_json::to_string_pretty(&pack)?,
                 "both" => {
@@ -575,7 +717,10 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
 fn tool_strategy_list(app: &mut App, args: Value) -> Result<(String, bool)> {
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    let show_config = args.get("show_config").and_then(|v| v.as_bool()).unwrap_or(false);
+    let show_config = args
+        .get("show_config")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     match &mut app.backend {
         Backend::Sqlite { db, .. } => {
@@ -585,7 +730,10 @@ fn tool_strategy_list(app: &mut App, args: Value) -> Result<(String, bool)> {
             }
 
             let mut out = String::new();
-            out.push_str(&format!("Strategies (limit={}, offset={}):\n", limit, offset));
+            out.push_str(&format!(
+                "Strategies (limit={}, offset={}):\n",
+                limit, offset
+            ));
             for r in rows {
                 out.push_str(&format!(
                     "- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}\n",
@@ -604,12 +752,18 @@ fn tool_strategy_list(app: &mut App, args: Value) -> Result<(String, bool)> {
             Ok((out, false))
         }
         #[cfg(feature = "surreal")]
-        Backend::Surreal { .. } => Ok(("strategy storage not available for Surreal backend".to_string(), true)),
+        Backend::Surreal { .. } => Ok((
+            "strategy storage not available for Surreal backend".to_string(),
+            true,
+        )),
     }
 }
 
 fn tool_strategy_get(app: &mut App, args: Value) -> Result<(String, bool)> {
-    let id = args.get("id").and_then(|v| v.as_str()).ok_or_else(|| anyhow!("missing id"))?;
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing id"))?;
     let pretty = args.get("pretty").and_then(|v| v.as_bool()).unwrap_or(true);
 
     match &mut app.backend {
@@ -700,7 +854,11 @@ fn merge_json(dst: &mut Value, src: &Value) {
 }
 
 fn short_id(id: &str) -> String {
-    if id.len() <= 12 { id.to_string() } else { id[..12].to_string() }
+    if id.len() <= 12 {
+        id.to_string()
+    } else {
+        id[..12].to_string()
+    }
 }
 
 fn build_pack(
@@ -777,11 +935,18 @@ fn build_pack(
 
         // Optional compaction: replace full body with a slice when it saves meaningful tokens.
         if strategy.body_snippet_mode != "full" {
-            if let Some((slice_reason, slice_text)) = compute_best_slice(&frag, &file_line_hints, &task_tokens, &focus_tokens, strategy) {
+            if let Some((slice_reason, slice_text)) = compute_best_slice(
+                &frag,
+                &file_line_hints,
+                &task_tokens,
+                &focus_tokens,
+                strategy,
+            ) {
                 let decorated = decorate_slice(&frag, &slice_reason, &slice_text);
                 let full_toks = token_counter.count(&full_body);
                 let slice_toks = token_counter.count(&decorated);
-                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens {
+                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens
+                {
                     body_view = FragmentView::Slice;
                     body_text = decorated;
                 }
@@ -814,14 +979,24 @@ fn build_pack(
     pack.metrics.signals_used = signals_used_stats;
 
     let redundancy_pct = if let Some(seen_set) = seen {
-        let repeated = pack.items.iter().filter(|it| seen_set.contains(&it.id)).count();
-        if pack.items.is_empty() { 0.0 } else { (repeated as f32 / pack.items.len() as f32) * 100.0 }
+        let repeated = pack
+            .items
+            .iter()
+            .filter(|it| seen_set.contains(&it.id))
+            .count();
+        if pack.items.is_empty() {
+            0.0
+        } else {
+            (repeated as f32 / pack.items.len() as f32) * 100.0
+        }
     } else {
         0.0
     };
     pack.metrics.redundancy_pct = Some(redundancy_pct);
 
-    if let Some(baseline_tokens) = compute_baseline_tokens(db, task, &signal_bundle, &token_counter)? {
+    if let Some(baseline_tokens) =
+        compute_baseline_tokens(db, task, &signal_bundle, &token_counter)?
+    {
         pack.metrics.baseline_tokens_total = Some(baseline_tokens);
         if baseline_tokens > 0 {
             let saved = (baseline_tokens as f32 - pack.used_tokens as f32) / baseline_tokens as f32;
@@ -888,7 +1063,11 @@ fn attach_candidate_neighbors(
             .into_iter()
             .map(|(id, weight)| CandidateNeighbor { id, weight })
             .collect();
-        neighbors.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        neighbors.sort_by(|a, b| {
+            b.weight
+                .partial_cmp(&a.weight)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         neighbors.truncate(24);
         cands[idx].neighbors = neighbors;
     }
@@ -916,7 +1095,11 @@ fn build_recipe_excerpt(
     let recipes = db.load_recipes(200)?;
     let mut scored: Vec<(f32, ce_store::types::RecipeRecord)> = Vec::new();
     for rec in recipes {
-        let mut rec_tokens: Vec<String> = rec.tokens.split_whitespace().map(|s| s.to_string()).collect();
+        let mut rec_tokens: Vec<String> = rec
+            .tokens
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
         rec_tokens.sort();
         rec_tokens.dedup();
         let sim = ce_core::util::jaccard_sorted(&task_tokens, &rec_tokens);
@@ -939,7 +1122,10 @@ fn build_recipe_excerpt(
         let failure = truncate_line(&rec.failure_excerpt, 160);
         let pack = truncate_line(&rec.pack_summary, 160);
         let patch = truncate_line(&rec.patch_meta, 160);
-        let block = format!("- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n", rec.recipe_id, sim, failure, pack, patch);
+        let block = format!(
+            "- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n",
+            rec.recipe_id, sim, failure, pack, patch
+        );
         let next = format!("{}{}", out, block);
         if token_counter.count(&next) > max_tokens {
             break;
@@ -1127,7 +1313,13 @@ fn compute_best_slice(
     // A) signal-driven slice
     if allow_signals {
         if !targets.is_empty() {
-            if let Some(s) = snippet::slice_by_file_lines(&frag.body, frag.span.start_line, &targets, ctx, max_lines) {
+            if let Some(s) = snippet::slice_by_file_lines(
+                &frag.body,
+                frag.span.start_line,
+                &targets,
+                ctx,
+                max_lines,
+            ) {
                 let frag_path = frag.file.display().to_string();
                 let head = targets.get(0).copied().unwrap_or(0);
                 let reason = format!("signal:{}:{}", frag_path, head);
@@ -1138,7 +1330,13 @@ fn compute_best_slice(
 
     // B) symbol-focused grep slice (narrower than full task token grep)
     if allow_symbols {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, focus_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            focus_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = focus_tokens.iter().take(8).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -1153,8 +1351,19 @@ fn compute_best_slice(
     // C) AST-based pruning slice (Rust)
     if allow_ast {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_prune_slice(&frag.body, frag.span.start_line, &targets, toks, ctx, max_lines) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_prune_slice(
+            &frag.body,
+            frag.span.start_line,
+            &targets,
+            toks,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -1169,8 +1378,19 @@ fn compute_best_slice(
     // D) AST skeletonization (Rust)
     if allow_skeleton {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_skeleton_slice(&frag.body, frag.span.start_line, frag.kind, &targets, toks, cfg) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_skeleton_slice(
+            &frag.body,
+            frag.span.start_line,
+            frag.kind,
+            &targets,
+            toks,
+            cfg,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -1184,7 +1404,11 @@ fn compute_best_slice(
 
     // E) TSX skeletonization
     if allow_tsx {
-        if let Some(s) = snippet::skeletonize_tsx(&frag.body, cfg.tsx_skeleton_max_depth, cfg.tsx_skeleton_max_props) {
+        if let Some(s) = snippet::skeletonize_tsx(
+            &frag.body,
+            cfg.tsx_skeleton_max_depth,
+            cfg.tsx_skeleton_max_props,
+        ) {
             let reason = "tsx_skeleton".to_string();
             return Some((reason, s));
         }
@@ -1192,7 +1416,11 @@ fn compute_best_slice(
 
     // F) SwiftUI skeletonization
     if allow_swiftui {
-        if let Some(s) = snippet::skeletonize_swiftui(&frag.body, cfg.swiftui_skeleton_max_depth, cfg.swiftui_skeleton_max_modifiers) {
+        if let Some(s) = snippet::skeletonize_swiftui(
+            &frag.body,
+            cfg.swiftui_skeleton_max_depth,
+            cfg.swiftui_skeleton_max_modifiers,
+        ) {
             let reason = "swiftui_skeleton".to_string();
             return Some((reason, s));
         }
@@ -1200,7 +1428,13 @@ fn compute_best_slice(
 
     // G) token-grep slice
     if allow_query {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, task_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            task_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = task_tokens.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -1232,7 +1466,11 @@ fn head_slice(frag: &ce_core::model::Fragment, max_lines: usize) -> String {
             out.push_str(&format!("{}...\n", &line[..ws_end]));
             break;
         }
-        let file_line_1based = frag.span.start_line.saturating_add(i as u32).saturating_add(1);
+        let file_line_1based = frag
+            .span
+            .start_line
+            .saturating_add(i as u32)
+            .saturating_add(1);
         out.push_str(&format!("L{:>5}: {}\n", file_line_1based, line));
         n += 1;
     }
@@ -1249,7 +1487,10 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
         out.push_str(&format!("budget_tokens: {}\n", bt));
     }
     out.push_str(&format!("used_tokens: {}\n", pack.used_tokens));
-    out.push_str(&format!("pack_tokens_total: {}\n", pack.metrics.pack_tokens_total));
+    out.push_str(&format!(
+        "pack_tokens_total: {}\n",
+        pack.metrics.pack_tokens_total
+    ));
     if let Some(bt) = pack.metrics.baseline_tokens_total {
         out.push_str(&format!("baseline_tokens_total: {}\n", bt));
     }
@@ -1274,7 +1515,10 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
     if let Some(score) = pack.metrics.connectivity_score {
         out.push_str(&format!("connectivity_score: {:.2}\n", score));
     }
-    out.push_str(&format!("unbound_symbol_count: {}\n\n", pack.metrics.unbound_symbol_count));
+    out.push_str(&format!(
+        "unbound_symbol_count: {}\n\n",
+        pack.metrics.unbound_symbol_count
+    ));
 
     if let Some(recipe) = &pack.recipe_excerpt {
         out.push_str("## Recipe Memory\n\n");
@@ -1284,7 +1528,10 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
 
     out.push_str("## Included\n\n");
     for it in &pack.items {
-        out.push_str(&format!("### {} ({:?}, score={:.3}, reason={})\n\n", it.id, it.view, it.score, it.reason));
+        out.push_str(&format!(
+            "### {} ({:?}, score={:.3}, reason={})\n\n",
+            it.id, it.view, it.score, it.reason
+        ));
         out.push_str(&it.content);
         out.push_str("\n\n");
     }
@@ -1292,7 +1539,10 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
     if !pack.unresolved_symbols.is_empty() {
         out.push_str("\n## Unresolved Symbols\n\n");
         for sym in &pack.unresolved_symbols {
-            let reason = sym.reason.clone().unwrap_or_else(|| "unresolved".to_string());
+            let reason = sym
+                .reason
+                .clone()
+                .unwrap_or_else(|| "unresolved".to_string());
             out.push_str(&format!("- {} ({})\n", sym.symbol, reason));
         }
     }
@@ -1300,12 +1550,22 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
     if !pack.deferred.is_empty() {
         out.push_str("## Deferred\n\n");
         for d in &pack.deferred {
-            let span = format!("L{}-L{}", d.span.start_line.saturating_add(1), d.span.end_line.saturating_add(1));
+            let span = format!(
+                "L{}-L{}",
+                d.span.start_line.saturating_add(1),
+                d.span.end_line.saturating_add(1)
+            );
             let sym = d.symbol.clone().unwrap_or_default();
             if sym.is_empty() {
-                out.push_str(&format!("- {} {:?} {} [{}] ({})\n", d.id, d.kind, d.path, span, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] ({})\n",
+                    d.id, d.kind, d.path, span, d.reason
+                ));
             } else {
-                out.push_str(&format!("- {} {:?} {} [{}] sym={} ({})\n", d.id, d.kind, d.path, span, sym, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] sym={} ({})\n",
+                    d.id, d.kind, d.path, span, sym, d.reason
+                ));
             }
         }
     }
@@ -1315,7 +1575,10 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
 
 fn indent(s: &str, spaces: usize) -> String {
     let pad = " ".repeat(spaces);
-    s.lines().map(|l| format!("{pad}{l}")).collect::<Vec<_>>().join("\n")
+    s.lines()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -1343,7 +1606,15 @@ mod tests {
         let db = Db::open(&db_path)?;
         let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
         let vec_index = VecIndex::new(1, 1);
-        Ok((dir, App { db, embedder, vec_index, sessions: HashMap::new() }))
+        Ok((
+            dir,
+            App {
+                db,
+                embedder,
+                vec_index,
+                sessions: HashMap::new(),
+            },
+        ))
     }
 
     #[test]

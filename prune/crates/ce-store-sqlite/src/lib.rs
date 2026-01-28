@@ -1,12 +1,12 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use ce_core::model::{Fragment, Span};
 use ce_store::query;
 use ce_store::Db;
 use ce_store_core::{
     file_id_for_path, CeStore, EdgeRecord, FileRecord, FragmentRecord, PackRequest, PackResult,
     RepoIdentity, SearchHit,
 };
-use ce_core::model::{Fragment, Span};
 use rusqlite::params;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -148,7 +148,9 @@ impl CeStore for SqliteStore {
         for e in edges {
             let from = db.get_fragment_by_id(&e.from_id)?.map(|r| r.0);
             let to = db.get_fragment_by_id(&e.to_id)?.map(|r| r.0);
-            let (Some(from), Some(to)) = (from, to) else { continue };
+            let (Some(from), Some(to)) = (from, to) else {
+                continue;
+            };
             db.upsert_edge(from, to, &e.edge_type, e.weight)?;
         }
         Ok(())
@@ -157,9 +159,7 @@ impl CeStore for SqliteStore {
     async fn delete_missing_files(&self, repo_id: &str, keep_file_ids: &[String]) -> Result<usize> {
         let db = self.open()?;
         let mut removed = 0usize;
-        let mut stmt = db.conn().prepare(
-            "SELECT file_id, path FROM files",
-        )?;
+        let mut stmt = db.conn().prepare("SELECT file_id, path FROM files")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
         for rr in rows {
             let (file_id, path) = rr?;
@@ -172,7 +172,11 @@ impl CeStore for SqliteStore {
         Ok(removed)
     }
 
-    async fn delete_missing_fragments(&self, _repo_id: &str, keep_frag_ids: &[String]) -> Result<usize> {
+    async fn delete_missing_fragments(
+        &self,
+        _repo_id: &str,
+        keep_frag_ids: &[String],
+    ) -> Result<usize> {
         let db = self.open()?;
         if keep_frag_ids.is_empty() {
             let deleted = db.conn().execute("DELETE FROM fragments", [])?;
@@ -184,16 +188,24 @@ impl CeStore for SqliteStore {
         for rr in rows {
             let fid = rr?;
             if !keep_frag_ids.contains(&fid) {
-                let n = db.conn().execute("DELETE FROM fragments WHERE frag_id=?1", params![fid])?;
+                let n = db
+                    .conn()
+                    .execute("DELETE FROM fragments WHERE frag_id=?1", params![fid])?;
                 deleted += n as usize;
             }
         }
         Ok(deleted)
     }
 
-    async fn vector_search(&self, _repo_id: &str, query_vec: &[f32], k: usize) -> Result<Vec<SearchHit>> {
+    async fn vector_search(
+        &self,
+        _repo_id: &str,
+        query_vec: &[f32],
+        k: usize,
+    ) -> Result<Vec<SearchHit>> {
         let db = self.open()?;
-        let vec_index = query::load_or_build_hnsw(&db, &self.hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
+        let vec_index =
+            query::load_or_build_hnsw(&db, &self.hnsw_dir, query::DEFAULT_HNSW_BASE, false)?;
         let nn = vec_index.search(query_vec, k, 64);
         let mut ranked: Vec<(i64, f32)> = Vec::new();
         for n in nn {
@@ -211,7 +223,12 @@ impl CeStore for SqliteStore {
         Ok(self.map_hits(hits, "vector"))
     }
 
-    async fn fts_search(&self, _repo_id: &str, query_text: &str, k: usize) -> Result<Vec<SearchHit>> {
+    async fn fts_search(
+        &self,
+        _repo_id: &str,
+        query_text: &str,
+        k: usize,
+    ) -> Result<Vec<SearchHit>> {
         let db = self.open()?;
         let rowids = db.search_fts(query_text, k)?;
         let rowids_only: Vec<i64> = rowids.into_iter().map(|(rid, _)| rid).collect();
@@ -219,7 +236,13 @@ impl CeStore for SqliteStore {
         Ok(self.map_hits(hits, "fts"))
     }
 
-    async fn hybrid_search_rrf(&self, repo_id: &str, query_text: &str, query_vec: &[f32], k: usize) -> Result<Vec<SearchHit>> {
+    async fn hybrid_search_rrf(
+        &self,
+        repo_id: &str,
+        query_text: &str,
+        query_vec: &[f32],
+        k: usize,
+    ) -> Result<Vec<SearchHit>> {
         let vec_hits = self.vector_search(repo_id, query_vec, k).await?;
         let fts_hits = self.fts_search(repo_id, query_text, k).await?;
         let mut scores: HashMap<String, f32> = HashMap::new();
@@ -227,12 +250,18 @@ impl CeStore for SqliteStore {
         let rrf_k = 60.0;
         for (rank, h) in vec_hits.into_iter().enumerate() {
             let score = 1.0 / (rrf_k + rank as f32 + 1.0);
-            scores.entry(h.frag_id.clone()).and_modify(|s| *s += score).or_insert(score);
+            scores
+                .entry(h.frag_id.clone())
+                .and_modify(|s| *s += score)
+                .or_insert(score);
             hit_map.entry(h.frag_id.clone()).or_insert(h);
         }
         for (rank, h) in fts_hits.into_iter().enumerate() {
             let score = 1.0 / (rrf_k + rank as f32 + 1.0);
-            scores.entry(h.frag_id.clone()).and_modify(|s| *s += score).or_insert(score);
+            scores
+                .entry(h.frag_id.clone())
+                .and_modify(|s| *s += score)
+                .or_insert(score);
             hit_map.entry(h.frag_id.clone()).or_insert(h);
         }
         let mut ranked: Vec<(String, f32)> = scores.into_iter().collect();
@@ -249,7 +278,11 @@ impl CeStore for SqliteStore {
         Ok(out)
     }
 
-    async fn fetch_fragments(&self, repo_id: &str, frag_ids: &[String]) -> Result<Vec<FragmentRecord>> {
+    async fn fetch_fragments(
+        &self,
+        repo_id: &str,
+        frag_ids: &[String],
+    ) -> Result<Vec<FragmentRecord>> {
         let db = self.open()?;
         let mut out = Vec::new();
         for fid in frag_ids {
@@ -322,9 +355,9 @@ impl CeStore for SqliteStore {
     async fn list_files(&self, repo_id: &str) -> Result<Vec<FileRecord>> {
         let db = self.open()?;
         let mut out = Vec::new();
-        let mut stmt = db.conn().prepare(
-            "SELECT path, language, size_bytes, mtime_ms, content_hash FROM files",
-        )?;
+        let mut stmt = db
+            .conn()
+            .prepare("SELECT path, language, size_bytes, mtime_ms, content_hash FROM files")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,

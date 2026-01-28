@@ -1,5 +1,5 @@
-use blake3::Hasher;
 use crate::signals;
+use blake3::Hasher;
 
 pub fn normalize_whitespace(s: &str) -> String {
     // Very simple normalization:
@@ -77,7 +77,11 @@ pub fn approx_tokens(text: &str) -> usize {
 
 pub fn approx_tokens_from_chars(chars: usize) -> usize {
     // Back-compat wrapper.
-    if chars == 0 { 0 } else { ((chars as f32 / 3.8).ceil() as usize).max(1) }
+    if chars == 0 {
+        0
+    } else {
+        ((chars as f32 / 3.8).ceil() as usize).max(1)
+    }
 }
 
 /// Extract identifier-ish tokens from arbitrary text.
@@ -172,5 +176,9 @@ pub fn jaccard_sorted(a: &[String], b: &[String]) -> f32 {
         }
     }
     let union = a.len() + b.len() - inter;
-    if union == 0 { 0.0 } else { inter as f32 / union as f32 }
+    if union == 0 {
+        0.0
+    } else {
+        inter as f32 / union as f32
+    }
 }

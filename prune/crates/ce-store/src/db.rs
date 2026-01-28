@@ -3,9 +3,9 @@ use ce_core::model::{FragKind, Fragment};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use blake3::Hasher;
@@ -72,11 +72,7 @@ impl Db {
                 |r| r.get(0),
             )
             .optional()?;
-        let mut ver: i64 = ver_str
-            .as_deref()
-            .unwrap_or("1")
-            .parse()
-            .unwrap_or(1);
+        let mut ver: i64 = ver_str.as_deref().unwrap_or("1").parse().unwrap_or(1);
 
         if ver < 2 {
             let sql2 = include_str!("../migrations/002_add_crate.sql");
@@ -111,8 +107,6 @@ impl Db {
             )?;
         }
 
-
-
         Ok(())
     }
 
@@ -130,11 +124,9 @@ impl Db {
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
         let v: Option<String> = self
             .conn
-            .query_row(
-                "SELECT value FROM meta WHERE key=?1",
-                params![key],
-                |r| r.get(0),
-            )
+            .query_row("SELECT value FROM meta WHERE key=?1", params![key], |r| {
+                r.get(0)
+            })
             .optional()?;
         Ok(v)
     }
@@ -162,19 +154,20 @@ impl Db {
             Err(_) => return Ok(()),
         };
 
-        let mut upd = match self.conn.prepare(
-            "UPDATE symbols SET source=?1 WHERE symbol=?2 AND frag_rowid=?3",
-        ) {
+        let mut upd = match self
+            .conn
+            .prepare("UPDATE symbols SET source=?1 WHERE symbol=?2 AND frag_rowid=?3")
+        {
             Ok(u) => u,
             Err(_) => return Ok(()),
         };
 
         let rows = stmt.query_map([], |r| {
             Ok((
-                r.get::<_, String>(0)?,            // symbol row value
-                r.get::<_, i64>(1)?,               // frag_rowid
-                r.get::<_, Option<String>>(2)?,    // fragment primary symbol
-                r.get::<_, String>(3)?,            // crate_name
+                r.get::<_, String>(0)?,         // symbol row value
+                r.get::<_, i64>(1)?,            // frag_rowid
+                r.get::<_, Option<String>>(2)?, // fragment primary symbol
+                r.get::<_, String>(3)?,         // crate_name
             ))
         })?;
 
@@ -200,9 +193,9 @@ impl Db {
     /// This is cheap to compute (compared to hashing all embeddings) and changes whenever
     /// any file's `content_hash` changes.
     pub fn compute_repo_state_hash(&self) -> Result<String> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, language, content_hash, crate_name FROM files ORDER BY path",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, language, content_hash, crate_name FROM files ORDER BY path")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -261,13 +254,17 @@ impl Db {
             )
             .optional()?;
 
-        let (model, dim, _group_count, max_created_at_ms) = row.unwrap_or(("".to_string(), 0, 0, 0));
+        let (model, dim, _group_count, max_created_at_ms) =
+            row.unwrap_or(("".to_string(), 0, 0, 0));
         let dim_usize = dim.max(0) as usize;
 
         // Fast “state hash” derived from (model, dim, total_count, max_created_at).
         // This is not a cryptographic commitment to all vectors, but it's a robust and cheap
         // staleness indicator for local indexes.
-        let state = format!("model={};dim={};count={};max_created_at_ms={}", model, dim_usize, total_count, max_created_at_ms);
+        let state = format!(
+            "model={};dim={};count={};max_created_at_ms={}",
+            model, dim_usize, total_count, max_created_at_ms
+        );
         let state_hash = {
             let mut hasher = Hasher::new();
             hasher.update(state.as_bytes());
@@ -282,7 +279,13 @@ impl Db {
         self.set_meta("embeddings.state_hash", &state_hash)?;
         self.set_meta_i64("embeddings.updated_at_ms", Self::now_ms())?;
 
-        Ok(EmbeddingsMeta { total_count, model, dim: dim_usize, max_created_at_ms, state_hash })
+        Ok(EmbeddingsMeta {
+            total_count,
+            model,
+            dim: dim_usize,
+            max_created_at_ms,
+            state_hash,
+        })
     }
 
     /// Count how many embedding vectors we currently have.
@@ -318,9 +321,11 @@ impl Db {
             params![path, language, size_bytes, mtime_ms, content_hash, now],
         )?;
 
-        let file_id: i64 = self
-            .conn
-            .query_row("SELECT file_id FROM files WHERE path=?1", params![path], |r| r.get(0))?;
+        let file_id: i64 = self.conn.query_row(
+            "SELECT file_id FROM files WHERE path=?1",
+            params![path],
+            |r| r.get(0),
+        )?;
         Ok(file_id)
     }
 
@@ -452,15 +457,20 @@ impl Db {
             ],
         )?;
 
-        let rowid: i64 = self
-            .conn
-            .query_row("SELECT rowid FROM fragments WHERE frag_id=?1", params![frag.id], |r| r.get(0))?;
+        let rowid: i64 = self.conn.query_row(
+            "SELECT rowid FROM fragments WHERE frag_id=?1",
+            params![frag.id],
+            |r| r.get(0),
+        )?;
         Ok(rowid)
     }
 
     pub fn replace_symbols_for_fragment(&self, frag_rowid: i64, frag: &Fragment) -> Result<()> {
         // Delete existing
-        self.conn.execute("DELETE FROM symbols WHERE frag_rowid=?1", params![frag_rowid])?;
+        self.conn.execute(
+            "DELETE FROM symbols WHERE frag_rowid=?1",
+            params![frag_rowid],
+        )?;
 
         let kind = format!("{:?}", frag.kind);
         let path = frag.file.display().to_string();
@@ -483,7 +493,6 @@ impl Db {
                     )?;
                 }
             }
-
 
             // Best-effort module-qualified aliases for Rust sources under `src/`.
             //
@@ -520,7 +529,8 @@ impl Db {
     }
 
     pub fn replace_refs_for_fragment(&self, frag_rowid: i64, refs: &[String]) -> Result<()> {
-        self.conn.execute("DELETE FROM refs WHERE from_rowid=?1", params![frag_rowid])?;
+        self.conn
+            .execute("DELETE FROM refs WHERE from_rowid=?1", params![frag_rowid])?;
         for r in refs {
             self.conn.execute(
                 "INSERT OR IGNORE INTO refs(from_rowid, ref_text) VALUES (?1, ?2)",
@@ -538,7 +548,13 @@ impl Db {
     }
 
     /// Insert (or replace) a resolved edge between fragments.
-    pub fn upsert_edge(&self, from_rowid: i64, to_rowid: i64, edge_type: &str, weight: f32) -> Result<()> {
+    pub fn upsert_edge(
+        &self,
+        from_rowid: i64,
+        to_rowid: i64,
+        edge_type: &str,
+        weight: f32,
+    ) -> Result<()> {
         self.conn.execute(
             r#"INSERT OR REPLACE INTO edges(from_rowid, to_rowid, edge_type, weight)
                VALUES (?1, ?2, ?3, ?4)"#,
@@ -616,7 +632,11 @@ impl Db {
     /// This is an MVP implementation intended to make edge-based subgraph
     /// expansion possible. For very large repos you may want incremental
     /// rebuilding (only affected rowids) or a SQL-join based bulk build.
-    pub fn rebuild_ref_edges_all(&self, max_refs_per_fragment: usize, max_defs_per_ref: usize) -> Result<usize> {
+    pub fn rebuild_ref_edges_all(
+        &self,
+        max_refs_per_fragment: usize,
+        max_defs_per_ref: usize,
+    ) -> Result<usize> {
         let max_refs_per_fragment = max_refs_per_fragment.max(1);
         let max_defs_per_ref = max_defs_per_ref.max(1);
 
@@ -625,7 +645,8 @@ impl Db {
 
         let res: Result<usize> = (|| {
             // Keep other edge types (e.g. module/import edges). Only rebuild `refers` here.
-            self.conn.execute("DELETE FROM edges WHERE edge_type='refers'", [])?;
+            self.conn
+                .execute("DELETE FROM edges WHERE edge_type='refers'", [])?;
 
             // Prepare statements used in the loop.
             let mut stmt_frags = self.conn.prepare(
@@ -643,9 +664,9 @@ impl Db {
                 ))
             })?;
 
-            let mut stmt_refs = self.conn.prepare(
-                r#"SELECT ref_text FROM refs WHERE from_rowid=?1 LIMIT ?2"#,
-            )?;
+            let mut stmt_refs = self
+                .conn
+                .prepare(r#"SELECT ref_text FROM refs WHERE from_rowid=?1 LIMIT ?2"#)?;
             let mut stmt_defs = self.conn.prepare(
                 r#"
                 SELECT DISTINCT fragments.rowid, fragments.path, fragments.kind, fragments.symbol, files.crate_name
@@ -667,7 +688,10 @@ impl Db {
                 let (from_rowid, from_path, from_crate) = rr?;
 
                 // Collect refs
-                let refs_iter = stmt_refs.query_map(params![from_rowid, (max_refs_per_fragment * 6) as i64], |r| r.get::<_, String>(0))?;
+                let refs_iter = stmt_refs.query_map(
+                    params![from_rowid, (max_refs_per_fragment * 6) as i64],
+                    |r| r.get::<_, String>(0),
+                )?;
                 let mut refs: Vec<String> = Vec::new();
                 for rrr in refs_iter {
                     let s = rrr?;
@@ -714,7 +738,9 @@ impl Db {
                             if !seen_defs.insert(to_rowid) {
                                 continue;
                             }
-                            let Some(kind) = parse_kind(&kind_s) else { continue; };
+                            let Some(kind) = parse_kind(&kind_s) else {
+                                continue;
+                            };
                             if kind == FragKind::ApiSummary {
                                 continue;
                             }
@@ -735,7 +761,8 @@ impl Db {
                     }
 
                     // Best K by weight.
-                    cands.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    cands
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                     cands.truncate(max_defs_per_ref);
 
                     for (to_rowid, w) in cands {
@@ -839,9 +866,9 @@ impl Db {
                 "#,
             )?;
 
-            let mut stmt_refs = self.conn.prepare(
-                r#"SELECT ref_text FROM refs WHERE from_rowid=?1 LIMIT ?2"#,
-            )?;
+            let mut stmt_refs = self
+                .conn
+                .prepare(r#"SELECT ref_text FROM refs WHERE from_rowid=?1 LIMIT ?2"#)?;
             let mut stmt_defs = self.conn.prepare(
                 r#"
                 SELECT DISTINCT fragments.rowid, fragments.path, fragments.kind, fragments.symbol, files.crate_name
@@ -860,10 +887,8 @@ impl Db {
             let mut edge_count: usize = 0;
 
             for &from_rowid in &affected {
-                let (from_path, from_crate): (String, String) = stmt_get_path.query_row(
-                    params![from_rowid],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
-                )?;
+                let (from_path, from_crate): (String, String) =
+                    stmt_get_path.query_row(params![from_rowid], |r| Ok((r.get(0)?, r.get(1)?)))?;
                 // Collect refs
                 let refs_iter = stmt_refs.query_map(
                     params![from_rowid, (max_refs_per_fragment * 6) as i64],
@@ -915,7 +940,9 @@ impl Db {
                             if !seen_defs.insert(to_rowid) {
                                 continue;
                             }
-                            let Some(kind) = parse_kind(&kind_s) else { continue; };
+                            let Some(kind) = parse_kind(&kind_s) else {
+                                continue;
+                            };
                             if kind == FragKind::ApiSummary {
                                 continue;
                             }
@@ -935,7 +962,8 @@ impl Db {
                         }
                     }
 
-                    cands.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    cands
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                     cands.truncate(max_defs_per_ref);
 
                     for (to_rowid, w) in cands {
@@ -992,11 +1020,14 @@ impl Db {
 
         let res: Result<usize> = (|| {
             // Remove old module/import edges, keep other edge types (e.g. `refers`).
-            self.conn.execute("DELETE FROM edges WHERE edge_type IN ('mod', 'use', 'imported_by', 'modded_by')", [])?;
-
-            let mut stmt_upd_crate = self.conn.prepare(
-                "UPDATE files SET crate_name=?2 WHERE file_id=?1",
+            self.conn.execute(
+                "DELETE FROM edges WHERE edge_type IN ('mod', 'use', 'imported_by', 'modded_by')",
+                [],
             )?;
+
+            let mut stmt_upd_crate = self
+                .conn
+                .prepare("UPDATE files SET crate_name=?2 WHERE file_id=?1")?;
 
             let mut stmt_ins = self.conn.prepare(
                 r#"INSERT OR IGNORE INTO edges(from_rowid, to_rowid, edge_type, weight)
@@ -1009,7 +1040,9 @@ impl Db {
                 // Ensure module-qualified symbol aliases exist for this file.
                 // This upgrades older indexes without requiring a full reindex.
                 let _ = self.augment_rust_module_qualified_symbols_for_file(*file_id, path)?;
-                let Some(&from_rid) = api_map.get(path) else { continue; };
+                let Some(&from_rid) = api_map.get(path) else {
+                    continue;
+                };
 
                 // Best-effort: annotate this file with its owning Rust crate name (workspace-aware).
                 let tgt = best_rust_target_for_file(Path::new(path), &ws);
@@ -1020,7 +1053,11 @@ impl Db {
                 // Also add crate-qualified symbol aliases for lib/proc-macro targets so that
                 // refs like `my_crate::foo::Bar` can resolve directly.
                 if is_lib && !crate_name.is_empty() {
-                    let _ = self.augment_rust_crate_qualified_symbols_for_file(*file_id, path, &crate_name)?;
+                    let _ = self.augment_rust_crate_qualified_symbols_for_file(
+                        *file_id,
+                        path,
+                        &crate_name,
+                    )?;
                 }
 
                 // Read source from disk.
@@ -1032,9 +1069,12 @@ impl Db {
 
                 let crate_mod_dir = crate_module_dir_for_file(Path::new(path), &ws, &all_paths);
 
-                let targets = rust_module_targets(&src, Path::new(path), &all_paths, &ws, &crate_mod_dir);
+                let targets =
+                    rust_module_targets(&src, Path::new(path), &all_paths, &ws, &crate_mod_dir);
                 for (edge_type, target_path, weight) in targets {
-                    let Some(&to_rid) = api_map.get(&target_path) else { continue; };
+                    let Some(&to_rid) = api_map.get(&target_path) else {
+                        continue;
+                    };
                     if to_rid == from_rid {
                         continue;
                     }
@@ -1144,7 +1184,9 @@ impl Db {
             // TS/TSX import graph (file-level ApiSummary → ApiSummary)
             // -----------------------------------------------------------------
             for (_file_id, path) in files.iter() {
-                let Some(&from_rid) = api_map.get(path) else { continue; };
+                let Some(&from_rid) = api_map.get(path) else {
+                    continue;
+                };
 
                 // Read source from disk.
                 let disk_path = repo_root.join(Path::new(path));
@@ -1155,7 +1197,9 @@ impl Db {
 
                 let targets = ts_module_targets(&src, Path::new(path), &all_paths, &aliases);
                 for (target_path, weight) in targets {
-                    let Some(&to_rid) = api_map.get(&target_path) else { continue; };
+                    let Some(&to_rid) = api_map.get(&target_path) else {
+                        continue;
+                    };
                     if to_rid == from_rid {
                         continue;
                     }
@@ -1218,27 +1262,48 @@ impl Db {
                     }
 
                     // Determine how to resolve the tag.
-                    let (lookup_local, desired_symbol, specifier, is_default): (String, String, String, bool) =
-                        if let Some((head, tail)) = tag.split_once('.') {
-                            // Member tag: Icons.Add
-                            if let Some(b) = local_map.get(head) {
-                                if b.kind == TsImportKind::Namespace {
-                                    (head.to_string(), tail.to_string(), b.specifier.clone(), false)
-                                } else {
-                                    continue;
-                                }
+                    let (lookup_local, desired_symbol, specifier, is_default): (
+                        String,
+                        String,
+                        String,
+                        bool,
+                    ) = if let Some((head, tail)) = tag.split_once('.') {
+                        // Member tag: Icons.Add
+                        if let Some(b) = local_map.get(head) {
+                            if b.kind == TsImportKind::Namespace {
+                                (
+                                    head.to_string(),
+                                    tail.to_string(),
+                                    b.specifier.clone(),
+                                    false,
+                                )
                             } else {
                                 continue;
                             }
                         } else {
-                            // Simple tag: Button
-                            let Some(b) = local_map.get(&tag) else { continue; };
-                            let sym = b.imported.clone().unwrap_or_else(|| tag.clone());
-                            (tag.clone(), sym, b.specifier.clone(), b.kind == TsImportKind::Default)
+                            continue;
+                        }
+                    } else {
+                        // Simple tag: Button
+                        let Some(b) = local_map.get(&tag) else {
+                            continue;
                         };
+                        let sym = b.imported.clone().unwrap_or_else(|| tag.clone());
+                        (
+                            tag.clone(),
+                            sym,
+                            b.specifier.clone(),
+                            b.kind == TsImportKind::Default,
+                        )
+                    };
 
                     // Resolve specifier to local TS/TSX paths.
-                    let targets = ts_resolve_module_specifier_any(Path::new(path), &specifier, &all_paths, &aliases);
+                    let targets = ts_resolve_module_specifier_any(
+                        Path::new(path),
+                        &specifier,
+                        &all_paths,
+                        &aliases,
+                    );
                     if targets.is_empty() {
                         continue; // npm package or unresolvable
                     }
@@ -1268,21 +1333,23 @@ impl Db {
                     let mut def_rowids: Vec<i64> = Vec::new();
                     for tpath in targets {
                         // First try desired symbol.
-                        let rows = stmt_symbol_defs.query_map(
-                            params![&desired_symbol, &tpath, max_defs_per_tag],
-                            |r| r.get(0),
-                        )?;
+                        let rows = stmt_symbol_defs
+                            .query_map(params![&desired_symbol, &tpath, max_defs_per_tag], |r| {
+                                r.get(0)
+                            })?;
                         for rr in rows {
                             def_rowids.push(rr?);
                         }
 
                         // For default imports, also try file stem as a fallback (common for `export default`).
                         if def_rowids.is_empty() && is_default {
-                            if let Some(stem) = Path::new(&tpath).file_stem().and_then(|s| s.to_str()) {
-                                let rows2 = stmt_symbol_defs.query_map(
-                                    params![stem, &tpath, max_defs_per_tag],
-                                    |r| r.get(0),
-                                )?;
+                            if let Some(stem) =
+                                Path::new(&tpath).file_stem().and_then(|s| s.to_str())
+                            {
+                                let rows2 = stmt_symbol_defs
+                                    .query_map(params![stem, &tpath, max_defs_per_tag], |r| {
+                                        r.get(0)
+                                    })?;
                                 for rr in rows2 {
                                     def_rowids.push(rr?);
                                 }
@@ -1355,7 +1422,6 @@ impl Db {
         }
     }
 
-
     /// Insert additional module-qualified symbols for all fragments in a file.
     ///
     /// This is a cheap “repair/upgrade” pass that lets new context-engine versions add
@@ -1366,18 +1432,22 @@ impl Db {
     /// - `crate::foo::Bar` style aliases
     ///
     /// (When the module prefix is empty, we still add `crate::Bar`.)
-    fn augment_rust_module_qualified_symbols_for_file(&self, file_id: i64, file_path: &str) -> Result<usize> {
+    fn augment_rust_module_qualified_symbols_for_file(
+        &self,
+        file_id: i64,
+        file_path: &str,
+    ) -> Result<usize> {
         let Some(mod_prefix) = rust_module_prefix_for_index_path(file_path) else {
             return Ok(0);
         };
 
-                // Remove previously-generated module/crate aliases for this file's fragments.
+        // Remove previously-generated module/crate aliases for this file's fragments.
         self.conn.execute(
             "DELETE FROM symbols WHERE frag_rowid IN (SELECT rowid FROM fragments WHERE file_id=?1) AND source IN ('alias_module','alias_crate')",
             params![file_id],
         )?;
 
-let mut stmt_sel = self.conn.prepare(
+        let mut stmt_sel = self.conn.prepare(
             "SELECT rowid, symbol, kind, path FROM fragments WHERE file_id=?1 AND symbol IS NOT NULL",
         )?;
         let mut stmt_ins = self.conn.prepare(
@@ -1436,13 +1506,13 @@ let mut stmt_sel = self.conn.prepare(
             return Ok(0);
         };
 
-                // Remove previously-generated crate-name aliases for this file's fragments.
+        // Remove previously-generated crate-name aliases for this file's fragments.
         self.conn.execute(
             "DELETE FROM symbols WHERE frag_rowid IN (SELECT rowid FROM fragments WHERE file_id=?1) AND source IN ('alias_crate_name')",
             params![file_id],
         )?;
 
-let mut stmt_sel = self.conn.prepare(
+        let mut stmt_sel = self.conn.prepare(
             "SELECT rowid, symbol, kind, path FROM fragments WHERE file_id=?1 AND symbol IS NOT NULL",
         )?;
         let mut stmt_ins = self.conn.prepare(
@@ -1487,7 +1557,9 @@ let mut stmt_sel = self.conn.prepare(
                 make_in_clause(chunk.len())
             );
             let mut stmt = self.conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| r.get::<_, i64>(0))?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+                r.get::<_, i64>(0)
+            })?;
             for rr in rows {
                 out.push(rr?);
             }
@@ -1507,7 +1579,9 @@ let mut stmt_sel = self.conn.prepare(
                 make_in_clause(chunk.len())
             );
             let mut stmt = self.conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| r.get::<_, String>(0))?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+                r.get::<_, String>(0)
+            })?;
             for rr in rows {
                 out.push(rr?);
             }
@@ -1526,7 +1600,9 @@ let mut stmt_sel = self.conn.prepare(
                 make_in_clause(chunk.len())
             );
             let mut stmt = self.conn.prepare(&sql)?;
-            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| r.get::<_, i64>(0))?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+                r.get::<_, i64>(0)
+            })?;
             for rr in rows {
                 out.push(rr?);
             }
@@ -1555,7 +1631,13 @@ let mut stmt_sel = self.conn.prepare(
         Ok(())
     }
 
-    pub fn insert_embedding(&self, frag_rowid: i64, model: &str, dim: i64, vec_blob: &[u8]) -> Result<()> {
+    pub fn insert_embedding(
+        &self,
+        frag_rowid: i64,
+        model: &str,
+        dim: i64,
+        vec_blob: &[u8],
+    ) -> Result<()> {
         let now = Self::now_ms();
         self.conn.execute(
             r#"
@@ -1611,8 +1693,10 @@ let mut stmt_sel = self.conn.prepare(
     }
 
     pub fn get_fragment_by_id(&self, frag_id: &str) -> Result<Option<(i64, Fragment)>> {
-        let row: Option<(i64, Fragment)> = self.conn.query_row(
-            r#"
+        let row: Option<(i64, Fragment)> = self
+            .conn
+            .query_row(
+                r#"
             SELECT rowid,
                    frag_id, ast_hash, path, kind, symbol,
                    start_byte, end_byte, start_line, start_col, end_line, end_col,
@@ -1620,37 +1704,38 @@ let mut stmt_sel = self.conn.prepare(
             FROM fragments
             WHERE frag_id=?1
             "#,
-            params![frag_id],
-            |r| {
-                let rowid: i64 = r.get(0)?;
-                let kind_str: String = r.get(4)?;
-                let kind = parse_kind(&kind_str).unwrap_or(FragKind::Other);
+                params![frag_id],
+                |r| {
+                    let rowid: i64 = r.get(0)?;
+                    let kind_str: String = r.get(4)?;
+                    let kind = parse_kind(&kind_str).unwrap_or(FragKind::Other);
 
-                Ok((
-                    rowid,
-                    Fragment {
-                        id: r.get(1)?,
-                        ast_hash: r.get(2)?,
-                        file: std::path::PathBuf::from(r.get::<_, String>(3)?),
-                        kind,
-                        symbol: r.get(5)?,
-                        span: ce_core::model::Span {
-                            start_byte: r.get::<_, i64>(6)? as usize,
-                            end_byte: r.get::<_, i64>(7)? as usize,
-                            start_line: r.get::<_, i64>(8)? as u32,
-                            start_col: r.get::<_, i64>(9)? as u32,
-                            end_line: r.get::<_, i64>(10)? as u32,
-                            end_col: r.get::<_, i64>(11)? as u32,
+                    Ok((
+                        rowid,
+                        Fragment {
+                            id: r.get(1)?,
+                            ast_hash: r.get(2)?,
+                            file: std::path::PathBuf::from(r.get::<_, String>(3)?),
+                            kind,
+                            symbol: r.get(5)?,
+                            span: ce_core::model::Span {
+                                start_byte: r.get::<_, i64>(6)? as usize,
+                                end_byte: r.get::<_, i64>(7)? as usize,
+                                start_line: r.get::<_, i64>(8)? as u32,
+                                start_col: r.get::<_, i64>(9)? as u32,
+                                end_line: r.get::<_, i64>(10)? as u32,
+                                end_col: r.get::<_, i64>(11)? as u32,
+                            },
+                            signature: r.get(12)?,
+                            body: r.get(13)?,
+                            doc: r.get(14)?,
+                            retrieval_text: r.get(15)?,
+                            refs: vec![],
                         },
-                        signature: r.get(12)?,
-                        body: r.get(13)?,
-                        doc: r.get(14)?,
-                        retrieval_text: r.get(15)?,
-                        refs: vec![],
-                    },
-                ))
-            },
-        ).optional()?;
+                    ))
+                },
+            )
+            .optional()?;
         Ok(row)
     }
 
@@ -1658,7 +1743,12 @@ let mut stmt_sel = self.conn.prepare(
     ///
     /// This is used for “signal” based retrieval (e.g. compiler errors / stack traces).
     /// Returns up to `k` rowids ordered by smallest span first (most specific fragment).
-    pub fn fragment_rowids_covering_line(&self, path: &str, line_1based: u32, k: usize) -> Result<Vec<i64>> {
+    pub fn fragment_rowids_covering_line(
+        &self,
+        path: &str,
+        line_1based: u32,
+        k: usize,
+    ) -> Result<Vec<i64>> {
         if k == 0 {
             return Ok(vec![]);
         }
@@ -1752,7 +1842,6 @@ let mut stmt_sel = self.conn.prepare(
         Ok(out)
     }
 
-
     /// Lexical search via FTS5.
     /// Returns rowid + a lexical score (higher is better) based on bm25.
     pub fn search_fts(&self, query: &str, k: usize) -> Result<Vec<(i64, f32)>> {
@@ -1789,19 +1878,21 @@ let mut stmt_sel = self.conn.prepare(
                 WHERE rowid=?1
                 "#,
             )?;
-            let row = stmt.query_row(params![rid], |r| {
-                let kind_str: String = r.get(2)?;
-                let kind = parse_kind(&kind_str).unwrap_or(FragKind::Other);
-                Ok(SearchHit {
-                    frag_id: r.get(0)?,
-                    rowid: rid,
-                    path: r.get(1)?,
-                    kind,
-                    symbol: r.get(3)?,
-                    score: 0.0,
-                    signature: r.get(4)?,
+            let row = stmt
+                .query_row(params![rid], |r| {
+                    let kind_str: String = r.get(2)?;
+                    let kind = parse_kind(&kind_str).unwrap_or(FragKind::Other);
+                    Ok(SearchHit {
+                        frag_id: r.get(0)?,
+                        rowid: rid,
+                        path: r.get(1)?,
+                        kind,
+                        symbol: r.get(3)?,
+                        score: 0.0,
+                        signature: r.get(4)?,
+                    })
                 })
-            }).optional()?;
+                .optional()?;
             if let Some(hit) = row {
                 out.push(hit);
             }
@@ -1812,7 +1903,10 @@ let mut stmt_sel = self.conn.prepare(
     /// Fetch fragment paths for a set of rowids.
     ///
     /// This is used for cheap grouping (e.g. injecting file-level ApiSummary fragments).
-    pub fn paths_for_rowids(&self, rowids: &[i64]) -> Result<std::collections::HashMap<i64, String>> {
+    pub fn paths_for_rowids(
+        &self,
+        rowids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, String>> {
         use std::collections::HashMap;
 
         let mut out: HashMap<i64, String> = HashMap::new();
@@ -1870,11 +1964,14 @@ let mut stmt_sel = self.conn.prepare(
     }
 
     pub fn get_embedding_blob(&self, frag_rowid: i64) -> Result<Option<(String, i64, Vec<u8>)>> {
-        let row: Option<(String, i64, Vec<u8>)> = self.conn.query_row(
-            "SELECT model, dim, vec FROM embeddings WHERE rowid=?1",
-            params![frag_rowid],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        ).optional()?;
+        let row: Option<(String, i64, Vec<u8>)> = self
+            .conn
+            .query_row(
+                "SELECT model, dim, vec FROM embeddings WHERE rowid=?1",
+                params![frag_rowid],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
         Ok(row)
     }
 
@@ -1927,20 +2024,28 @@ let mut stmt_sel = self.conn.prepare(
     ///
     /// This is used during subgraph expansion to reduce ambiguity for common
     /// names like `Error` or `Config`.
-    pub fn resolve_symbol_defs_near(&self, symbol: &str, from_rowid: i64, k: usize) -> Result<Vec<i64>> {
+    pub fn resolve_symbol_defs_near(
+        &self,
+        symbol: &str,
+        from_rowid: i64,
+        k: usize,
+    ) -> Result<Vec<i64>> {
         if k == 0 {
             return Ok(vec![]);
         }
-        let from: Option<(String, String)> = self.conn.query_row(
-            r#"
+        let from: Option<(String, String)> = self
+            .conn
+            .query_row(
+                r#"
             SELECT fragments.path, files.crate_name
             FROM fragments
             JOIN files ON fragments.file_id = files.file_id
             WHERE fragments.rowid=?1
             "#,
-            params![from_rowid],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        ).optional()?;
+                params![from_rowid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
         let (from_path, from_crate) = from.unwrap_or_default();
 
         let lim = ((k * 12).max(24)).min(240) as i64;
@@ -1987,7 +2092,9 @@ let mut stmt_sel = self.conn.prepare(
                 if !seen.insert(rid) {
                     continue;
                 }
-                let Some(kind) = parse_kind(&kind_s) else { continue; };
+                let Some(kind) = parse_kind(&kind_s) else {
+                    continue;
+                };
                 if kind == FragKind::ApiSummary {
                     continue;
                 }
@@ -2274,8 +2381,6 @@ let mut stmt_sel = self.conn.prepare(
         }
         Ok(out)
     }
-
-
 }
 
 /// Stop-list for edge building.
@@ -2341,7 +2446,10 @@ fn score_def_candidate(
         let b_dir = parent_dir(cand_path);
         if !a_dir.is_empty() && a_dir == b_dir {
             w += 0.4;
-        } else if !a_dir.is_empty() && !b_dir.is_empty() && (a_dir.starts_with(b_dir) || b_dir.starts_with(a_dir)) {
+        } else if !a_dir.is_empty()
+            && !b_dir.is_empty()
+            && (a_dir.starts_with(b_dir) || b_dir.starts_with(a_dir))
+        {
             w += 0.2;
         }
     }
@@ -2387,7 +2495,12 @@ fn score_def_candidate(
     // Kind match heuristics.
     let ref_is_type = looks_type_like(ref_text);
     let ref_is_fn = looks_fn_like(ref_text);
-    if ref_is_type && matches!(cand_kind, FragKind::Struct | FragKind::Enum | FragKind::Trait | FragKind::TypeAlias) {
+    if ref_is_type
+        && matches!(
+            cand_kind,
+            FragKind::Struct | FragKind::Enum | FragKind::Trait | FragKind::TypeAlias
+        )
+    {
         w += 0.35;
     }
     if ref_is_fn && matches!(cand_kind, FragKind::Function | FragKind::Method) {
@@ -2435,12 +2548,18 @@ fn last_segment(sym: &str) -> &str {
 
 fn looks_type_like(s: &str) -> bool {
     let seg = last_segment(s);
-    seg.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+    seg.chars()
+        .next()
+        .map(|c| c.is_ascii_uppercase())
+        .unwrap_or(false)
 }
 
 fn looks_fn_like(s: &str) -> bool {
     let seg = last_segment(s);
-    seg.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+    seg.chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false)
 }
 
 /// Extract a module-path prefix from a qualified ref like `foo::bar::Baz`.
@@ -2541,7 +2660,6 @@ fn normalize_crate_name(s: &str) -> String {
     s.trim().replace('-', "_")
 }
 
-
 /// Compute a best-effort Rust module path prefix (e.g., `foo::bar`) from a repo-relative file path.
 ///
 /// Returns `None` when the path does not look like a normal Rust source file under `.../src/...`.
@@ -2635,7 +2753,11 @@ enum RustTargetKind {
 
 fn rel_norm_from_path(repo_root: &Path, p: &Path) -> Option<String> {
     // cargo_metadata typically returns absolute paths.
-    let abs = if p.is_absolute() { p.to_path_buf() } else { repo_root.join(p) };
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        repo_root.join(p)
+    };
     let rel = abs.strip_prefix(repo_root).ok()?;
     Some(norm_path(rel))
 }
@@ -2679,7 +2801,10 @@ fn load_rust_workspace(repo_root: &Path, _all_paths: &HashSet<String>) -> RustWo
     // If this isn't a Cargo workspace, or cargo isn't available, we just return an empty mapping.
     let manifest = repo_root.join("Cargo.toml");
     if !manifest.exists() {
-        return RustWorkspace { targets: vec![], crate_name_to_module_dir: HashMap::new() };
+        return RustWorkspace {
+            targets: vec![],
+            crate_name_to_module_dir: HashMap::new(),
+        };
     }
 
     let metadata = cargo_metadata::MetadataCommand::new()
@@ -2688,11 +2813,15 @@ fn load_rust_workspace(repo_root: &Path, _all_paths: &HashSet<String>) -> RustWo
         .exec();
 
     let Ok(metadata) = metadata else {
-        return RustWorkspace { targets: vec![], crate_name_to_module_dir: HashMap::new() };
+        return RustWorkspace {
+            targets: vec![],
+            crate_name_to_module_dir: HashMap::new(),
+        };
     };
 
     // Keep only workspace members.
-    let members: std::collections::HashSet<cargo_metadata::PackageId> = metadata.workspace_members.iter().cloned().collect();
+    let members: std::collections::HashSet<cargo_metadata::PackageId> =
+        metadata.workspace_members.iter().cloned().collect();
 
     let mut targets: Vec<RustTarget> = Vec::new();
     let mut crate_name_to_module_dir: HashMap<String, String> = HashMap::new();
@@ -2714,23 +2843,34 @@ fn load_rust_workspace(repo_root: &Path, _all_paths: &HashSet<String>) -> RustWo
 
             let crate_name = normalize_crate_name(&tgt.name);
             let abs_src = tgt.src_path.as_std_path();
-            let Some(root_file) = rel_norm_from_path(repo_root, abs_src) else { continue; };
+            let Some(root_file) = rel_norm_from_path(repo_root, abs_src) else {
+                continue;
+            };
 
             // Compute module directory for this crate root.
             let module_dir = norm_path(&module_dir_for_file(Path::new(&root_file)));
 
-            targets.push(RustTarget { crate_name: crate_name.clone(), root_file: root_file.clone(), module_dir: module_dir.clone(), kind });
+            targets.push(RustTarget {
+                crate_name: crate_name.clone(),
+                root_file: root_file.clone(),
+                module_dir: module_dir.clone(),
+                kind,
+            });
 
             // For cross-crate `use foo::bar`, we care mainly about lib targets.
             if kind == RustTargetKind::Lib {
-                crate_name_to_module_dir.entry(crate_name).or_insert(module_dir);
+                crate_name_to_module_dir
+                    .entry(crate_name)
+                    .or_insert(module_dir);
             }
         }
     }
 
-    RustWorkspace { targets, crate_name_to_module_dir }
+    RustWorkspace {
+        targets,
+        crate_name_to_module_dir,
+    }
 }
-
 
 fn classify_symbol_source(sym: &str, frag_sym: Option<&str>, crate_name: &str) -> &'static str {
     if let Some(fs) = frag_sym {
@@ -2783,7 +2923,10 @@ fn looks_ident(s: &str) -> bool {
     true
 }
 
-fn find_nearest_rust_crate_root_dir(file_path: &Path, all_paths: &HashSet<String>) -> Option<PathBuf> {
+fn find_nearest_rust_crate_root_dir(
+    file_path: &Path,
+    all_paths: &HashSet<String>,
+) -> Option<PathBuf> {
     let mut cur = file_path.parent();
     while let Some(dir) = cur {
         let lib = norm_path(&dir.join("lib.rs"));
@@ -2796,7 +2939,10 @@ fn find_nearest_rust_crate_root_dir(file_path: &Path, all_paths: &HashSet<String
     None
 }
 
-fn infer_special_rust_target_root_file(file_path: &Path, all_paths: &HashSet<String>) -> Option<PathBuf> {
+fn infer_special_rust_target_root_file(
+    file_path: &Path,
+    all_paths: &HashSet<String>,
+) -> Option<PathBuf> {
     let p = norm_path(file_path);
     let parts: Vec<&str> = p.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() < 2 {
@@ -2813,7 +2959,9 @@ fn infer_special_rust_target_root_file(file_path: &Path, all_paths: &HashSet<Str
         }
 
         // `.../examples/<target>/...`, `.../tests/<target>/...`, `.../benches/<target>/...`
-        if (parts[i] == "examples" || parts[i] == "tests" || parts[i] == "benches") && i + 1 < parts.len() {
+        if (parts[i] == "examples" || parts[i] == "tests" || parts[i] == "benches")
+            && i + 1 < parts.len()
+        {
             if let Some(root) = infer_special_root_from_dir(&parts, i, all_paths) {
                 return Some(root);
             }
@@ -2823,7 +2971,11 @@ fn infer_special_rust_target_root_file(file_path: &Path, all_paths: &HashSet<Str
     None
 }
 
-fn infer_special_root_from_dir(parts: &[&str], dir_i: usize, all_paths: &HashSet<String>) -> Option<PathBuf> {
+fn infer_special_root_from_dir(
+    parts: &[&str],
+    dir_i: usize,
+    all_paths: &HashSet<String>,
+) -> Option<PathBuf> {
     if dir_i + 1 >= parts.len() {
         return None;
     }
@@ -2866,8 +3018,11 @@ fn infer_special_root_from_dir(parts: &[&str], dir_i: usize, all_paths: &HashSet
     None
 }
 
-
-fn crate_module_dir_for_file(file_path: &Path, ws: &RustWorkspace, all_paths: &HashSet<String>) -> PathBuf {
+fn crate_module_dir_for_file(
+    file_path: &Path,
+    ws: &RustWorkspace,
+    all_paths: &HashSet<String>,
+) -> PathBuf {
     if let Some(t) = best_rust_target_for_file(file_path, ws) {
         if !t.module_dir.is_empty() {
             return PathBuf::from(t.module_dir.clone());
@@ -2890,7 +3045,10 @@ fn crate_module_dir_for_file(file_path: &Path, ws: &RustWorkspace, all_paths: &H
 /// This is a best-effort mapping used for:
 /// - crate-aware symbol resolution
 /// - module graph resolution (`crate::...`)
-fn best_rust_target_for_file<'a>(file_path: &Path, ws: &'a RustWorkspace) -> Option<&'a RustTarget> {
+fn best_rust_target_for_file<'a>(
+    file_path: &Path,
+    ws: &'a RustWorkspace,
+) -> Option<&'a RustTarget> {
     let fp = norm_path(file_path);
 
     let mut best_score: usize = 0;
@@ -2918,7 +3076,11 @@ fn best_rust_target_for_file<'a>(file_path: &Path, ws: &'a RustWorkspace) -> Opt
     best
 }
 
-fn resolve_module_file(base_dir: &Path, segments: &[&str], all_paths: &HashSet<String>) -> Option<String> {
+fn resolve_module_file(
+    base_dir: &Path,
+    segments: &[&str],
+    all_paths: &HashSet<String>,
+) -> Option<String> {
     if segments.is_empty() {
         return None;
     }
@@ -2938,7 +3100,6 @@ fn resolve_module_file(base_dir: &Path, segments: &[&str], all_paths: &HashSet<S
     }
     None
 }
-
 
 fn parse_path_attr(code: &str) -> Option<String> {
     let s = code.trim();
@@ -2971,7 +3132,11 @@ fn parse_path_attr(code: &str) -> Option<String> {
     }
 }
 
-fn resolve_path_attr_module(file_path: &Path, attr_path: &str, all_paths: &HashSet<String>) -> Option<String> {
+fn resolve_path_attr_module(
+    file_path: &Path,
+    attr_path: &str,
+    all_paths: &HashSet<String>,
+) -> Option<String> {
     let raw = attr_path.trim();
     if raw.is_empty() {
         return None;
@@ -3155,32 +3320,33 @@ fn rust_module_targets(
 
                 // Determine base directory + tail.
                 let mut weight: f32 = 0.7;
-                let (base_dir, tail): (PathBuf, &str) = if let Some(t) = prefix.strip_prefix("crate::") {
-                    (crate_mod_dir.to_path_buf(), t)
-                } else if let Some(t) = prefix.strip_prefix("self::") {
-                    (file_module_dir.clone(), t)
-                } else if let Some(t) = prefix.strip_prefix("super::") {
-                    (super_module_dir.clone(), t)
-                } else {
-                    // Cross-crate import: `use other_crate::foo::bar` (workspace members only).
-                    let first = prefix.split("::").next().unwrap_or("").trim();
-                    if first.is_empty() {
-                        continue;
-                    }
-                    if let Some(md) = ws.crate_name_to_module_dir.get(first) {
-                        let tail = prefix.strip_prefix(&format!("{first}::")).unwrap_or("");
-                        if tail.is_empty() {
+                let (base_dir, tail): (PathBuf, &str) =
+                    if let Some(t) = prefix.strip_prefix("crate::") {
+                        (crate_mod_dir.to_path_buf(), t)
+                    } else if let Some(t) = prefix.strip_prefix("self::") {
+                        (file_module_dir.clone(), t)
+                    } else if let Some(t) = prefix.strip_prefix("super::") {
+                        (super_module_dir.clone(), t)
+                    } else {
+                        // Cross-crate import: `use other_crate::foo::bar` (workspace members only).
+                        let first = prefix.split("::").next().unwrap_or("").trim();
+                        if first.is_empty() {
                             continue;
                         }
-                        weight = 0.6;
-                        (PathBuf::from(md), tail)
-                    } else {
-                        // Fall back to treating this as a crate-local absolute path.
-                        // This helps with common Rust 2018+ code that omits `crate::`.
-                        weight = 0.65;
-                        (crate_mod_dir.to_path_buf(), prefix)
-                    }
-                };
+                        if let Some(md) = ws.crate_name_to_module_dir.get(first) {
+                            let tail = prefix.strip_prefix(&format!("{first}::")).unwrap_or("");
+                            if tail.is_empty() {
+                                continue;
+                            }
+                            weight = 0.6;
+                            (PathBuf::from(md), tail)
+                        } else {
+                            // Fall back to treating this as a crate-local absolute path.
+                            // This helps with common Rust 2018+ code that omits `crate::`.
+                            weight = 0.65;
+                            (crate_mod_dir.to_path_buf(), prefix)
+                        }
+                    };
 
                 let segs: Vec<&str> = tail.split("::").filter(|s| !s.is_empty()).collect();
                 if segs.is_empty() {
@@ -3197,7 +3363,8 @@ fn rust_module_targets(
                                 target = Some(mod_file.clone());
                             } else {
                                 let base2 = module_dir_for_file(Path::new(mod_file));
-                                if let Some(t2) = resolve_module_file(&base2, &segs[1..], all_paths) {
+                                if let Some(t2) = resolve_module_file(&base2, &segs[1..], all_paths)
+                                {
                                     target = Some(t2);
                                 } else {
                                     target = Some(mod_file.clone());
@@ -3220,7 +3387,6 @@ fn rust_module_targets(
 
     out
 }
-
 
 // -----------------------------------------------------------------------------
 // TypeScript/TSX module graph (imports/re-exports + tsconfig path aliases + JSX edges)
@@ -3260,7 +3426,9 @@ fn ts_load_alias_config(repo_root: &Path) -> TsAliasConfig {
             if !p.is_file() {
                 continue;
             }
-            let Some(name) = p.file_name().and_then(|s| s.to_str()) else { continue; };
+            let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
             if !name.starts_with("tsconfig") || !name.ends_with(".json") {
                 continue;
             }
@@ -3285,7 +3453,10 @@ fn ts_load_alias_config(repo_root: &Path) -> TsAliasConfig {
 
     // Practical fallback for Vite-style repos where `@/` is used but TS paths are missing.
     // If `src/` exists, treat `@/*` as `src/*`.
-    let has_at = cfg.paths.iter().any(|a| a.key.starts_with("@/") || a.key.starts_with("@/*") || a.key == "@");
+    let has_at = cfg
+        .paths
+        .iter()
+        .any(|a| a.key.starts_with("@/") || a.key.starts_with("@/*") || a.key == "@");
     if !has_at && repo_root.join("src").is_dir() {
         cfg.paths.push(TsPathAlias {
             key: "@/*".to_string(),
@@ -3364,7 +3535,8 @@ fn ts_extract_aliases_from_tsconfig(
                     p.set_extension("json");
                 }
                 if p.is_file() {
-                    let parent = ts_extract_aliases_from_tsconfig(repo_root, &p, depth + 1, visited);
+                    let parent =
+                        ts_extract_aliases_from_tsconfig(repo_root, &p, depth + 1, visited);
                     out = ts_merge_alias_config(out, parent);
                 }
             }
@@ -3411,7 +3583,9 @@ fn ts_extract_aliases_from_tsconfig(
             };
 
             for tv in arr {
-                let Some(t) = tv.as_str() else { continue; };
+                let Some(t) = tv.as_str() else {
+                    continue;
+                };
                 let t = t.trim();
                 if t.is_empty() {
                     continue;
@@ -3453,7 +3627,12 @@ fn ts_extract_aliases_from_tsconfig(
     out
 }
 
-fn ts_module_targets(src: &str, file_path: &Path, all_paths: &HashSet<String>, aliases: &TsAliasConfig) -> Vec<(String, f32)> {
+fn ts_module_targets(
+    src: &str,
+    file_path: &Path,
+    all_paths: &HashSet<String>,
+    aliases: &TsAliasConfig,
+) -> Vec<(String, f32)> {
     let mut out: Vec<(String, f32)> = Vec::new();
     for (spec, weight) in ts_import_specifiers(src) {
         let targets = ts_resolve_module_specifier_any(file_path, &spec, all_paths, aliases);
@@ -3585,7 +3764,11 @@ fn ts_apply_paths_aliases(spec: &str, aliases: &TsAliasConfig) -> Vec<PathBuf> {
 fn ts_match_star(pattern: &str, s: &str) -> Option<String> {
     // Very small glob: exactly one '*' in pattern.
     let Some((pre, post)) = pattern.split_once('*') else {
-        return if pattern == s { Some("".to_string()) } else { None };
+        return if pattern == s {
+            Some("".to_string())
+        } else {
+            None
+        };
     };
     if !s.starts_with(pre) {
         return None;
@@ -3602,7 +3785,11 @@ fn ts_resolve_base_path(base: &Path, all_paths: &HashSet<String>) -> Vec<String>
     let mut candidates: Vec<String> = Vec::new();
 
     // If base already ends with an extension, try it directly.
-    if base_s.ends_with(".ts") || base_s.ends_with(".tsx") || base_s.ends_with(".js") || base_s.ends_with(".jsx") {
+    if base_s.ends_with(".ts")
+        || base_s.ends_with(".tsx")
+        || base_s.ends_with(".js")
+        || base_s.ends_with(".jsx")
+    {
         candidates.push(base_s.clone());
         return candidates;
     }

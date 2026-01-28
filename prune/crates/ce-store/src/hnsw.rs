@@ -39,7 +39,10 @@ impl VecIndex {
         let ef_construction = 200;
         let dist = DistCosine {};
         let hnsw = Hnsw::new(max_nb_conn, expected, max_layer, ef_construction, dist);
-        Self { dim, inner: VecIndexInner::Owned(hnsw) }
+        Self {
+            dim,
+            inner: VecIndexInner::Owned(hnsw),
+        }
     }
 
     /// Return the on-disk dump paths that `hnsw_rs` uses.
@@ -85,7 +88,10 @@ impl VecIndex {
         }
         .try_build()?;
 
-        Ok(Self { dim, inner: VecIndexInner::Loaded(inner) })
+        Ok(Self {
+            dim,
+            inner: VecIndexInner::Loaded(inner),
+        })
     }
 
     pub fn insert(&mut self, label: usize, v: &[f32]) {

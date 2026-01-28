@@ -15,3 +15,4 @@ ce-store = { path = "../ce-store" }
 ce-core = { path = "../ce-core" }
 
 bytemuck = { version = "1", features = ["derive"] }
+rusqlite = { version = "0.31", features = ["bundled"] }

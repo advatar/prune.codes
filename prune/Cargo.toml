@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/ce-cli",
+  "crates/ce-lsp",
   "crates/ce-core",
   "crates/ce-lang-rust",
   "crates/ce-lang-tsreact",

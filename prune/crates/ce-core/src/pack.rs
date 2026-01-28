@@ -1,4 +1,7 @@
-use crate::model::{ContextPack, DeferredItem, FragKind, FragmentView, PackItem, PackMetrics, SignalBundle, Span, StrategyConfig, UnresolvedSymbol};
+use crate::model::{
+    ContextPack, DeferredItem, FragKind, FragmentView, PackItem, PackMetrics, SignalBundle, Span,
+    StrategyConfig, UnresolvedSymbol,
+};
 use crate::tokenizer::TokenCounter;
 use crate::util::{extract_ident_tokens, hash_text_hex, jaccard_sorted};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -8,9 +11,16 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// - MMR-style diversification (cheap lexical proxy)
 /// - per-file caps
 /// - body "upgrades" (replace signature with body to avoid duplication)
-pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candidate>) -> ContextPack {
+pub fn pack_with_strategy(
+    strategy: &StrategyConfig,
+    mut candidates: Vec<Candidate>,
+) -> ContextPack {
     // Sort descending relevance score.
-    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let budget_chars = strategy.budget_chars;
     let budget_tokens = strategy.budget_tokens;
@@ -200,7 +210,9 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
                     if selected.contains(&i) {
                         continue;
                     }
-                    let Some(d) = dist[i] else { continue; };
+                    let Some(d) = dist[i] else {
+                        continue;
+                    };
                     if d == 0 {
                         continue;
                     }
@@ -368,7 +380,6 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
             });
             item_index_by_id.insert(cand.id.clone(), idx_item);
         }
-
     }
 
     // ---------------------------------
@@ -475,7 +486,9 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
             let mut suggestions: Vec<DeferredItem> = Vec::new();
 
             for cand in &candidates {
-                let Some(sym) = cand.symbol.as_ref() else { continue; };
+                let Some(sym) = cand.symbol.as_ref() else {
+                    continue;
+                };
                 if !symbol_matches_token(sym, &tok) {
                     continue;
                 }
@@ -518,13 +531,14 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
                 continue;
             };
 
-            let (content, view, add_sig, add_body): (String, FragmentView, bool, bool) = if strategy.support_signature_only {
-                (cand.signature.clone(), FragmentView::Signature, true, false)
-            } else {
-                let v = cand.body_view.clone();
-                let is_sig = matches!(v, FragmentView::Signature);
-                (cand.body.clone(), v, is_sig, !is_sig)
-            };
+            let (content, view, add_sig, add_body): (String, FragmentView, bool, bool) =
+                if strategy.support_signature_only {
+                    (cand.signature.clone(), FragmentView::Signature, true, false)
+                } else {
+                    let v = cand.body_view.clone();
+                    let is_sig = matches!(v, FragmentView::Signature);
+                    (cand.body.clone(), v, is_sig, !is_sig)
+                };
 
             if add_sig {
                 let count = *file_sig_counts.get(&cand.path).unwrap_or(&0);
@@ -656,7 +670,6 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
 // (We no longer expose approx token helpers here; token counting is centralized
 // in `tokenizer::TokenCounter` with heuristic fallback.)
 
-
 /// Neighbor edge used for connected-subgraph selection.
 #[derive(Debug, Clone)]
 pub struct CandidateNeighbor {
@@ -693,8 +706,11 @@ pub struct Candidate {
     pub body_view: FragmentView,
 }
 
-
-fn bfs_distances(adj: &[Vec<usize>], sources: &HashSet<usize>, max_hops: usize) -> Vec<Option<usize>> {
+fn bfs_distances(
+    adj: &[Vec<usize>],
+    sources: &HashSet<usize>,
+    max_hops: usize,
+) -> Vec<Option<usize>> {
     let mut dist: Vec<Option<usize>> = vec![None; adj.len()];
     let mut q: VecDeque<usize> = VecDeque::new();
 
@@ -774,7 +790,6 @@ fn shortest_path(
     None
 }
 
-
 fn connectivity_score(items: &[PackItem], candidates: &[Candidate]) -> Option<f32> {
     if items.is_empty() {
         return None;
@@ -843,11 +858,49 @@ fn symbol_matches_token(sym: &str, tok: &str) -> bool {
 fn is_stop_token(tok: &str) -> bool {
     matches!(
         tok,
-        "fn" | "let" | "pub" | "use" | "mod" | "struct" | "enum" | "trait" | "impl" | "type" | "where"
-            | "self" | "super" | "crate" | "return" | "if" | "else" | "match" | "for" | "while" | "loop"
-            | "async" | "await" | "class" | "func" | "var" | "val" | "const" | "interface" | "protocol"
-            | "extension" | "import" | "from" | "in" | "new" | "switch" | "case" | "break" | "continue"
-            | "default" | "true" | "false" | "nil" | "null" | "this"
+        "fn" | "let"
+            | "pub"
+            | "use"
+            | "mod"
+            | "struct"
+            | "enum"
+            | "trait"
+            | "impl"
+            | "type"
+            | "where"
+            | "self"
+            | "super"
+            | "crate"
+            | "return"
+            | "if"
+            | "else"
+            | "match"
+            | "for"
+            | "while"
+            | "loop"
+            | "async"
+            | "await"
+            | "class"
+            | "func"
+            | "var"
+            | "val"
+            | "const"
+            | "interface"
+            | "protocol"
+            | "extension"
+            | "import"
+            | "from"
+            | "in"
+            | "new"
+            | "switch"
+            | "case"
+            | "break"
+            | "continue"
+            | "default"
+            | "true"
+            | "false"
+            | "nil"
+            | "null"
+            | "this"
     )
 }
-

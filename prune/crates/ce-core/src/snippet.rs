@@ -325,13 +325,25 @@ pub fn skeletonize_tsx(body: &str, max_depth: usize, max_props: usize) -> Option
         }
     }
 
-    if changed { Some(out) } else { None }
+    if changed {
+        Some(out)
+    } else {
+        None
+    }
 }
 
 fn is_swiftui_container(line: &str) -> bool {
     for name in [
-        "VStack", "HStack", "ZStack", "List", "Form", "Section", "Group", "NavigationStack",
-        "NavigationView", "ScrollView",
+        "VStack",
+        "HStack",
+        "ZStack",
+        "List",
+        "Form",
+        "Section",
+        "Group",
+        "NavigationStack",
+        "NavigationView",
+        "ScrollView",
     ] {
         if line.contains(name) {
             return true;
@@ -391,5 +403,9 @@ pub fn skeletonize_swiftui(body: &str, max_depth: usize, max_modifiers: usize) -
         }
     }
 
-    if changed { Some(out) } else { None }
+    if changed {
+        Some(out)
+    } else {
+        None
+    }
 }

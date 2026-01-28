@@ -1,12 +1,13 @@
 #[cfg(feature = "surreal")]
 use ce_store_core::{
-    CeStore, EdgeRecord, FileRecord, FragmentRecord, PackRequest, PackResult, RepoIdentity, SearchHit,
+    CeStore, EdgeRecord, FileRecord, FragmentRecord, PackRequest, PackResult, RepoIdentity,
+    SearchHit,
 };
 
 #[cfg(feature = "surreal")]
-mod pack;
-#[cfg(feature = "surreal")]
 mod graph;
+#[cfg(feature = "surreal")]
+mod pack;
 #[cfg(feature = "surreal")]
 mod schema;
 
@@ -24,9 +25,9 @@ use serde_json::json;
 #[cfg(feature = "surreal")]
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "surreal")]
-use surrealdb::engine::any::Any;
-#[cfg(feature = "surreal")]
 use surrealdb::engine::any::connect;
+#[cfg(feature = "surreal")]
+use surrealdb::engine::any::Any;
 #[cfg(feature = "surreal")]
 use surrealdb::sql::Thing;
 #[cfg(feature = "surreal")]
@@ -269,7 +270,12 @@ impl SurrealStore {
             .collect())
     }
 
-    async fn fts_search_rows(&self, repo_id: &str, query: &str, k: usize) -> Result<Vec<SearchHit>> {
+    async fn fts_search_rows(
+        &self,
+        repo_id: &str,
+        query: &str,
+        k: usize,
+    ) -> Result<Vec<SearchHit>> {
         if !self.cfg.fts_enabled {
             return Ok(Vec::new());
         }
@@ -412,7 +418,11 @@ impl CeStore for SurrealStore {
     async fn delete_missing_files(&self, repo_id: &str, keep_file_ids: &[String]) -> Result<usize> {
         if keep_file_ids.is_empty() {
             let sql = "DELETE file WHERE repo_id = $repo_id";
-            let mut res = self.db.query(sql).bind(("repo_id", repo_id.to_string())).await?;
+            let mut res = self
+                .db
+                .query(sql)
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
             let rows: Vec<serde_json::Value> = res.take(0)?;
             let _ = self
                 .db
@@ -457,7 +467,9 @@ impl CeStore for SurrealStore {
             .await?;
         let _ = self
             .db
-            .query("DELETE imports WHERE repo_id = $repo_id AND (in NOT IN $keep OR out NOT IN $keep)")
+            .query(
+                "DELETE imports WHERE repo_id = $repo_id AND (in NOT IN $keep OR out NOT IN $keep)",
+            )
             .bind(("repo_id", repo_id.to_string()))
             .bind(("keep", keep.clone()))
             .await?;
@@ -477,10 +489,18 @@ impl CeStore for SurrealStore {
         Ok(rows.len())
     }
 
-    async fn delete_missing_fragments(&self, repo_id: &str, keep_frag_ids: &[String]) -> Result<usize> {
+    async fn delete_missing_fragments(
+        &self,
+        repo_id: &str,
+        keep_frag_ids: &[String],
+    ) -> Result<usize> {
         if keep_frag_ids.is_empty() {
             let sql = "DELETE frag WHERE repo_id = $repo_id";
-            let mut res = self.db.query(sql).bind(("repo_id", repo_id.to_string())).await?;
+            let mut res = self
+                .db
+                .query(sql)
+                .bind(("repo_id", repo_id.to_string()))
+                .await?;
             let rows: Vec<serde_json::Value> = res.take(0)?;
             let _ = self
                 .db
@@ -523,7 +543,12 @@ impl CeStore for SurrealStore {
         Ok(rows.len())
     }
 
-    async fn vector_search(&self, repo_id: &str, query_vec: &[f32], k: usize) -> Result<Vec<SearchHit>> {
+    async fn vector_search(
+        &self,
+        repo_id: &str,
+        query_vec: &[f32],
+        k: usize,
+    ) -> Result<Vec<SearchHit>> {
         self.vector_search_rows(repo_id, query_vec, k).await
     }
 
@@ -546,12 +571,18 @@ impl CeStore for SurrealStore {
 
         for (rank, h) in vec_hits.into_iter().enumerate() {
             let score = 1.0 / (rrf_k + rank as f32 + 1.0);
-            scores.entry(h.frag_id.clone()).and_modify(|s| *s += score).or_insert(score);
+            scores
+                .entry(h.frag_id.clone())
+                .and_modify(|s| *s += score)
+                .or_insert(score);
             hit_map.entry(h.frag_id.clone()).or_insert(h);
         }
         for (rank, h) in fts_hits.into_iter().enumerate() {
             let score = 1.0 / (rrf_k + rank as f32 + 1.0);
-            scores.entry(h.frag_id.clone()).and_modify(|s| *s += score).or_insert(score);
+            scores
+                .entry(h.frag_id.clone())
+                .and_modify(|s| *s += score)
+                .or_insert(score);
             hit_map.entry(h.frag_id.clone()).or_insert(h);
         }
         let mut ranked: Vec<(String, f32)> = scores.into_iter().collect();
@@ -568,7 +599,11 @@ impl CeStore for SurrealStore {
         Ok(out)
     }
 
-    async fn fetch_fragments(&self, _repo_id: &str, frag_ids: &[String]) -> Result<Vec<FragmentRecord>> {
+    async fn fetch_fragments(
+        &self,
+        _repo_id: &str,
+        frag_ids: &[String],
+    ) -> Result<Vec<FragmentRecord>> {
         if frag_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -606,7 +641,9 @@ impl CeStore for SurrealStore {
         let rows: Vec<Row> = res.take(0)?;
         let mut out = Vec::new();
         for r in rows {
-            let embedding = r.embedding.map(|v| v.into_iter().map(|x| x as f32).collect());
+            let embedding = r
+                .embedding
+                .map(|v| v.into_iter().map(|x| x as f32).collect());
             out.push(FragmentRecord {
                 frag_id: Self::strip_prefix("frag", &r.id.to_string()),
                 repo_id: r.repo_id,
@@ -702,7 +739,11 @@ impl CeStore for SurrealStore {
 
     async fn list_files(&self, repo_id: &str) -> Result<Vec<FileRecord>> {
         let sql = "SELECT id, repo_id, path, lang, size_bytes, mtime_ms, content_hash FROM file WHERE repo_id = $repo_id";
-        let mut res = self.db.query(sql).bind(("repo_id", repo_id.to_string())).await?;
+        let mut res = self
+            .db
+            .query(sql)
+            .bind(("repo_id", repo_id.to_string()))
+            .await?;
 
         #[derive(serde::Deserialize)]
         struct Row {
@@ -784,6 +825,8 @@ pub struct SurrealConfig {
 #[cfg(not(feature = "surreal"))]
 impl SurrealStore {
     pub async fn connect(_cfg: SurrealConfig) -> anyhow::Result<Self> {
-        Err(anyhow::anyhow!("ce-store-surreal built without surreal feature"))
+        Err(anyhow::anyhow!(
+            "ce-store-surreal built without surreal feature"
+        ))
     }
 }

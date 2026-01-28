@@ -27,6 +27,9 @@ ce-store = { path = "../ce-store" }
 ce-store-core = { path = "../ce-store-core" }
 ce-store-surreal = { path = "../ce-store-surreal", default-features = false, optional = true, features = ["surreal"] }
 surrealdb = { version = "2", default-features = false, features = ["kv-mem", "kv-surrealkv"], optional = true }
+ce-lsp = { path = "../ce-lsp" }
+url = "2"
+lsp-types = "0.97"
 
 bytemuck = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }

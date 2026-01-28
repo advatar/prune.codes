@@ -88,8 +88,8 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let config = Arc::new(build_config(args)?);
     let state = Arc::new(Mutex::new(SyncState::default()));
-    let server = Server::http(&config.args.bind)
-        .map_err(|err| anyhow!("bind server failed: {err}"))?;
+    let server =
+        Server::http(&config.args.bind).map_err(|err| anyhow!("bind server failed: {err}"))?;
     println!("prune-sync listening on {}", config.args.bind);
 
     for request in server.incoming_requests() {
@@ -135,7 +135,11 @@ fn default_ce_path() -> Option<String> {
     }
 }
 
-fn handle_request(request: Request, config: &Arc<SyncConfig>, state: &Arc<Mutex<SyncState>>) -> Result<()> {
+fn handle_request(
+    request: Request,
+    config: &Arc<SyncConfig>,
+    state: &Arc<Mutex<SyncState>>,
+) -> Result<()> {
     let method = request.method().clone();
     let url = request.url().to_string();
     match (method, url.as_str()) {
@@ -165,7 +169,11 @@ fn handle_request(request: Request, config: &Arc<SyncConfig>, state: &Arc<Mutex<
     Ok(())
 }
 
-fn handle_webhook(request: Request, config: &Arc<SyncConfig>, state: &Arc<Mutex<SyncState>>) -> Result<()> {
+fn handle_webhook(
+    request: Request,
+    config: &Arc<SyncConfig>,
+    state: &Arc<Mutex<SyncState>>,
+) -> Result<()> {
     let mut request = request;
     let mut body = Vec::new();
     if let Err(err) = request.as_reader().read_to_end(&mut body) {
@@ -210,14 +218,20 @@ fn handle_webhook(request: Request, config: &Arc<SyncConfig>, state: &Arc<Mutex<
         return Ok(());
     }
 
-    let ref_name = payload.get("ref").and_then(|value| value.as_str()).unwrap_or("");
+    let ref_name = payload
+        .get("ref")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
     let expected_ref = format!("refs/heads/{}", config.args.branch);
     if ref_name != expected_ref {
         respond_json(request, 202, "{\"status\":\"branch_mismatch\"}");
         return Ok(());
     }
 
-    let after = payload.get("after").and_then(|value| value.as_str()).unwrap_or("");
+    let after = payload
+        .get("after")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
     if after.is_empty() || is_zero_sha(after) {
         respond_json(request, 202, "{\"status\":\"empty_sha\"}");
         return Ok(());
@@ -291,7 +305,12 @@ fn queue_sync(
     true
 }
 
-fn run_sync(target: SyncTarget, event: String, clone_url: String, config: &SyncConfig) -> Result<()> {
+fn run_sync(
+    target: SyncTarget,
+    event: String,
+    clone_url: String,
+    config: &SyncConfig,
+) -> Result<()> {
     let mirror_dir = PathBuf::from(&config.args.mirror_dir);
     ensure_parent_dir(&mirror_dir)?;
 
@@ -431,7 +450,9 @@ fn run_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Result<String>
 }
 
 fn write_status(path: Option<&Path>, status: SyncStatus) -> Result<()> {
-    let Some(path) = path else { return Ok(()); };
+    let Some(path) = path else {
+        return Ok(());
+    };
     if let Some(parent) = path.parent() {
         ensure_parent_dir(parent)?;
     }
@@ -453,7 +474,9 @@ fn now_epoch() -> u64 {
 }
 
 fn with_token(url: &str, token: Option<&str>) -> String {
-    let Some(token) = token else { return url.to_string(); };
+    let Some(token) = token else {
+        return url.to_string();
+    };
     if let Some(stripped) = url.strip_prefix("https://") {
         return format!("https://x-access-token:{token}@{stripped}");
     }
@@ -466,12 +489,7 @@ fn default_clone_url(config: &SyncConfig) -> String {
 
 fn header_value(request: &Request, name: &str) -> Option<String> {
     request.headers().iter().find_map(|header| {
-        if header
-            .field
-            .as_str()
-            .as_str()
-            .eq_ignore_ascii_case(name)
-        {
+        if header.field.as_str().as_str().eq_ignore_ascii_case(name) {
             Some(header.value.as_str().to_string())
         } else {
             None

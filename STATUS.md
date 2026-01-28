@@ -15,6 +15,7 @@
 - Ensure cloudflared is found during bundling/install and enable Surreal features in bundled ce binaries.
 - Make menu bar/dashboard A2UI surfaces render immediately from the template to avoid empty popovers when the LLM is slow/unavailable.
 - Force the menu bar extra to use window style so custom A2UI content opens reliably.
+- Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
 
 ## Progress
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.

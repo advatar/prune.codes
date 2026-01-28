@@ -29,7 +29,9 @@ pub struct ParseOptions {
 
 impl Default for ParseOptions {
     fn default() -> Self {
-        Self { derive_symbols: true }
+        Self {
+            derive_symbols: true,
+        }
     }
 }
 
@@ -52,7 +54,9 @@ pub fn parse_eval_task_with(v: &Value, opts: ParseOptions) -> Result<EvalTask> {
     } else if let Some(t) = v.get("prompt").and_then(|x| x.as_str()) {
         t.to_string()
     } else {
-        return Err(anyhow!("task missing (expected one of: task, problem_statement, prompt)"));
+        return Err(anyhow!(
+            "task missing (expected one of: task, problem_statement, prompt)"
+        ));
     };
 
     // Add optional hint fields commonly present in SWE-bench-like datasets.
@@ -258,7 +262,9 @@ fn clean_ident(tok: &str) -> Option<&str> {
     if ident.len() < 2 {
         return None;
     }
-    if !ident.chars().next().unwrap_or('_').is_ascii_alphabetic() && ident.chars().next().unwrap_or('_') != '_' {
+    if !ident.chars().next().unwrap_or('_').is_ascii_alphabetic()
+        && ident.chars().next().unwrap_or('_') != '_'
+    {
         return None;
     }
     Some(ident)

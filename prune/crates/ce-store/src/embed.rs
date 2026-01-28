@@ -22,9 +22,8 @@ impl Embedder {
         let info = TextEmbedding::get_model_info(&model)?;
         let dim = info.dim;
 
-        let model = TextEmbedding::try_new(
-            InitOptions::new(model).with_show_download_progress(true),
-        )?;
+        let model =
+            TextEmbedding::try_new(InitOptions::new(model).with_show_download_progress(true))?;
 
         Ok(Self {
             model: Mutex::new(model),
