@@ -18,6 +18,7 @@
 - Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
 
 ## Progress
+- Built Prune CLI locally (`prune/target/release/ce`) via `cargo build --release -p ce-cli`.
 - Added `--skip-grammar-checks` for Surreal indexing and validated Surreal index/pack with persistent store.
 - Upgraded tree-sitter to 0.26 and switched TS/TSX/Swift adapters to the supported LanguageFn API (no grammar mismatch).
 - Made Surreal pack/search/eval resolve repo-root paths and error when the store path is missing.
