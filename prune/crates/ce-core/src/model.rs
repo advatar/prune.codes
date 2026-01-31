@@ -21,6 +21,8 @@ pub enum FragKind {
     Macro,
     /// A synthetic, file-level public API summary (signatures only).
     ApiSummary,
+    /// External reference documentation snippet (not stored in the repo index).
+    RefDoc,
     Other,
 }
 
@@ -149,6 +151,25 @@ pub struct PackItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalDoc {
+    pub provider: String,
+    pub library: String,
+    pub title: String,
+    pub text: String,
+    pub approx_tokens: usize,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExternalDocsSection {
+    pub title: String,
+    pub provider: String,
+    pub max_tokens: usize,
+    pub used_tokens: usize,
+    pub snippets: Vec<ExternalDoc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeferredItem {
     pub id: FragId,
     pub path: String,
@@ -210,6 +231,8 @@ pub struct ContextPack {
     pub metrics: PackMetrics,
     #[serde(default)]
     pub recipe_excerpt: Option<String>,
+    #[serde(default)]
+    pub external_docs: Vec<ExternalDocsSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -359,6 +382,9 @@ pub struct StrategyConfig {
 
     /// Minimum Jaccard similarity required to include recipes.
     pub recipes_min_similarity: f32,
+
+    /// Enable external docs injection (provider-controlled).
+    pub docs_enabled: bool,
 
     /// Cap the candidate pool before loading fragment content and packing.
     pub candidate_pool_limit: usize,
@@ -573,6 +599,7 @@ impl Default for StrategyConfig {
             recipes_enabled: false,
             recipes_max_tokens: 256,
             recipes_min_similarity: 0.35,
+            docs_enabled: false,
             candidate_pool_limit: 250,
             include_api_summaries: false,
             api_summary_max: 24,

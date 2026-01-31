@@ -4085,6 +4085,7 @@ fn parse_kind(s: &str) -> Option<FragKind> {
         "TypeAlias" => Some(FragKind::TypeAlias),
         "Macro" => Some(FragKind::Macro),
         "ApiSummary" => Some(FragKind::ApiSummary),
+        "RefDoc" => Some(FragKind::RefDoc),
         "Other" => Some(FragKind::Other),
         _ => None,
     }

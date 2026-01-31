@@ -10,6 +10,7 @@ services:
       - sqlite index (path: .ce/index.sqlite)
       - hnsw dump (path: .ce/hnsw)
       - embedded surrealdb (engine: surrealkv or mem; path: .ce/surreal)
+      - optional external docs (Context7 API; cache at .ce/docs-cache/context7)
   - name: ce-mcp
     owner: context-engine
     type: stdio-server

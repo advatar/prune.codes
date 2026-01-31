@@ -219,6 +219,7 @@ fn label_for_kind(k: FragKind) -> &'static str {
         FragKind::TypeAlias => "type",
         FragKind::Macro => "macro",
         FragKind::ApiSummary => "api",
+        FragKind::RefDoc => "doc",
         FragKind::Other => "item",
     }
 }

@@ -23,6 +23,10 @@ That maps cleanly to two integration layers:
    - **CLAUDE.md** (Claude Code; OpenCode can fall back to it)
    - **SKILL.md skills** (Claude Code + OpenCode) for progressive disclosure + “auto-trigger” behavior
 
+Optional: if you want **fresh external docs**, run `ce integrate <codex|opencode> --repo <path> --with context7`
+and set `CONTEXT7_API_KEY` in your environment. This installs Context7 MCP alongside Prune MCP so agents can fetch
+bounded docs snippets without copying proprietary code.
+
 Codex explicitly reads `AGENTS.md` before work and layers it by directory.  [oai_citation:3‡OpenAI Developers](https://developers.openai.com/codex/guides/agents-md/)  
 OpenCode uses `AGENTS.md` as its rules file, and supports Claude Code conventions as fallbacks (including `CLAUDE.md` + `.claude/skills`).  [oai_citation:4‡OpenCode](https://opencode.ai/docs/rules/?utm_source=chatgpt.com)  
 Claude Code supports skills in `.claude/skills/` (project) or `~/.claude/skills/` (personal).  [oai_citation:5‡Claude Code](https://code.claude.com/docs/en/skills)  

@@ -31,6 +31,9 @@ ce pack --db .ce/index.sqlite --hnsw-dir .ce/hnsw --task "..." --strategy-id <ID
 # Choose tokenizer used for token budgeting/counts
 ce pack --db .ce/index.sqlite --hnsw-dir .ce/hnsw --task "..." --strategy-id <ID> \
   --budget-tokens 3000 --tokenizer o200k_base
+
+# Optional: enable external docs injection (Context7) in a strategy
+# docs_enabled = true
 ```
 
 ### Note on `body_snippet_mode`

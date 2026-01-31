@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ce_docs::default_docs_json;
 use ce_store::Db;
 use clap::ValueEnum;
 use std::fs;
@@ -23,6 +24,7 @@ pub enum ProjectSubtype {
 /// - .prune/prune.decisions.md
 /// - .prune/prune.intent_router.json
 /// - .prune/prune.reference_sources.json
+/// - .prune/docs.json
 /// - .ce/strategies/{inception,failure_fix}.toml
 ///
 /// If `force` is false, existing files are not overwritten.
@@ -55,6 +57,11 @@ pub fn apply_template(
     write_if_missing_or_force(
         &prune_dir.join("prune.reference_sources.json"),
         &default_reference_sources(template),
+        force,
+    )?;
+    write_if_missing_or_force(
+        &prune_dir.join("docs.json"),
+        &default_docs_json()?,
         force,
     )?;
 

@@ -31,20 +31,49 @@ pub enum DoctorStore {
 const TEMPLATE_AGENTS: &str = include_str!("../../../integrations/templates/AGENTS.md");
 const TEMPLATE_CLAUDE: &str = include_str!("../../../integrations/templates/CLAUDE.md");
 const TEMPLATE_SKILL: &str = include_str!("../../../integrations/skills/prune-context/SKILL.md");
+const CONTEXT7_AGENTS_BLOCK: &str = r#"
+## External Docs (Context7)
+- Use Prune for repo context packs; use Context7 for external library docs.
+- Before writing code that touches external APIs: fetch the minimal Context7 snippet, then proceed with a Prune pack.
+- Keep queries short and avoid sending proprietary code. Set CONTEXT7_API_KEY in your environment.
+"#;
+const CODEX_PRUNE_SNIPPET: &str = r#"
+[mcp_servers.prune]
+command = "ce"
+args = ["mcp", "serve"]
+cwd = "."
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+"#;
+const CODEX_CONTEXT7_SNIPPET: &str = r#"
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+"#;
 
-pub fn cmd_integrate(repo: &str, agent: Agent, write_global: bool, dry_run: bool) -> Result<()> {
+pub fn cmd_integrate(
+    repo: &str,
+    agent: Agent,
+    write_global: bool,
+    with_context7: bool,
+    dry_run: bool,
+) -> Result<()> {
     let repo_path = PathBuf::from(repo);
     if !repo_path.exists() {
         return Err(anyhow!("repo not found: {repo}"));
     }
 
     match agent {
-        Agent::Codex => integrate_codex(&repo_path, write_global, dry_run),
-        Agent::Opencode => integrate_opencode(&repo_path, dry_run),
+        Agent::Codex => integrate_codex(&repo_path, write_global, with_context7, dry_run),
+        Agent::Opencode => integrate_opencode(&repo_path, with_context7, dry_run),
         Agent::Claude => integrate_claude(&repo_path, dry_run),
         Agent::All => {
-            integrate_codex(&repo_path, write_global, dry_run)?;
-            integrate_opencode(&repo_path, dry_run)?;
+            integrate_codex(&repo_path, write_global, with_context7, dry_run)?;
+            integrate_opencode(&repo_path, with_context7, dry_run)?;
             integrate_claude(&repo_path, dry_run)?;
             Ok(())
         }
@@ -168,9 +197,19 @@ pub fn cmd_doctor(repo: &str, agent: Agent, store: DoctorStore) -> Result<()> {
     Err(anyhow!("repo is not ready"))
 }
 
-fn integrate_codex(repo: &Path, write_global: bool, dry_run: bool) -> Result<()> {
+fn integrate_codex(
+    repo: &Path,
+    write_global: bool,
+    with_context7: bool,
+    dry_run: bool,
+) -> Result<()> {
     // Project instructions
-    write_file(repo.join("AGENTS.md"), TEMPLATE_AGENTS, dry_run)?;
+    let agents_body = if with_context7 {
+        format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
+    } else {
+        TEMPLATE_AGENTS.to_string()
+    };
+    write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
 
     // Codex global MCP config is optional; write a minimal snippet if requested.
     if write_global {
@@ -201,12 +240,53 @@ fn integrate_codex(repo: &Path, write_global: bool, dry_run: bool) -> Result<()>
             }
         }
     }
+
+    if with_context7 {
+        let cfg_dir = repo.join(".codex");
+        let cfg_path = cfg_dir.join("config.toml");
+        let prune_snippet = codex_prune_server_snippet();
+        let context7_snippet = codex_context7_server_snippet();
+        if dry_run {
+            println!(
+                "[dry-run] would ensure {} exists and append context7 mcp servers",
+                cfg_path.display()
+            );
+        } else {
+            fs::create_dir_all(&cfg_dir)?;
+            let existing = fs::read_to_string(&cfg_path).unwrap_or_default();
+            let mut updated = existing.clone();
+            if !existing.contains("[mcp_servers.prune]") {
+                updated.push_str("\n");
+                updated.push_str(&prune_snippet);
+            }
+            if !existing.contains("[mcp_servers.context7]") {
+                if !updated.ends_with('\n') {
+                    updated.push('\n');
+                }
+                updated.push_str(&context7_snippet);
+            }
+            if updated != existing {
+                fs::write(&cfg_path, updated)?;
+                println!("Patched {}", cfg_path.display());
+            } else {
+                println!(
+                    "{} already contains prune/context7 servers",
+                    cfg_path.display()
+                );
+            }
+        }
+    }
     Ok(())
 }
 
-fn integrate_opencode(repo: &Path, dry_run: bool) -> Result<()> {
+fn integrate_opencode(repo: &Path, with_context7: bool, dry_run: bool) -> Result<()> {
     // OpenCode reads AGENTS.md and also supports Claude-compatible conventions.
-    write_file(repo.join("AGENTS.md"), TEMPLATE_AGENTS, dry_run)?;
+    let agents_body = if with_context7 {
+        format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
+    } else {
+        TEMPLATE_AGENTS.to_string()
+    };
+    write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
     // Provide a CLAUDE.md fallback so the same project can be used with Claude Code too.
     write_file(repo.join("CLAUDE.md"), TEMPLATE_CLAUDE, dry_run)?;
 
@@ -245,6 +325,17 @@ fn integrate_opencode(repo: &Path, dry_run: bool) -> Result<()> {
         "command": ["ce", "mcp", "serve", "--repo", "."],
         "enabled": true
     });
+
+    if with_context7 {
+        root["mcp"]["context7"] = json!({
+            "type": "remote",
+            "url": "https://mcp.context7.com/mcp",
+            "enabled": true,
+            "headers": {
+                "Authorization": "Bearer ${CONTEXT7_API_KEY}"
+            }
+        });
+    }
 
     if dry_run {
         println!("[dry-run] would write {}", cfg_path.display());
@@ -297,4 +388,16 @@ fn write_file(path: PathBuf, contents: &str, dry_run: bool) -> Result<()> {
     fs::write(&path, contents)?;
     println!("Wrote {}", path.display());
     Ok(())
+}
+
+fn context7_agents_block() -> &'static str {
+    CONTEXT7_AGENTS_BLOCK
+}
+
+fn codex_prune_server_snippet() -> &'static str {
+    CODEX_PRUNE_SNIPPET
+}
+
+fn codex_context7_server_snippet() -> &'static str {
+    CODEX_CONTEXT7_SNIPPET
 }

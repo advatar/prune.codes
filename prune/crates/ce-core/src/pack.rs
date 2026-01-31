@@ -664,6 +664,7 @@ pub fn pack_with_strategy(
         unresolved_symbols,
         metrics,
         recipe_excerpt: None,
+        external_docs: Vec::new(),
     }
 }
 

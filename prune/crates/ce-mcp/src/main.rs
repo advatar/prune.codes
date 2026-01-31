@@ -1,9 +1,15 @@
 use anyhow::{anyhow, Result};
-use ce_core::model::{FragmentView, SignalBundle, StrategyConfig};
+use ce_core::model::{
+    ExternalDoc, ExternalDocsSection, FragmentView, SignalBundle, StrategyConfig,
+};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
 use ce_core::signals;
 use ce_core::snippet;
 use ce_core::tokenizer::TokenCounter;
+use ce_docs::context7::Context7Provider;
+use ce_docs::{
+    infer_intent, load_docs_config, load_repo_dependencies, select_libraries, DocsProvider, DocsQuery,
+};
 use ce_store::query;
 use ce_store::{Db, Embedder, VecIndex};
 #[cfg(feature = "surreal")]
@@ -12,7 +18,7 @@ use clap::{Args, Parser, ValueEnum};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "surreal")]
 use ce_store_surreal::{SurrealConfig, SurrealEngine, SurrealStore};
@@ -33,6 +39,13 @@ enum SurrealEngineArg {
 enum FtsMode {
     On,
     Off,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DocsMode {
+    Off,
+    Auto,
+    On,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -245,7 +258,7 @@ fn handle_single(app: &mut App, msg: Value) -> Result<Option<Value>> {
           "protocolVersion": "2025-03-26",
           "capabilities": { "tools": { "listChanged": false } },
           "serverInfo": { "name": "context-engine", "version": env!("CARGO_PKG_VERSION") },
-          "instructions": "Use tools/list then tools/call. Tools: context.pack, context.search, fragment.get, strategy.list, strategy.get"
+          "instructions": "Use tools/list then tools/call. Tools: context.pack, context.search, fragment.get, docs.fetch, strategy.list, strategy.get"
         }),
         "tools/list" => tools_list(),
         "tools/call" => tools_call(app, params)?,
@@ -300,7 +313,8 @@ fn tools_list() -> Value {
               "tokenizer": {"type":"string", "description": "Tokenizer spec used for token budgeting/counts (e.g. o200k_base, cl100k_base, model:gpt-4o)."},
               "max_bodies": {"type":"integer", "default": 2, "minimum": 0, "maximum": 10},
               "alpha": {"type":"number", "default": 0.5, "minimum": 0.0, "maximum": 1.0},
-              "format": {"type":"string", "enum": ["text", "json", "both"], "default": "text", "description": "Output format for the tool response."}
+              "format": {"type":"string", "enum": ["text", "json", "both"], "default": "text", "description": "Output format for the tool response."},
+              "docs": {"type":"string", "enum": ["off", "auto", "on"], "default": "auto", "description": "External docs mode."}
             },
             "required": ["task"],
             "additionalProperties": false
@@ -321,6 +335,23 @@ fn tools_list() -> Value {
               "max_lines": {"type":"integer", "default": 160, "minimum": 20, "maximum": 1000}
             },
             "required": ["id"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "docs.fetch",
+          "description": "Fetch external reference docs via the configured provider (Context7).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {"type":"string"},
+              "library": {"type":"string"},
+              "libraries": {"type":"array", "items": {"type":"string"}},
+              "intent": {"type":"string"},
+              "k": {"type":"integer", "default": 4, "minimum": 1, "maximum": 10},
+              "max_tokens": {"type":"integer", "default": 800, "minimum": 100, "maximum": 4000}
+            },
+            "required": ["query"],
             "additionalProperties": false
           }
         },
@@ -366,6 +397,7 @@ fn tools_call(app: &mut App, params: Value) -> Result<Value> {
         "context.search" => tool_search(app, args)?,
         "context.pack" => tool_pack(app, args)?,
         "fragment.get" => tool_get(app, args)?,
+        "docs.fetch" => tool_docs_fetch(args)?,
         "strategy.list" => tool_strategy_list(app, args)?,
         "strategy.get" => tool_strategy_get(app, args)?,
         _ => (format!("Unknown tool: {name}"), true),
@@ -558,6 +590,79 @@ fn tool_get(app: &mut App, args: Value) -> Result<(String, bool)> {
     Ok((text, false))
 }
 
+fn tool_docs_fetch(args: Value) -> Result<(String, bool)> {
+    let query = args
+        .get("query")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing query"))?;
+    let intent = args.get("intent").and_then(|v| v.as_str());
+
+    let mut libraries: Vec<String> = Vec::new();
+    if let Some(lib) = args.get("library").and_then(|v| v.as_str()) {
+        libraries.push(lib.to_string());
+    }
+    if let Some(arr) = args.get("libraries").and_then(|v| v.as_array()) {
+        for v in arr {
+            if let Some(s) = v.as_str() {
+                libraries.push(s.to_string());
+            }
+        }
+    }
+    if libraries.is_empty() {
+        return Ok((
+            "docs.fetch requires at least one library (library or libraries)".to_string(),
+            true,
+        ));
+    }
+
+    let repo_root = resolve_repo_root().ok_or_else(|| anyhow!("repo root not found"))?;
+    let cfg = load_docs_config(&repo_root)?
+        .ok_or_else(|| anyhow!("missing .prune/docs.json; run `ce bootstrap`"))?;
+    let Some(ctx_cfg) = cfg.providers.context7 else {
+        return Ok(("context7 provider not configured".to_string(), true));
+    };
+    if !ctx_cfg.enabled {
+        return Ok(("context7 provider disabled".to_string(), true));
+    }
+
+    let provider = match Context7Provider::new(ctx_cfg.clone(), &repo_root) {
+        Ok(p) => p,
+        Err(err) => return Ok((format!("context7 init failed: {err}"), true)),
+    };
+    let docs_query = DocsQuery {
+        intent: intent
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| infer_intent(query)),
+        libraries,
+        query: query.to_string(),
+        k: args
+            .get("k")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(ctx_cfg.k as u64) as usize,
+        max_tokens: args
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(ctx_cfg.max_tokens as u64) as usize,
+    };
+
+    match provider.fetch(&docs_query) {
+        Ok(snippets) => {
+            if snippets.is_empty() {
+                return Ok(("No docs snippets returned.".to_string(), false));
+            }
+            let section = external_docs_section_from_snippets(
+                "External Reference Docs (Context7)",
+                "context7",
+                docs_query.max_tokens,
+                snippets,
+            );
+            let text = render_external_docs(&[section]);
+            Ok((text, false))
+        }
+        Err(err) => Ok((format!("docs fetch failed: {err}"), true)),
+    }
+}
+
 fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
     let task = args
         .get("task")
@@ -571,6 +676,7 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
         .get("remember")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let docs_mode = parse_docs_mode(args.get("docs").and_then(|v| v.as_str()));
 
     match &mut app.backend {
         Backend::Sqlite {
@@ -602,6 +708,7 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                 .map(|st| st.seen.clone())
                 .unwrap_or_default();
 
+            let repo_root = resolve_repo_root();
             let pack = build_pack(
                 db,
                 embedder,
@@ -613,6 +720,8 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                 } else {
                     None
                 },
+                docs_mode,
+                repo_root.as_deref(),
             )?;
 
             if let Some(sid) = session_id {
@@ -683,7 +792,17 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                     None
                 },
             };
-            let pack = rt.block_on(store.pack(req))?.pack;
+            let mut pack = rt.block_on(store.pack(req))?.pack;
+            let repo_root = resolve_repo_root();
+            attach_external_docs(
+                &mut pack,
+                task,
+                &strategy,
+                docs_mode,
+                repo_root.as_deref(),
+                None,
+                &[],
+            );
 
             if let Some(sid) = session_id {
                 if remember {
@@ -861,6 +980,33 @@ fn short_id(id: &str) -> String {
     }
 }
 
+fn parse_docs_mode(value: Option<&str>) -> DocsMode {
+    match value.unwrap_or("auto").to_ascii_lowercase().as_str() {
+        "off" | "false" | "0" => DocsMode::Off,
+        "on" | "true" | "1" => DocsMode::On,
+        _ => DocsMode::Auto,
+    }
+}
+
+fn resolve_repo_root() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    let mut ce_candidate: Option<PathBuf> = None;
+    loop {
+        let git_marker = dir.join(".git");
+        let prune_marker = dir.join(".prune");
+        if git_marker.exists() || prune_marker.exists() {
+            return Some(dir);
+        }
+        if ce_candidate.is_none() && dir.join(".ce").exists() {
+            ce_candidate = Some(dir.clone());
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    ce_candidate.or_else(|| std::env::current_dir().ok())
+}
+
 fn build_pack(
     db: &Db,
     embedder: &Embedder,
@@ -868,6 +1014,8 @@ fn build_pack(
     task: &str,
     strategy: &StrategyConfig,
     seen: Option<&HashSet<String>>,
+    docs_mode: DocsMode,
+    repo_root: Option<&Path>,
 ) -> Result<ce_core::model::ContextPack> {
     let span_cap = strategy.signal_max_spans.max(strategy.signal_file_line_max);
     let path_cap = strategy.signal_max_paths.max(1);
@@ -971,6 +1119,7 @@ fn build_pack(
 
     attach_candidate_neighbors(db, strategy, &mut cands)?;
 
+    let candidate_rowids: Vec<i64> = cands.iter().map(|c| c.rowid).collect();
     let mut pack = pack_with_strategy(strategy, cands);
     let (signals_used, signals_used_stats) = signals::signals_used(&signal_bundle, &pack.items);
     pack.signals = signal_bundle.clone();
@@ -1008,7 +1157,172 @@ fn build_pack(
         pack.recipe_excerpt = Some(recipe_excerpt);
     }
 
+    attach_external_docs(
+        &mut pack,
+        task,
+        strategy,
+        docs_mode,
+        repo_root,
+        Some(db),
+        &candidate_rowids,
+    );
+
     Ok(pack)
+}
+
+fn attach_external_docs(
+    pack: &mut ce_core::model::ContextPack,
+    task: &str,
+    strategy: &StrategyConfig,
+    docs_mode: DocsMode,
+    repo_root: Option<&Path>,
+    db: Option<&Db>,
+    candidate_rowids: &[i64],
+) {
+    if docs_mode == DocsMode::Off {
+        return;
+    }
+    let Some(repo_root) = repo_root else {
+        return;
+    };
+    let cfg = match load_docs_config(repo_root) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => {
+            if docs_mode == DocsMode::On {
+                record_docs_note(pack, "missing .prune/docs.json");
+            }
+            return;
+        }
+        Err(err) => {
+            record_docs_note(pack, &format!("docs config error: {err}"));
+            return;
+        }
+    };
+    let Some(ctx_cfg) = cfg.providers.context7 else {
+        if docs_mode == DocsMode::On {
+            record_docs_note(pack, "context7 provider not configured");
+        }
+        return;
+    };
+    if !ctx_cfg.enabled {
+        if docs_mode == DocsMode::On {
+            record_docs_note(pack, "context7 provider disabled");
+        }
+        return;
+    }
+    if docs_mode == DocsMode::Auto && !strategy.docs_enabled {
+        return;
+    }
+
+    let intent = infer_intent(task);
+    if !ctx_cfg.intent_allowed(&intent) {
+        return;
+    }
+
+    let deps = match load_repo_dependencies(repo_root) {
+        Ok(v) => v,
+        Err(err) => {
+            record_docs_note(pack, &format!("dependency scan failed: {err}"));
+            Vec::new()
+        }
+    };
+
+    let mut refs: Vec<String> = Vec::new();
+    if let Some(db) = db {
+        for rid in candidate_rowids.iter().take(24) {
+            if let Ok(found) = db.refs_for_fragment(*rid, 128) {
+                refs.extend(found);
+            }
+        }
+    }
+
+    let libraries = select_libraries(task, &deps, &refs, 2);
+    if libraries.is_empty() {
+        return;
+    }
+
+    let provider = match Context7Provider::new(ctx_cfg.clone(), repo_root) {
+        Ok(p) => p,
+        Err(err) => {
+            record_docs_note(pack, &format!("context7 init failed: {err}"));
+            return;
+        }
+    };
+    let query = DocsQuery {
+        intent,
+        libraries,
+        query: task.to_string(),
+        k: ctx_cfg.k,
+        max_tokens: ctx_cfg.max_tokens,
+    };
+
+    match provider.fetch(&query) {
+        Ok(snippets) => {
+            if snippets.is_empty() {
+                return;
+            }
+            let section = external_docs_section_from_snippets(
+                "External Reference Docs (Context7)",
+                "context7",
+                ctx_cfg.max_tokens,
+                snippets,
+            );
+            apply_external_docs(pack, section);
+        }
+        Err(err) => {
+            record_docs_note(pack, &format!("docs unavailable: {err}"));
+        }
+    }
+}
+
+fn external_docs_section_from_snippets(
+    title: &str,
+    provider: &str,
+    max_tokens: usize,
+    snippets: Vec<ce_docs::DocsSnippet>,
+) -> ExternalDocsSection {
+    let mut used_tokens = 0usize;
+    let docs = snippets
+        .into_iter()
+        .map(|s| {
+            used_tokens = used_tokens.saturating_add(s.approx_tokens);
+            ExternalDoc {
+                provider: s.provider,
+                library: s.library,
+                title: s.title,
+                text: s.text,
+                approx_tokens: s.approx_tokens,
+                source_url: s.source_url,
+            }
+        })
+        .collect();
+    ExternalDocsSection {
+        title: title.to_string(),
+        provider: provider.to_string(),
+        max_tokens,
+        used_tokens,
+        snippets: docs,
+    }
+}
+
+fn apply_external_docs(pack: &mut ce_core::model::ContextPack, section: ExternalDocsSection) {
+    let doc_chars: usize = section
+        .snippets
+        .iter()
+        .map(|d| d.text.len())
+        .sum::<usize>();
+    pack.used_chars = pack.used_chars.saturating_add(doc_chars);
+    pack.used_tokens = pack.used_tokens.saturating_add(section.used_tokens);
+    pack.metrics.pack_tokens_total = pack.used_tokens;
+    pack.external_docs.push(section);
+}
+
+fn record_docs_note(pack: &mut ce_core::model::ContextPack, message: &str) {
+    if message.trim().is_empty() {
+        return;
+    }
+    pack.notes
+        .push(format!("docs: {}", message.trim().to_string()));
 }
 
 fn attach_candidate_neighbors(
@@ -1526,6 +1840,11 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
         out.push_str("\n\n");
     }
 
+    if !pack.external_docs.is_empty() {
+        out.push_str(&render_external_docs(&pack.external_docs));
+        out.push_str("\n");
+    }
+
     out.push_str("## Included\n\n");
     for it in &pack.items {
         out.push_str(&format!(
@@ -1570,6 +1889,26 @@ fn render_pack(pack: &ce_core::model::ContextPack) -> String {
         }
     }
 
+    out
+}
+
+fn render_external_docs(sections: &[ExternalDocsSection]) -> String {
+    let mut out = String::new();
+    for section in sections {
+        out.push_str(&format!("## {}\n\n", section.title));
+        out.push_str(&format!(
+            "provider: {}\nexternal_docs_tokens: {}/{}\n\n",
+            section.provider, section.used_tokens, section.max_tokens
+        ));
+        for doc in &section.snippets {
+            out.push_str(&format!("### {} — {}\n\n", doc.library, doc.title));
+            if let Some(url) = &doc.source_url {
+                out.push_str(&format!("source: {}\n\n", url));
+            }
+            out.push_str(&doc.text);
+            out.push_str("\n\n");
+        }
+    }
     out
 }
 

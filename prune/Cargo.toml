@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/ce-docs",
   "crates/ce-cli",
   "crates/ce-lsp",
   "crates/ce-core",

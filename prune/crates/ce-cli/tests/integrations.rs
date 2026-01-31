@@ -20,6 +20,7 @@ fn integrate_opencode_writes_valid_json() {
         ce_cli::integrations::Agent::Opencode,
         false,
         false,
+        false,
     )
     .unwrap();
 
@@ -43,6 +44,7 @@ fn integrate_claude_writes_mcp_and_skill() {
         ce_cli::integrations::Agent::Claude,
         false,
         false,
+        false,
     )
     .unwrap();
 
@@ -64,7 +66,31 @@ fn integrate_codex_writes_agents_md() {
         ce_cli::integrations::Agent::Codex,
         false,
         false,
+        false,
     )
     .unwrap();
     assert!(repo.join("AGENTS.md").exists());
+}
+
+#[test]
+fn integrate_opencode_with_context7_adds_mcp() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path();
+    fs::create_dir_all(repo.join(".ce")).unwrap();
+    fs::write(repo.join(".ce/index.sqlite"), "").unwrap();
+    fs::create_dir_all(repo.join(".ce/hnsw")).unwrap();
+
+    ce_cli::integrations::cmd_integrate(
+        repo.to_str().unwrap(),
+        ce_cli::integrations::Agent::Opencode,
+        false,
+        true,
+        false,
+    )
+    .unwrap();
+
+    let opencode_path = repo.join("opencode.json");
+    let contents = fs::read_to_string(opencode_path).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&contents).unwrap();
+    assert!(v["mcp"].get("context7").is_some());
 }
