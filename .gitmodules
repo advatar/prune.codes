@@ -1,0 +1,3 @@
+[submodule "prune/.prune/vendors/cortex"]
+	path = prune/.prune/vendors/cortex
+	url = https://github.com/hjertefolger/cortex

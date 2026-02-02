@@ -69,6 +69,7 @@
 - Fixed Surreal pack strategy ownership in ce-cli so bundle-binaries builds succeed.
 - Implemented CR-005 Cortex external provider mode: vendor install/update/doctor, Codex/OpenCode integration for two MCP servers, OpenCode wrapper, AGENTS guidance, docs updates, and integration tests.
 - Ran `cargo test -p ce-cli`.
+- Converted Cortex vendor checkout to a git submodule at `prune/.prune/vendors/cortex`.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
