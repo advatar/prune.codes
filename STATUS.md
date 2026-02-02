@@ -1,21 +1,11 @@
 # Status
 
 ## Current Task
-- Unify A2UIRuntime types to resolve duplicate definitions and restore Xcode builds.
-- Ensure PruneApp DMG bundles all required binaries for offline install.
-- Add an Install.command to the DMG so users can install the app + bundled dependencies in one step.
-- Document PruneApp prerequisites in the in-app Help view (Git, optional GitHub token, network).
-- Fix tray install status by auto-installing bundled dependencies on first launch.
-- Make all human interaction LLM-driven via A2UI (LLM-generated surfaces, Q/A overrides).
-- Ensure cloudflared is bundled/installed for dashboard flows.
-- Route all UI interactions through A2UI userAction → LLM → UI updates.
-- Add starter A2UI catalog (CATALOG.md + Swift file) and wire it into the renderer.
-- Document Xcode project file auto-updates in AGENTS.md.
-- Resolve A2UI starter catalog build errors and clean ce-cli/ce-mcp warnings.
-- Ensure cloudflared is found during bundling/install and enable Surreal features in bundled ce binaries.
-- Make menu bar/dashboard A2UI surfaces render immediately from the template to avoid empty popovers when the LLM is slow/unavailable.
-- Force the menu bar extra to use window style so custom A2UI content opens reliably.
+- Make PruneApp the single manager for CLI installation/updates (bundled ce/ce-mcp/prune-* + cloudflared; no manual CLI install).
+- Validate Xcode build after cargo discovery changes in the Bundle Prune Binaries script.
 - Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
+- Integrate TS/TSX indexing (ce-lang-tsreact) plus tsconfig alias resolution + JSX tag edges in ce-store.
+- Update README + validation steps for TS/TSX support.
 
 ## Progress
 - Implemented CR-006: Context7 integration, optional docs provider, new ce-docs crate, docs CLI/MCP tools, and pack injection.
@@ -75,10 +65,9 @@
 - Polished the menu bar popover layout and added action fallbacks when the LLM omits action requests.
 
 ## Next Steps
-- Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.
-- Integrate ce-lang-tsreact and TS/TSX indexing + ApiSummary refs in CLI.
-- Port tsconfig alias resolution + JSX tag edges into `ce-store`.
-- Update README + validation steps for TS/TSX support.
+- Run Xcode build validation after bundle script changes and recheck DMG bundling.
+- Extend TS/TSX indexing to include ApiSummary refs in CLI.
+- Verify TS/TSX alias/JSX edges end-to-end in `ce-store` with a sample repo.
 
 ## Notes
 - Local repo has uncommitted changes in `Cargo.toml`, `Cargo.lock`, `crates/prune-mcp/`, and `crates/prune-sync/` (left untouched).
