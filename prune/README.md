@@ -3,9 +3,9 @@
 A **language-aware Context Engine** for LLM coding agents.
 
 This repository implements the *external* “context engineering” layer described in our design:
-- **AST-aware fragmentation** (Rust first)
+- **AST-aware fragmentation** (Rust, Swift, TypeScript/TSX)
 - **content-addressed fragment IDs** (Unison-inspired)
-- **hybrid retrieval** (SQLite FTS5 + in-process HNSW vector search)
+- **hybrid retrieval** (SQLite FTS5 + in-process HNSW; optional embedded SurrealDB store)
 - **signals-first seeding** (file:line hints from compiler output)
 - **explicit edges + subgraph expansion**
   - resolved **ref→def** edges (multi-hop BFS)
@@ -22,7 +22,7 @@ This repository implements the *external* “context engineering” layer descri
 *(v19 improvements are still included: scoped ref tail-aliasing + module-path-biased resolution.)*
 
 
-> Status: MVP skeleton focused on Rust repositories. The code is intentionally modular so you can add other languages later.
+> Status: Functional CLI with Rust, Swift, and TypeScript/TSX/JS/JSX indexing. Rust is the most mature; Swift/TS/TSX support is newer and still evolving.
 
 ---
 
@@ -48,9 +48,15 @@ context-engine/
   crates/
     ce-core/        Core types (Fragment, Pack) + hashing helpers
     ce-lang-rust/   Tree-sitter based Rust parser + fragment extractor
-    ce-store/       SQLite schema + DB access + HNSW wrapper + embedding helpers
-    ce-cli/         CLI: index/search/pack
+    ce-lang-swift/  Tree-sitter based Swift parser + fragment extractor
+    ce-lang-tsreact/Tree-sitter based TS/TSX/JS/JSX parser + fragment extractor
+    ce-store/       Store facade (SQLite + Surreal backends)
+    ce-store-sqlite/SQLite schema + DB access + HNSW wrapper + embedding helpers
+    ce-store-surreal/SurrealDB embedded store backend
+    ce-cli/         CLI: bootstrap/index/search/pack/eval/strategy
     ce-mcp/         MCP stdio server: context.pack / fragment.get / context.search
+    ce-docs/        External docs (Context7) integration
+    ce-lsp/         LSP on-demand resolver (WIP)
 ```
 
 ---
@@ -58,11 +64,26 @@ context-engine/
 ## Requirements
 
 - Rust (stable) + Cargo
-- SQLite (bundled via rusqlite)
-- Tree-sitter Rust grammar (Rust crate dependency)
+- SQLite (bundled via rusqlite) for the default store
+- Tree-sitter grammars for Rust, Swift, and TS/TSX/JS/JSX (Rust crate dependencies)
+- Optional: build with `--features surreal` to use the embedded SurrealDB store
 - `fastembed` downloads embedding model weights on first run (local inference).
 
 > No external services required. Everything runs locally/in-process.
+
+---
+
+## Language support (current)
+
+Indexing recognizes:
+- Rust (`.rs`)
+- Swift (`.swift`)
+- TypeScript/JavaScript (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`)
+
+Notes:
+- Rust has the deepest symbol and edge resolution (module graph + ref→def edges).
+- Swift includes AST fragmentation; best-effort import edges are currently built in the Surreal store path.
+- TypeScript/TSX includes AST fragmentation, file-level ApiSummary refs, import edges, and JSX tag edges in the SQLite store. The Surreal store currently uses a simpler relative/absolute import resolver.
 
 ---
 
@@ -72,9 +93,11 @@ context-engine/
 
 ```bash
 cargo build --release
+# Or just the CLI:
+cargo build --release -p ce-cli
 ```
 
-### 2) Index a Rust repo
+### 2) Index a repo (Rust/Swift/TS/TSX/JS/JSX)
 
 ```bash
 # Example: index the current repo
@@ -99,9 +122,9 @@ Useful flags:
 ```
 
 This will:
-- scan `*.rs` files (gitignore-aware),
+- scan `*.rs`, `*.swift`, `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mts`, `*.cts` (gitignore-aware),
 - parse top-level items with tree-sitter,
-- store fragments in SQLite,
+- store fragments in SQLite (or SurrealDB when `--store surreal`),
 - embed fragments locally (fastembed),
 - build an in-process HNSW index and dump it to `.ce/hnsw`.
 
@@ -111,6 +134,16 @@ SQLite index is stable across clones and absolute filesystem locations.
 Edge rebuild behavior:
 - By default, resolved ref→def edges are rebuilt **incrementally** when only a small number of files changed.
 - If you pass `--full` (or touch many files), the CLI falls back to a full edge rebuild for correctness.
+
+### Optional: SurrealDB store (embedded)
+
+```bash
+# Build with SurrealDB support
+cargo build --release -p ce-cli --features surreal
+
+# Index using the Surreal store
+./target/release/ce index --store surreal --surreal-path .ce/surreal --repo .
+```
 
 ### 3) Search
 
@@ -194,10 +227,23 @@ To keep docs **budgeted and private**, Prune:
 Strategies let you store and reuse different **Context Engine behaviors** (retrieval/expansion/packing parameters)
 without recompiling. This is the primary knob you will evolve/optimize in a DGM-style loop.
 
+Included presets (see `strategies/README.md`):
+- `balanced`
+- `cheap`
+- `high_recall`
+- `compaction`
+- `compaction_symbols`
+- `summary_first_large_repo`
+
 ### Add a strategy
 
 ```bash
 # Store a partial TOML config (missing fields fall back to defaults)
+./target/release/ce strategy add \
+  --db .ce/index.sqlite \
+  --name "balanced" \
+  --config strategies/balanced.toml
+
 ./target/release/ce strategy add \
   --db .ce/index.sqlite \
   --name "cheap" \
@@ -307,6 +353,8 @@ Edges have a heuristic `weight` (not just 1.0) that biases toward likely resolut
 At pack time, the retrieval layer can do **multi-hop BFS** over these edges to fetch a small repo subgraph around high-scoring seeds
 (with strict caps to prevent explosion).
 
+In the SQLite store, the CLI also rebuilds file-level import graphs for Rust and TypeScript/TSX (including tsconfig path aliases and JSX tag edges for TSX).
+
 ### Token budgeting
 
 `budget_tokens` enforces a token budget during packing.
@@ -340,8 +388,10 @@ Key strategy fields:
     - include `symbols` to enable “focus token” slicing (task tokens ∩ fragment refs)
     - include `ast` to enable Rust AST-based pruning (statement-aware excerpts)
     - include `skeleton` to enable Rust AST skeletonization (control-flow + structure, bounded)
+    - include `tsx_skeleton` to enable TSX/JSX skeletonization
+    - include `swiftui_skeleton` to enable SwiftUI skeletonization
     - include `query_grep` to enable broad task-token grep slicing
-  - when multiple are enabled, the engine tries: signals → symbols → ast → skeleton → query_grep
+  - when multiple are enabled, the engine tries: signals → symbols → ast → skeleton → tsx_skeleton → swiftui_skeleton → query_grep
 - `body_snippet_context_lines`: lines of context around a matched/signal line
 - `body_snippet_max_lines`: upper bound on slice size
 - `body_snippet_min_savings_tokens`: only use a slice when it saves at least N tokens vs the full body
@@ -430,10 +480,10 @@ Each generation's best is stored back into the `strategies` table with its score
 
 ## Next steps
 
-- Improve edges (imports/calls/defs) via deeper AST traversal.
-- Add LSP-powered edges (rust-analyzer) for higher precision.
+- Wire `ce-lsp` into pack/index flows for on-demand semantic edges.
+- Expand TS/TSX graph edges in the Surreal store (tsconfig aliases + JSX tags) and improve TS symbol resolution.
+- Add a Python language adapter.
 - Improve DGM-style evolution loop over `StrategyConfig` (current: random mutation hillclimber).
-- Add Python/TS adapters.
 
 ---
 

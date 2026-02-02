@@ -1,7 +1,7 @@
 # Status
 
 ## Current Task
-- Make PruneApp the single manager for CLI installation/updates (bundled ce/ce-mcp/prune-* + cloudflared; no manual CLI install).
+- Keep the CLI fully standalone while PruneApp manages bundled binaries (PruneApp augments, not replaces, manual CLI workflows).
 - Validate Xcode build after cargo discovery changes in the Bundle Prune Binaries script.
 - Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
 - Integrate TS/TSX indexing (ce-lang-tsreact) plus tsconfig alias resolution + JSX tag edges in ce-store.
@@ -63,6 +63,7 @@
 - Fixed A2UI starter catalog SwiftUI builder errors and gated Surreal-only Rust code to clear ce-cli/ce-mcp warnings.
 - Enabled Surreal features for bundled ce binaries and expanded cloudflared discovery in bundle/install/runtime.
 - Polished the menu bar popover layout and added action fallbacks when the LLM omits action requests.
+- Updated `prune/README.md` with current language packs, store backends, strategy presets, and slicing modes.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
