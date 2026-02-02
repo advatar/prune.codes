@@ -2,6 +2,7 @@
 
 ## Current Task
 - Keep the CLI fully standalone while PruneApp manages bundled binaries (PruneApp augments, not replaces, manual CLI workflows).
+- Implement CR-004 Prune Memory (ce-memory crate, MCP tools, and Codex/OpenCode integration presets).
 - Validate Xcode build after cargo discovery changes in the Bundle Prune Binaries script.
 - Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
 - Integrate TS/TSX indexing (ce-lang-tsreact) plus tsconfig alias resolution + JSX tag edges in ce-store.
@@ -64,6 +65,7 @@
 - Enabled Surreal features for bundled ce binaries and expanded cloudflared discovery in bundle/install/runtime.
 - Polished the menu bar popover layout and added action fallbacks when the LLM omits action requests.
 - Updated `prune/README.md` with current language packs, store backends, strategy presets, and slicing modes.
+- Refreshed `docs/REACT.md` to reflect current TS/TSX/JS support, edges, and CLI flows.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
