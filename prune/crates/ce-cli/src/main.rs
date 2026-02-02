@@ -3166,7 +3166,7 @@ fn cmd_pack_surreal(
         repo_id: SURREAL_REPO_ID.to_string(),
         query: task.to_string(),
         query_vec: Some(qvec),
-        strategy,
+        strategy: strategy.clone(),
         seen: None,
     };
     let mut pack = rt.block_on(store.pack(req))?.pack;

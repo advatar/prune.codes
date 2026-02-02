@@ -66,6 +66,7 @@
 - Updated `prune/README.md` with current language packs, store backends, strategy presets, and slicing modes.
 - Refreshed `docs/REACT.md` to reflect current TS/TSX/JS support, edges, and CLI flows.
 - Implemented CR-004 Prune Memory: new `ce-memory` crate, `.prune/memory.json`, CLI `ce memory` commands, MCP `memory.*` tools, and Codex/OpenCode integration preset.
+- Fixed Surreal pack strategy ownership in ce-cli so bundle-binaries builds succeed.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
