@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "cortex": {
+      "command": [
+        ".prune/bin/cortex-mcp"
+      ],
+      "enabled": true,
+      "timeout": 20000,
+      "type": "local"
+    },
+    "prune": {
+      "command": [
+        "ce",
+        "mcp",
+        "serve",
+        "--repo",
+        "."
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+
+
+[mcp_servers.prune]
+command = "ce"
+args = ["mcp", "serve"]
+cwd = "."
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+
+[mcp_servers.cortex]
+command = "node"
+args = ["dist/mcp-server.js"]
+cwd = ".prune/vendors/cortex"
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 120
