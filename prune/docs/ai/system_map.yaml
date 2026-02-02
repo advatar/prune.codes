@@ -19,6 +19,17 @@ services:
     health: none
     dependencies:
       - ce-cli index artifacts (sqlite + hnsw) or embedded surrealdb store
+  - name: cortex-mcp (vendored)
+    owner: external
+    type: stdio-server
+    description: Optional external memory MCP server vendored under .prune/vendors/cortex.
+    ports: []
+    health: none
+    dependencies:
+      - node >= 18
+      - vendored cortex repo (path: .prune/vendors/cortex)
+      - mcp build output (path: .prune/vendors/cortex/dist/mcp-server.js)
+      - cortex db (path: ~/.cortex/memory.db)
   - name: ce-memory
     owner: context-engine
     type: library

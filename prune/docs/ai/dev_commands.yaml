@@ -33,3 +33,18 @@ commands:
   - name: memory-tests
     command: cargo test -p ce-memory
     description: Run Prune memory unit tests.
+  - name: cortex-install
+    command: cargo run -p ce-cli -- vendor install cortex
+    description: Vendor and build the Cortex MCP server under .prune/vendors/cortex.
+  - name: cortex-update
+    command: cargo run -p ce-cli -- vendor update cortex
+    description: Update the vendored Cortex checkout and rebuild the MCP server.
+  - name: cortex-doctor
+    command: cargo run -p ce-cli -- vendor doctor cortex
+    description: Validate Node version and Cortex MCP tools/list readiness.
+  - name: integrate-codex-cortex
+    command: cargo run -p ce-cli -- integrate --repo . --agent codex --with cortex
+    description: Configure Codex project MCP servers (prune + cortex).
+  - name: integrate-opencode-cortex
+    command: cargo run -p ce-cli -- integrate --repo . --agent opencode --with cortex
+    description: Configure OpenCode MCP servers (prune + cortex).

@@ -39,6 +39,7 @@ mod inception;
 mod memory;
 mod tasks;
 use ce_cli::integrations;
+use ce_cli::vendor;
 use memory::MemoryCmd;
 
 #[cfg(feature = "surreal")]
@@ -408,7 +409,7 @@ enum Cmd {
         /// Also patch the user's global config where applicable (e.g., Codex config).
         #[arg(long, default_value_t = false)]
         write_global: bool,
-        /// Additional integrations (e.g., context7).
+        /// Additional integrations (e.g., context7, cortex).
         #[arg(long, value_delimiter = ',')]
         with: Vec<String>,
         /// Optional preset (e.g., prune-memory).
@@ -417,6 +418,12 @@ enum Cmd {
         /// Print changes but do not write files.
         #[arg(long, default_value_t = false)]
         dry_run: bool,
+    },
+
+    /// Manage vendored external tools (e.g., Cortex MCP server).
+    Vendor {
+        #[command(subcommand)]
+        cmd: vendor::VendorCmd,
     },
 
     /// Check whether a repo is ready for a given agent integration.
@@ -818,9 +825,18 @@ fn main() -> Result<()> {
             preset,
             dry_run,
         } => {
-            let with_context7 = parse_with_context7(&with);
-            integrations::cmd_integrate(&repo, agent, write_global, with_context7, preset, dry_run)
+            let flags = parse_with(&with);
+            integrations::cmd_integrate(
+                &repo,
+                agent,
+                write_global,
+                flags.with_context7,
+                flags.with_cortex,
+                preset,
+                dry_run,
+            )
         }
+        Cmd::Vendor { cmd } => vendor::cmd_vendor(cmd),
         Cmd::Doctor { repo, store, agent } => cmd_doctor(&repo, &store, agent),
         Cmd::Mcp { cmd } => match cmd {
             McpCmd::Serve {
@@ -921,14 +937,31 @@ fn cmd_mcp_serve(
     }
 }
 
-fn parse_with_context7(values: &[String]) -> bool {
-    values.iter().any(|val| {
+struct WithFlags {
+    with_context7: bool,
+    with_cortex: bool,
+}
+
+fn parse_with(values: &[String]) -> WithFlags {
+    let mut flags = WithFlags {
+        with_context7: false,
+        with_cortex: false,
+    };
+    for val in values {
         let v = val.trim().to_ascii_lowercase();
-        v == "context7"
+        if v == "context7"
             || v == "docs=context7"
             || v == "docs:context7"
             || v.ends_with("context7")
-    })
+        {
+            flags.with_context7 = true;
+        }
+        if v == "cortex" || v == "memory=cortex" || v == "memory:cortex" || v.ends_with("cortex")
+        {
+            flags.with_cortex = true;
+        }
+    }
+    flags
 }
 
 fn cmd_docs(cmd: DocsCmd) -> Result<()> {

@@ -67,6 +67,8 @@
 - Refreshed `docs/REACT.md` to reflect current TS/TSX/JS support, edges, and CLI flows.
 - Implemented CR-004 Prune Memory: new `ce-memory` crate, `.prune/memory.json`, CLI `ce memory` commands, MCP `memory.*` tools, and Codex/OpenCode integration preset.
 - Fixed Surreal pack strategy ownership in ce-cli so bundle-binaries builds succeed.
+- Implemented CR-005 Cortex external provider mode: vendor install/update/doctor, Codex/OpenCode integration for two MCP servers, OpenCode wrapper, AGENTS guidance, docs updates, and integration tests.
+- Ran `cargo test -p ce-cli`.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
@@ -74,4 +76,4 @@
 - Verify TS/TSX alias/JSX edges end-to-end in `ce-store` with a sample repo.
 
 ## Notes
-- Local repo has uncommitted changes in `Cargo.toml`, `Cargo.lock`, `crates/prune-mcp/`, and `crates/prune-sync/` (left untouched).
+- Keep Cortex vendor updates explicit (`ce vendor update cortex`) to avoid unexpected network calls during integration.

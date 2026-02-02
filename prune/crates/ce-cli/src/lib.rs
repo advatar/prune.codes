@@ -3,3 +3,4 @@
 //! We expose a small surface for integration/doctor logic so it can be unit tested.
 
 pub mod integrations;
+pub mod vendor;

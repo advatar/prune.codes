@@ -4,6 +4,8 @@ use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::vendor;
+
 /// Supported agent clients.
 ///
 /// We keep integration logic in Prune (this repo) and avoid forking any agent.
@@ -62,6 +64,15 @@ const MEMORY_AGENTS_BLOCK: &str = r#"
 - For long tasks: call `memory.save_session` with a short summary.
 - Keep memories concise and avoid secrets.
 "#;
+const CORTEX_AGENTS_BLOCK: &str = r#"
+## Cortex Memory (external MCP)
+- Before planning: call `cortex_recall` with a short query and a small limit (top 5).
+- Before edits: call `repo.ensure_fresh`, then `context.pack` from Prune.
+- After changes: run tests/build; on failures, re-pack with the error first.
+- After finishing: call `cortex_remember` with key decisions, constraints, and commands.
+- For long tasks: call `cortex_save` at milestones.
+- Keep recalls concise; do not dump the full memory DB or large code blobs.
+"#;
 const CODEX_PRUNE_SNIPPET: &str = r#"
 [mcp_servers.prune]
 command = "ce"
@@ -79,12 +90,22 @@ enabled = true
 startup_timeout_sec = 20
 tool_timeout_sec = 60
 "#;
+const CODEX_CORTEX_SNIPPET: &str = r#"
+[mcp_servers.cortex]
+command = "node"
+args = ["dist/mcp-server.js"]
+cwd = ".prune/vendors/cortex"
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+"#;
 
 pub fn cmd_integrate(
     repo: &str,
     agent: Agent,
     write_global: bool,
     with_context7: bool,
+    with_cortex: bool,
     preset: Option<IntegrationPreset>,
     dry_run: bool,
 ) -> Result<()> {
@@ -94,12 +115,28 @@ pub fn cmd_integrate(
     }
 
     match agent {
-        Agent::Codex => integrate_codex(&repo_path, write_global, with_context7, preset, dry_run),
-        Agent::Opencode => integrate_opencode(&repo_path, with_context7, preset, dry_run),
+        Agent::Codex => integrate_codex(
+            &repo_path,
+            write_global,
+            with_context7,
+            with_cortex,
+            preset,
+            dry_run,
+        ),
+        Agent::Opencode => {
+            integrate_opencode(&repo_path, with_context7, with_cortex, preset, dry_run)
+        }
         Agent::Claude => integrate_claude(&repo_path, dry_run),
         Agent::All => {
-            integrate_codex(&repo_path, write_global, with_context7, preset, dry_run)?;
-            integrate_opencode(&repo_path, with_context7, preset, dry_run)?;
+            integrate_codex(
+                &repo_path,
+                write_global,
+                with_context7,
+                with_cortex,
+                preset,
+                dry_run,
+            )?;
+            integrate_opencode(&repo_path, with_context7, with_cortex, preset, dry_run)?;
             integrate_claude(&repo_path, dry_run)?;
             Ok(())
         }
@@ -227,9 +264,21 @@ fn integrate_codex(
     repo: &Path,
     write_global: bool,
     with_context7: bool,
+    with_cortex: bool,
     preset: Option<IntegrationPreset>,
     dry_run: bool,
 ) -> Result<()> {
+    if with_cortex {
+        if dry_run {
+            println!(
+                "[dry-run] would ensure Cortex is installed at {}",
+                vendor::cortex_dir(repo).display()
+            );
+        } else {
+            vendor::ensure_cortex_installed(repo, None)?;
+        }
+    }
+
     // Project instructions
     let mut agents_body = if with_context7 {
         format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
@@ -240,6 +289,10 @@ fn integrate_codex(
         agents_body.push_str("\n");
         agents_body.push_str(MEMORY_AGENTS_BLOCK);
         ensure_memory_config(repo, dry_run)?;
+    }
+    if with_cortex {
+        agents_body.push_str("\n");
+        agents_body.push_str(CORTEX_AGENTS_BLOCK);
     }
     write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
 
@@ -273,14 +326,15 @@ fn integrate_codex(
         }
     }
 
-    if with_context7 {
+    if with_context7 || with_cortex {
         let cfg_dir = repo.join(".codex");
         let cfg_path = cfg_dir.join("config.toml");
         let prune_snippet = codex_prune_server_snippet();
         let context7_snippet = codex_context7_server_snippet();
+        let cortex_snippet = codex_cortex_server_snippet();
         if dry_run {
             println!(
-                "[dry-run] would ensure {} exists and append context7 mcp servers",
+                "[dry-run] would ensure {} exists and append MCP servers",
                 cfg_path.display()
             );
         } else {
@@ -291,18 +345,24 @@ fn integrate_codex(
                 updated.push_str("\n");
                 updated.push_str(&prune_snippet);
             }
-            if !existing.contains("[mcp_servers.context7]") {
+            if with_context7 && !existing.contains("[mcp_servers.context7]") {
                 if !updated.ends_with('\n') {
                     updated.push('\n');
                 }
                 updated.push_str(&context7_snippet);
+            }
+            if with_cortex && !existing.contains("[mcp_servers.cortex]") {
+                if !updated.ends_with('\n') {
+                    updated.push('\n');
+                }
+                updated.push_str(&cortex_snippet);
             }
             if updated != existing {
                 fs::write(&cfg_path, updated)?;
                 println!("Patched {}", cfg_path.display());
             } else {
                 println!(
-                    "{} already contains prune/context7 servers",
+                    "{} already contains requested MCP servers",
                     cfg_path.display()
                 );
             }
@@ -314,9 +374,23 @@ fn integrate_codex(
 fn integrate_opencode(
     repo: &Path,
     with_context7: bool,
+    with_cortex: bool,
     preset: Option<IntegrationPreset>,
     dry_run: bool,
 ) -> Result<()> {
+    if with_cortex {
+        if dry_run {
+            println!(
+                "[dry-run] would ensure Cortex is installed at {}",
+                vendor::cortex_dir(repo).display()
+            );
+            let _ = vendor::ensure_cortex_wrapper(repo, true)?;
+        } else {
+            vendor::ensure_cortex_installed(repo, None)?;
+            let _ = vendor::ensure_cortex_wrapper(repo, false)?;
+        }
+    }
+
     // OpenCode reads AGENTS.md and also supports Claude-compatible conventions.
     let mut agents_body = if with_context7 {
         format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
@@ -326,6 +400,10 @@ fn integrate_opencode(
     if preset == Some(IntegrationPreset::PruneMemory) {
         agents_body.push_str("\n");
         agents_body.push_str(MEMORY_AGENTS_BLOCK);
+    }
+    if with_cortex {
+        agents_body.push_str("\n");
+        agents_body.push_str(CORTEX_AGENTS_BLOCK);
     }
     write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
     // Provide a CLAUDE.md fallback so the same project can be used with Claude Code too.
@@ -360,14 +438,16 @@ fn integrate_opencode(
         root["mcp"] = json!({});
     }
 
-    // Insert prune server.
-    root["mcp"]["prune"] = json!({
-        "type": "local",
-        "command": ["ce", "mcp", "serve", "--repo", "."],
-        "enabled": true
-    });
+    // Insert prune server if missing.
+    if root["mcp"].get("prune").is_none() {
+        root["mcp"]["prune"] = json!({
+            "type": "local",
+            "command": ["ce", "mcp", "serve", "--repo", "."],
+            "enabled": true
+        });
+    }
 
-    if with_context7 {
+    if with_context7 && root["mcp"].get("context7").is_none() {
         root["mcp"]["context7"] = json!({
             "type": "remote",
             "url": "https://mcp.context7.com/mcp",
@@ -375,6 +455,15 @@ fn integrate_opencode(
             "headers": {
                 "Authorization": "Bearer ${CONTEXT7_API_KEY}"
             }
+        });
+    }
+
+    if with_cortex && root["mcp"].get("cortex").is_none() {
+        root["mcp"]["cortex"] = json!({
+            "type": "local",
+            "command": [".prune/bin/cortex-mcp"],
+            "enabled": true,
+            "timeout": 20000
         });
     }
 
@@ -472,4 +561,8 @@ fn codex_prune_server_snippet() -> &'static str {
 
 fn codex_context7_server_snippet() -> &'static str {
     CODEX_CONTEXT7_SNIPPET
+}
+
+fn codex_cortex_server_snippet() -> &'static str {
+    CODEX_CORTEX_SNIPPET
 }

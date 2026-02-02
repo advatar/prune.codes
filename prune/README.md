@@ -249,6 +249,31 @@ MCP tools:
 
 ---
 
+## Cortex memory (external MCP, optional)
+
+If you prefer a dedicated persistent memory server, Prune can vendor **Cortex** locally and run it
+as a second MCP server alongside Prune (Prune remains the repo-aware context engine).
+
+```bash
+ce vendor install cortex
+ce integrate codex --repo . --with cortex
+# or
+ce integrate opencode --repo . --with cortex
+```
+
+This installs Cortex under `.prune/vendors/cortex`, builds `dist/mcp-server.js`,
+and writes a wrapper at `.prune/bin/cortex-mcp` for OpenCode.
+
+Diagnostic:
+
+```bash
+ce vendor doctor cortex
+```
+
+Prune CLI remains fully standalone; Cortex is optional.
+
+---
+
 ## Strategy configs (DGM “genomes”)
 
 Strategies let you store and reuse different **Context Engine behaviors** (retrieval/expansion/packing parameters)
@@ -308,6 +333,14 @@ Included presets (see `strategies/README.md`):
 ## Using with Codex CLI via MCP
 
 Codex CLI supports MCP servers configured in `~/.codex/config.toml`.
+
+Fast path (project config + AGENTS guidance):
+
+```bash
+ce integrate codex --repo .
+# Optional: two-server setup with Cortex memory
+ce integrate codex --repo . --with cortex
+```
 
 Add a server entry:
 
