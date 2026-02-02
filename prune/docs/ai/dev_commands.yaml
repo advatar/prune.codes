@@ -30,3 +30,6 @@ commands:
   - name: docs-fetch
     command: cargo run -p ce-cli -- docs fetch --repo . --library supabase --query "auth"
     description: Fetch Context7 docs for a library/query pair.
+  - name: memory-tests
+    command: cargo test -p ce-memory
+    description: Run Prune memory unit tests.

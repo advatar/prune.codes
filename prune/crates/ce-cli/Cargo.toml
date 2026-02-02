@@ -20,6 +20,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 ce-core = { path = "../ce-core" }
 ce-docs = { path = "../ce-docs" }
+ce-memory = { path = "../ce-memory" }
 ce-lang-rust = { path = "../ce-lang-rust" }
 ce-lang-tsreact = { path = "../ce-lang-tsreact" }
 ce-lang-swift = { path = "../ce-lang-swift" }

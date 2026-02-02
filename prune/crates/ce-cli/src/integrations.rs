@@ -16,6 +16,12 @@ pub enum Agent {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum IntegrationPreset {
+    #[value(name = "prune-memory")]
+    PruneMemory,
+}
+
 pub enum DoctorStore {
     Sqlite {
         db_path: PathBuf,
@@ -31,11 +37,30 @@ pub enum DoctorStore {
 const TEMPLATE_AGENTS: &str = include_str!("../../../integrations/templates/AGENTS.md");
 const TEMPLATE_CLAUDE: &str = include_str!("../../../integrations/templates/CLAUDE.md");
 const TEMPLATE_SKILL: &str = include_str!("../../../integrations/skills/prune-context/SKILL.md");
+const TEMPLATE_MEMORY_PLUGIN: &str = r#"// Optional OpenCode plugin scaffold for Prune Memory.
+// Enable it in opencode.json if you want automated prompts/hooks.
+export default {
+  name: "prune-memory-autosave",
+  onSessionCreated() {
+    // Suggest a memory recall at session start.
+  },
+  onSessionIdle() {
+    // Suggest saving key decisions via memory.remember or memory.save_session.
+  }
+};
+"#;
 const CONTEXT7_AGENTS_BLOCK: &str = r#"
 ## External Docs (Context7)
 - Use Prune for repo context packs; use Context7 for external library docs.
 - Before writing code that touches external APIs: fetch the minimal Context7 snippet, then proceed with a Prune pack.
 - Keep queries short and avoid sending proprietary code. Set CONTEXT7_API_KEY in your environment.
+"#;
+const MEMORY_AGENTS_BLOCK: &str = r#"
+## Prune Memory (persistent)
+- At task start: call `memory.recall` with a short query describing the goal and area.
+- After decisions: call `memory.remember` with the decision, constraints, and commands.
+- For long tasks: call `memory.save_session` with a short summary.
+- Keep memories concise and avoid secrets.
 "#;
 const CODEX_PRUNE_SNIPPET: &str = r#"
 [mcp_servers.prune]
@@ -60,6 +85,7 @@ pub fn cmd_integrate(
     agent: Agent,
     write_global: bool,
     with_context7: bool,
+    preset: Option<IntegrationPreset>,
     dry_run: bool,
 ) -> Result<()> {
     let repo_path = PathBuf::from(repo);
@@ -68,12 +94,12 @@ pub fn cmd_integrate(
     }
 
     match agent {
-        Agent::Codex => integrate_codex(&repo_path, write_global, with_context7, dry_run),
-        Agent::Opencode => integrate_opencode(&repo_path, with_context7, dry_run),
+        Agent::Codex => integrate_codex(&repo_path, write_global, with_context7, preset, dry_run),
+        Agent::Opencode => integrate_opencode(&repo_path, with_context7, preset, dry_run),
         Agent::Claude => integrate_claude(&repo_path, dry_run),
         Agent::All => {
-            integrate_codex(&repo_path, write_global, with_context7, dry_run)?;
-            integrate_opencode(&repo_path, with_context7, dry_run)?;
+            integrate_codex(&repo_path, write_global, with_context7, preset, dry_run)?;
+            integrate_opencode(&repo_path, with_context7, preset, dry_run)?;
             integrate_claude(&repo_path, dry_run)?;
             Ok(())
         }
@@ -201,14 +227,20 @@ fn integrate_codex(
     repo: &Path,
     write_global: bool,
     with_context7: bool,
+    preset: Option<IntegrationPreset>,
     dry_run: bool,
 ) -> Result<()> {
     // Project instructions
-    let agents_body = if with_context7 {
+    let mut agents_body = if with_context7 {
         format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
     } else {
         TEMPLATE_AGENTS.to_string()
     };
+    if preset == Some(IntegrationPreset::PruneMemory) {
+        agents_body.push_str("\n");
+        agents_body.push_str(MEMORY_AGENTS_BLOCK);
+        ensure_memory_config(repo, dry_run)?;
+    }
     write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
 
     // Codex global MCP config is optional; write a minimal snippet if requested.
@@ -279,13 +311,22 @@ fn integrate_codex(
     Ok(())
 }
 
-fn integrate_opencode(repo: &Path, with_context7: bool, dry_run: bool) -> Result<()> {
+fn integrate_opencode(
+    repo: &Path,
+    with_context7: bool,
+    preset: Option<IntegrationPreset>,
+    dry_run: bool,
+) -> Result<()> {
     // OpenCode reads AGENTS.md and also supports Claude-compatible conventions.
-    let agents_body = if with_context7 {
+    let mut agents_body = if with_context7 {
         format!("{}\n{}", TEMPLATE_AGENTS, context7_agents_block())
     } else {
         TEMPLATE_AGENTS.to_string()
     };
+    if preset == Some(IntegrationPreset::PruneMemory) {
+        agents_body.push_str("\n");
+        agents_body.push_str(MEMORY_AGENTS_BLOCK);
+    }
     write_file(repo.join("AGENTS.md"), &agents_body, dry_run)?;
     // Provide a CLAUDE.md fallback so the same project can be used with Claude Code too.
     write_file(repo.join("CLAUDE.md"), TEMPLATE_CLAUDE, dry_run)?;
@@ -344,6 +385,19 @@ fn integrate_opencode(repo: &Path, with_context7: bool, dry_run: bool) -> Result
         println!("Wrote {}", cfg_path.display());
     }
 
+    if preset == Some(IntegrationPreset::PruneMemory) {
+        let plugin_dir = repo.join(".opencode").join("plugins");
+        let plugin_path = plugin_dir.join("prune_memory_autosave.ts");
+        if dry_run {
+            println!("[dry-run] would write {}", plugin_path.display());
+        } else {
+            fs::create_dir_all(&plugin_dir)?;
+            fs::write(&plugin_path, TEMPLATE_MEMORY_PLUGIN)?;
+            println!("Wrote {}", plugin_path.display());
+        }
+        ensure_memory_config(repo, dry_run)?;
+    }
+
     Ok(())
 }
 
@@ -392,6 +446,24 @@ fn write_file(path: PathBuf, contents: &str, dry_run: bool) -> Result<()> {
 
 fn context7_agents_block() -> &'static str {
     CONTEXT7_AGENTS_BLOCK
+}
+
+fn ensure_memory_config(repo: &Path, dry_run: bool) -> Result<()> {
+    let path = repo.join(".prune").join("memory.json");
+    if path.exists() {
+        return Ok(());
+    }
+    if dry_run {
+        println!("[dry-run] would write {}", path.display());
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let contents = ce_memory::MemoryConfig::default_json()?;
+    fs::write(&path, contents)?;
+    println!("Wrote {}", path.display());
+    Ok(())
 }
 
 fn codex_prune_server_snippet() -> &'static str {

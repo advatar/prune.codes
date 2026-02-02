@@ -1,0 +1,20 @@
+[package]
+name = "ce-memory"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+blake3 = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+fastembed = "5"
+bytemuck = { version = "1", features = ["derive"] }
+ce-core = { path = "../ce-core" }
+ce-store = { path = "../ce-store" }
+
+[dev-dependencies]
+tempfile = "3"

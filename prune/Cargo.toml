@@ -4,6 +4,7 @@ members = [
   "crates/ce-docs",
   "crates/ce-cli",
   "crates/ce-lsp",
+  "crates/ce-memory",
   "crates/ce-core",
   "crates/ce-lang-rust",
   "crates/ce-lang-tsreact",

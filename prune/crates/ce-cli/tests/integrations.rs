@@ -20,6 +20,7 @@ fn integrate_opencode_writes_valid_json() {
         ce_cli::integrations::Agent::Opencode,
         false,
         false,
+        None,
         false,
     )
     .unwrap();
@@ -44,6 +45,7 @@ fn integrate_claude_writes_mcp_and_skill() {
         ce_cli::integrations::Agent::Claude,
         false,
         false,
+        None,
         false,
     )
     .unwrap();
@@ -66,6 +68,7 @@ fn integrate_codex_writes_agents_md() {
         ce_cli::integrations::Agent::Codex,
         false,
         false,
+        None,
         false,
     )
     .unwrap();
@@ -85,6 +88,7 @@ fn integrate_opencode_with_context7_adds_mcp() {
         ce_cli::integrations::Agent::Opencode,
         false,
         true,
+        None,
         false,
     )
     .unwrap();

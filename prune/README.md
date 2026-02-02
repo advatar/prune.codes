@@ -56,6 +56,7 @@ context-engine/
     ce-cli/         CLI: bootstrap/index/search/pack/eval/strategy
     ce-mcp/         MCP stdio server: context.pack / fragment.get / context.search
     ce-docs/        External docs (Context7) integration
+    ce-memory/      Persistent project memory store (SQLite + embeddings)
     ce-lsp/         LSP on-demand resolver (WIP)
 ```
 
@@ -219,6 +220,32 @@ To keep docs **budgeted and private**, Prune:
 - sends only library names + short natural language queries
 - strips code blocks when `deny_send_code` is true
 - caches results in `.ce/docs-cache/context7`
+
+---
+
+## Prune Memory (persistent decisions)
+
+Prune includes a small, local memory store for durable decisions, workflows, and constraints.
+It is exposed via the CLI and MCP so agents can recall/remember across sessions.
+
+Config file: `.prune/memory.json` (created by `ce bootstrap` or on first use).
+
+CLI commands:
+
+```bash
+ce memory recall "token budget strategy"
+ce memory remember "Prefer o200k_base tokenizer for packs" --tags strategy,tokenizer
+ce memory save-session --from ./notes.md
+ce memory stats
+ce memory delete mem:123
+```
+
+MCP tools:
+- `memory.recall`
+- `memory.remember`
+- `memory.save_session`
+- `memory.stats`
+- `memory.delete`
 
 ---
 

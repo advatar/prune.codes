@@ -19,3 +19,12 @@ services:
     health: none
     dependencies:
       - ce-cli index artifacts (sqlite + hnsw) or embedded surrealdb store
+  - name: ce-memory
+    owner: context-engine
+    type: library
+    description: Persistent project memory store (SQLite + embeddings) surfaced via CLI/MCP.
+    ports: []
+    health: none
+    dependencies:
+      - memory db (path: .prune/memory.db or ~/.prune/memory.db)
+      - fastembed cache (model weights for embeddings)

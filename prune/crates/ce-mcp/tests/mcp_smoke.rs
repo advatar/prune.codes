@@ -72,6 +72,8 @@ fn mcp_initialize_and_pack() -> Result<()> {
             db_path.to_str().expect("db path"),
             "--hnsw-dir",
             hnsw_dir.to_str().expect("hnsw dir"),
+            "--repo",
+            dir.path().to_str().expect("repo path"),
         ])
         .env("FASTEMBED_CACHE_DIR", cache_dir)
         .stdin(Stdio::piped())
@@ -97,6 +99,7 @@ fn mcp_initialize_and_pack() -> Result<()> {
     )?;
     let tools = list_resp["result"]["tools"].as_array().expect("tools list");
     assert!(tools.iter().any(|tool| tool["name"] == "context.pack"));
+    assert!(tools.iter().any(|tool| tool["name"] == "memory.recall"));
 
     let pack_resp = send_json(
         &mut stdin,
@@ -129,6 +132,52 @@ fn mcp_initialize_and_pack() -> Result<()> {
     let items = pack["items"].as_array().expect("pack items");
     assert!(!items.is_empty());
     assert_eq!(items[0]["path"], "src/foo.rs");
+
+    let remember_resp = send_json(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc":"2.0",
+            "id":4,
+            "method":"tools/call",
+            "params":{
+                "name":"memory.remember",
+                "arguments":{
+                    "content":"Always run tests before committing",
+                    "tags":["process","testing"]
+                }
+            }
+        }),
+    )?;
+    let remember_text = remember_resp["result"]["content"][0]["text"]
+        .as_str()
+        .expect("remember text");
+    let remember_json: Value = serde_json::from_str(remember_text)?;
+    assert!(remember_json["items"].as_array().is_some());
+
+    let recall_resp = send_json(
+        &mut stdin,
+        &mut stdout,
+        &json!({
+            "jsonrpc":"2.0",
+            "id":5,
+            "method":"tools/call",
+            "params":{
+                "name":"memory.recall",
+                "arguments":{
+                    "query":"tests before committing",
+                    "k":5,
+                    "token_budget":400
+                }
+            }
+        }),
+    )?;
+    let recall_text = recall_resp["result"]["content"][0]["text"]
+        .as_str()
+        .expect("recall text");
+    let recall_json: Value = serde_json::from_str(recall_text)?;
+    let recall_items = recall_json["items"].as_array().expect("recall items");
+    assert!(!recall_items.is_empty());
 
     let _ = child.kill();
     let _ = child.wait();

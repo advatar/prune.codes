@@ -991,6 +991,7 @@ dependencies = [
  "ce-lang-swift",
  "ce-lang-tsreact",
  "ce-lsp",
+ "ce-memory",
  "ce-store",
  "ce-store-core",
  "ce-store-surreal",
@@ -1087,6 +1088,7 @@ dependencies = [
  "ce-core",
  "ce-docs",
  "ce-lang-rust",
+ "ce-memory",
  "ce-store",
  "ce-store-core",
  "ce-store-surreal",
@@ -1096,6 +1098,23 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "ce-memory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "bytemuck",
+ "ce-core",
+ "ce-store",
+ "chrono",
+ "fastembed",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

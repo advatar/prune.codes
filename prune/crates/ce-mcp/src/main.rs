@@ -10,6 +10,7 @@ use ce_docs::context7::Context7Provider;
 use ce_docs::{
     infer_intent, load_docs_config, load_repo_dependencies, select_libraries, DocsProvider, DocsQuery,
 };
+use ce_memory::MemoryManager;
 use ce_store::query;
 use ce_store::{Db, Embedder, VecIndex};
 #[cfg(feature = "surreal")]
@@ -94,6 +95,9 @@ struct StoreArgs {
 struct CliArgs {
     #[command(flatten)]
     store: StoreArgs,
+    /// Repo root (used for Prune memory config discovery).
+    #[arg(long)]
+    repo: Option<String>,
 }
 
 #[cfg(feature = "surreal")]
@@ -116,6 +120,8 @@ enum Backend {
 struct App {
     backend: Backend,
     sessions: HashMap<String, SessionState>,
+    memory: Option<MemoryManager>,
+    memory_error: Option<String>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -187,9 +193,19 @@ fn main() -> Result<()> {
         }
     };
 
+    let (memory, memory_error) = match resolve_repo_root_from_args(&args) {
+        Some(root) => match MemoryManager::load(&root) {
+            Ok(manager) => (Some(manager), None),
+            Err(err) => (None, Some(err.to_string())),
+        },
+        None => (None, Some("memory repo root not found".to_string())),
+    };
+
     let app = App {
         backend,
         sessions: HashMap::new(),
+        memory,
+        memory_error,
     };
     serve_stdio(app)
 }
@@ -220,6 +236,53 @@ fn serve_stdio(mut app: App) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn resolve_repo_root_from_args(args: &CliArgs) -> Option<PathBuf> {
+    if let Some(repo) = &args.repo {
+        let p = PathBuf::from(repo);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    if let Some(db) = &args.store.db {
+        if let Some(root) = repo_root_from_path(Path::new(db)) {
+            return Some(root);
+        }
+    }
+    if let Some(hnsw) = &args.store.hnsw_dir {
+        if let Some(root) = repo_root_from_path(Path::new(hnsw)) {
+            return Some(root);
+        }
+    }
+
+    if matches!(args.store.store, StoreKind::Surreal) {
+        if let Some(root) = repo_root_from_path(Path::new(&args.store.surreal_path)) {
+            return Some(root);
+        }
+    }
+
+    std::env::current_dir().ok()
+}
+
+fn repo_root_from_path(path: &Path) -> Option<PathBuf> {
+    let cursor = if path.is_file() {
+        path.parent()?
+    } else {
+        path
+    };
+
+    if cursor.file_name().and_then(|s| s.to_str()) == Some(".ce") {
+        return cursor.parent().map(|p| p.to_path_buf());
+    }
+
+    for dir in cursor.ancestors() {
+        if dir.join(".prune").exists() || dir.join(".git").exists() {
+            return Some(dir.to_path_buf());
+        }
+    }
+    None
 }
 
 fn handle_message(app: &mut App, msg: Value) -> Result<Option<Value>> {
@@ -258,7 +321,7 @@ fn handle_single(app: &mut App, msg: Value) -> Result<Option<Value>> {
           "protocolVersion": "2025-03-26",
           "capabilities": { "tools": { "listChanged": false } },
           "serverInfo": { "name": "context-engine", "version": env!("CARGO_PKG_VERSION") },
-          "instructions": "Use tools/list then tools/call. Tools: context.pack, context.search, fragment.get, docs.fetch, strategy.list, strategy.get"
+          "instructions": "Use tools/list then tools/call. Tools: context.pack, context.search, fragment.get, docs.fetch, strategy.list, strategy.get, memory.recall, memory.remember, memory.stats, memory.delete, memory.save_session"
         }),
         "tools/list" => tools_list(),
         "tools/call" => tools_call(app, params)?,
@@ -381,6 +444,75 @@ fn tools_list() -> Value {
             "required": ["id"],
             "additionalProperties": false
           }
+        },
+        {
+          "name": "memory.recall",
+          "description": "Recall persistent project memory using hybrid retrieval (FTS + embeddings) with recency weighting.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {"type":"string"},
+              "project": {"type":"string", "description": "Optional project id filter."},
+              "k": {"type":"integer", "default": 12, "minimum": 1, "maximum": 100},
+              "token_budget": {"type":"integer", "default": 800, "minimum": 100, "maximum": 4000}
+            },
+            "required": ["query"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "memory.remember",
+          "description": "Persist a new memory item (decision, workflow, constraint).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "content": {"type":"string"},
+              "project": {"type":"string"},
+              "tags": {"type":"array", "items": {"type":"string"}},
+              "source": {"type":"string"}
+            },
+            "required": ["content"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "memory.save_session",
+          "description": "Persist a session summary (or distilled notes).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "content": {"type":"string"},
+              "project": {"type":"string"},
+              "tags": {"type":"array", "items": {"type":"string"}}
+            },
+            "required": ["content"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "memory.stats",
+          "description": "Show memory stats for the active store(s).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "project": {"type":"string"}
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "memory.delete",
+          "description": "Delete a memory item by id.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {"type":"string"},
+              "project": {"type":"string"}
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          }
         }
       ]
     })
@@ -400,6 +532,11 @@ fn tools_call(app: &mut App, params: Value) -> Result<Value> {
         "docs.fetch" => tool_docs_fetch(args)?,
         "strategy.list" => tool_strategy_list(app, args)?,
         "strategy.get" => tool_strategy_get(app, args)?,
+        "memory.recall" => tool_memory_recall(app, args)?,
+        "memory.remember" => tool_memory_remember(app, args)?,
+        "memory.save_session" => tool_memory_save_session(app, args)?,
+        "memory.stats" => tool_memory_stats(app, args)?,
+        "memory.delete" => tool_memory_delete(app, args)?,
         _ => (format!("Unknown tool: {name}"), true),
     };
 
@@ -913,6 +1050,107 @@ fn tool_strategy_get(app: &mut App, args: Value) -> Result<(String, bool)> {
         #[cfg(feature = "surreal")]
         Backend::Surreal { .. } => Ok((format!("Strategy not found: {id}"), true)),
     }
+}
+
+fn tool_memory_recall(app: &mut App, args: Value) -> Result<(String, bool)> {
+    let manager = match memory_or_error(app) {
+        Ok(m) => m,
+        Err(err) => return Ok((err, true)),
+    };
+    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+    let project = args.get("project").and_then(|v| v.as_str());
+    let k = args.get("k").and_then(|v| v.as_u64()).map(|v| v as usize);
+    let token_budget = args
+        .get("token_budget")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+
+    let result = manager.recall(query, project, k, token_budget)?;
+    Ok((serde_json::to_string_pretty(&result)?, false))
+}
+
+fn tool_memory_remember(app: &mut App, args: Value) -> Result<(String, bool)> {
+    let manager = match memory_or_error(app) {
+        Ok(m) => m,
+        Err(err) => return Ok((err, true)),
+    };
+    let content = args
+        .get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing content"))?;
+    let project = args.get("project").and_then(|v| v.as_str());
+    let tags = args
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+    let source = args.get("source").and_then(|v| v.as_str());
+
+    let items = manager.remember(content, project, &tags, source)?;
+    let out = serde_json::to_string_pretty(&json!({ "items": items }))?;
+    Ok((out, false))
+}
+
+fn tool_memory_save_session(app: &mut App, args: Value) -> Result<(String, bool)> {
+    let manager = match memory_or_error(app) {
+        Ok(m) => m,
+        Err(err) => return Ok((err, true)),
+    };
+    let content = args
+        .get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing content"))?;
+    let project = args.get("project").and_then(|v| v.as_str());
+    let tags = args
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+    let items = manager.save_session(content, project, &tags)?;
+    let out = serde_json::to_string_pretty(&json!({ "items": items }))?;
+    Ok((out, false))
+}
+
+fn tool_memory_stats(app: &mut App, args: Value) -> Result<(String, bool)> {
+    let manager = match memory_or_error(app) {
+        Ok(m) => m,
+        Err(err) => return Ok((err, true)),
+    };
+    let project = args.get("project").and_then(|v| v.as_str());
+    let stats = manager.stats(project)?;
+    Ok((serde_json::to_string_pretty(&stats)?, false))
+}
+
+fn tool_memory_delete(app: &mut App, args: Value) -> Result<(String, bool)> {
+    let manager = match memory_or_error(app) {
+        Ok(m) => m,
+        Err(err) => return Ok((err, true)),
+    };
+    let id = args
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("missing id"))?;
+    let project = args.get("project").and_then(|v| v.as_str());
+    manager.delete(id, project)?;
+    Ok((format!("Deleted {id}"), false))
+}
+
+fn memory_or_error(app: &App) -> Result<&MemoryManager, String> {
+    if let Some(manager) = app.memory.as_ref() {
+        return Ok(manager);
+    }
+    if let Some(err) = app.memory_error.as_ref() {
+        return Err(err.clone());
+    }
+    Err("memory unavailable".to_string())
 }
 
 fn load_strategy_for_pack(db: &Db, args: &Value) -> Result<StrategyConfig> {
@@ -1948,10 +2186,14 @@ mod tests {
         Ok((
             dir,
             App {
-                db,
-                embedder,
-                vec_index,
+                backend: Backend::Sqlite {
+                    db,
+                    embedder,
+                    vec_index,
+                },
                 sessions: HashMap::new(),
+                memory: None,
+                memory_error: None,
             },
         ))
     }

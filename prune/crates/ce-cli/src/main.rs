@@ -36,8 +36,10 @@ use tokio::runtime::Runtime;
 use url::Url as StdUrl;
 
 mod inception;
+mod memory;
 mod tasks;
 use ce_cli::integrations;
+use memory::MemoryCmd;
 
 #[cfg(feature = "surreal")]
 use ce_store_surreal::{
@@ -370,6 +372,12 @@ enum Cmd {
         cmd: RecipeCmd,
     },
 
+    /// Manage persistent project memory for agents.
+    Memory {
+        #[command(subcommand)]
+        cmd: MemoryCmd,
+    },
+
     /// Manage stored strategy configs (DGM “genomes”).
     Strategy {
         #[command(subcommand)]
@@ -403,6 +411,9 @@ enum Cmd {
         /// Additional integrations (e.g., context7).
         #[arg(long, value_delimiter = ',')]
         with: Vec<String>,
+        /// Optional preset (e.g., prune-memory).
+        #[arg(long, value_enum)]
+        preset: Option<integrations::IntegrationPreset>,
         /// Print changes but do not write files.
         #[arg(long, default_value_t = false)]
         dry_run: bool,
@@ -794,6 +805,7 @@ fn main() -> Result<()> {
         } => cmd_bench(&store, &repo, workload, query.as_deref(), k, out.as_deref()),
 
         Cmd::Recipe { cmd } => cmd_recipe(cmd),
+        Cmd::Memory { cmd } => memory::cmd_memory(cmd),
         Cmd::Strategy { cmd } => cmd_strategy(cmd),
         Cmd::Tasks { cmd } => cmd_tasks(cmd),
         Cmd::Lsp { cmd } => cmd_lsp(cmd),
@@ -803,10 +815,11 @@ fn main() -> Result<()> {
             agent,
             write_global,
             with,
+            preset,
             dry_run,
         } => {
             let with_context7 = parse_with_context7(&with);
-            integrations::cmd_integrate(&repo, agent, write_global, with_context7, dry_run)
+            integrations::cmd_integrate(&repo, agent, write_global, with_context7, preset, dry_run)
         }
         Cmd::Doctor { repo, store, agent } => cmd_doctor(&repo, &store, agent),
         Cmd::Mcp { cmd } => match cmd {
@@ -835,6 +848,7 @@ fn cmd_mcp_serve(
     let bin = ce_mcp_path.unwrap_or("ce-mcp");
     let mut cmd = std::process::Command::new(bin);
     cmd.current_dir(&repo_path);
+    cmd.arg("--repo").arg(&repo_path);
 
     match store.store {
         StoreKind::Sqlite => {
