@@ -528,9 +528,36 @@ struct SyncStatusFile: Codable {
 }
 
 struct Installer {
-    static func detectInstalled(paths: AppPaths) -> Bool {
-        FileManager.default.fileExists(atPath: paths.configFile.path) &&
-            FileManager.default.fileExists(atPath: paths.bin.path)
+    static func detectInstalled(paths: AppPaths, config: AppConfig) -> Bool {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: paths.configFile.path) else {
+            return false
+        }
+        guard fileManager.fileExists(atPath: paths.bin.path) else {
+            return false
+        }
+
+        let binaries = Set([
+            config.binaryNames.tunnel,
+            config.binaryNames.sync,
+            config.binaryNames.mcp,
+            "ce",
+            "ce-mcp"
+        ])
+
+        for name in binaries {
+            if name.hasPrefix("/") {
+                if !fileManager.isExecutableFile(atPath: name) {
+                    return false
+                }
+                continue
+            }
+            let path = paths.bin.appendingPathComponent(name).path
+            if !fileManager.isExecutableFile(atPath: path) {
+                return false
+            }
+        }
+        return true
     }
 
     static func install(
@@ -859,7 +886,7 @@ final class AppModel: ObservableObject {
         self.configStore = configStore
         self.logStore = logStore
         self.config = loadedConfig
-        self.installState = Installer.detectInstalled(paths: paths) ? .installed : .notInstalled
+        self.installState = Installer.detectInstalled(paths: paths, config: loadedConfig) ? .installed : .notInstalled
         self.serviceStatuses = Dictionary(uniqueKeysWithValues: ServiceKind.allCases.map {
             ($0, ServiceStatus(state: .stopped, detail: ""))
         })

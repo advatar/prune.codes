@@ -78,6 +78,7 @@
 - Auto-start services on app launch when a repo is configured (starts webhook port 47801 via prune-sync).
 - Use 127.0.0.1 for local MCP/webhook URLs to avoid IPv6 localhost connection refusals.
 - Block starting services until a repo is configured, and route menu bar Start to Setup when missing.
+- Tightened install detection to require executable bundled binaries so auto-install re-runs when MCP assets are missing.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
