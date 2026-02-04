@@ -694,6 +694,10 @@ final class A2UIAgent: ObservableObject {
         } else if canDispatchImmediately {
             AppLog.error("A2UI immediate action missing handler: surface=\(surfaceId) name=\(event.name)")
         }
+        if surfaceId == "prune_menu", event.name != "input.change" {
+            resetSurface(store, messages: template)
+            return
+        }
 
         let task = Task.detached { [weak self] in
             guard let self else { return }

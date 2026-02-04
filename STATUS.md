@@ -82,6 +82,7 @@
 - Ensure menu bar actions can open a Dashboard window reliably (WindowGroup fallback; Start opens Setup when repo missing).
 - Added extensive logging for A2UI actions, menu commands, settings activation, and service lifecycle to debug no-op menu actions.
 - Filtered settings window selection to skip the menu bar popover and log window snapshots when focus fails.
+- Log app bundle path/version in AppModel init to confirm which build is running.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.

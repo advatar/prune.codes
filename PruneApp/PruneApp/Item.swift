@@ -911,7 +911,10 @@ final class AppModel: ObservableObject {
         self.logHandle = logStore.openForAppending()
         self.ensureRepoDirectories()
         self.refreshGitAvailability()
-        AppLog.info("AppModel init: installState=\(installState.label), repo=\(config.repoFullName), useLaunchAgents=\(config.useLaunchAgents), bin=\(paths.bin.path)")
+        let bundlePath = Bundle.main.bundleURL.path
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        AppLog.info("AppModel init: installState=\(installState.label), repo=\(config.repoFullName), useLaunchAgents=\(config.useLaunchAgents), bin=\(paths.bin.path), bundle=\(bundlePath), version=\(version) (\(build))")
         if installState == .notInstalled, Self.shouldAutoInstall() {
             install()
         } else {
