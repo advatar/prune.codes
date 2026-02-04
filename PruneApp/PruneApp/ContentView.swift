@@ -1448,6 +1448,11 @@ private final class MenuBarBindingProvider: A2UIBindingProvider {
     func perform(action: String) {
         switch action {
         case "start":
+            if appModel.normalizedRepoFullName() == nil {
+                appModel.lastErrorMessage = "Set the repo (Org/Repo) in Setup before starting services."
+                openSettings(.setup)
+                return
+            }
             appModel.startServices()
         case "stop":
             appModel.stopServices()

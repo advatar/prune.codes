@@ -1155,6 +1155,10 @@ final class AppModel: ObservableObject {
             lastErrorMessage = "Install Prune before starting services."
             return
         }
+        guard normalizedRepoFullName() != nil else {
+            lastErrorMessage = "Set the repo (Org/Repo) in Setup before starting services."
+            return
+        }
         statusMessage = "Starting services..."
         lastErrorMessage = nil
         if config.useLaunchAgents {
