@@ -72,6 +72,7 @@
 - Ran `cargo test -p ce-cli`.
 - Converted Cortex vendor checkout to a git submodule at `prune/.prune/vendors/cortex`.
 - Fixed ce-mcp Surreal pack strategy move to avoid borrow-after-move errors.
+- Fixed menu bar actions to dispatch immediately (bypass LLM latency) while still allowing A2UI updates.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.

@@ -654,6 +654,12 @@ final class A2UIAgent: ObservableObject {
         let templateComponents = templateComponentMap(from: template, surfaceId: surfaceId)
         let templateRootId = templateRootComponentId(from: template, surfaceId: surfaceId)
         let allowedActionSet = Set(availableActions)
+        let canDispatchImmediately = event.name != "input.change" && allowedActionSet.contains(event.name)
+        let immediatePayload: JSONValue? = event.context.isEmpty ? nil : .object(event.context)
+
+        if canDispatchImmediately, let handler = actionHandlers[surfaceId] {
+            handler(event.name, immediatePayload)
+        }
 
         let task = Task.detached { [weak self] in
             guard let self else { return }
@@ -689,7 +695,7 @@ final class A2UIAgent: ObservableObject {
             await MainActor.run {
                 resetSurface(store, messages: mergedOutput)
                 if let handler = self.actionHandlers[surfaceId] {
-                    for request in resolvedActions {
+                    for request in resolvedActions where !(canDispatchImmediately && request.name == event.name) {
                         handler(request.name, request.payload)
                     }
                 }
