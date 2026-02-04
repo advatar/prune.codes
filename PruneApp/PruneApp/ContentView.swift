@@ -45,35 +45,32 @@ struct MenuBarLabel: View {
 struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var a2uiAgent: A2UIAgent
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_menu"
 
-    private func openSettings(tab: SettingsTab) {
+    private func openDashboard(tab: SettingsTab) {
         Task { @MainActor in
-            await openSettingsOnMain(tab: tab)
+            await openDashboardOnMain(tab: tab)
         }
     }
 
     @MainActor
-    private func openSettingsOnMain(tab: SettingsTab) async {
+    private func openDashboardOnMain(tab: SettingsTab) async {
         appModel.selectedTab = tab
         NSApp.activate(ignoringOtherApps: true)
         NSApp.unhide(nil)
-        AppLog.info("Open settings requested: tab=\(tab)")
-        let didShowSettings = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        if !didShowSettings {
-            _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
-        AppLog.info("showSettingsWindow action result: \(didShowSettings)")
-        await bringSettingsWindowToFront()
+        AppLog.info("Open dashboard requested: tab=\(tab)")
+        openWindow(id: "dashboard")
+        await bringDashboardWindowToFront()
     }
 
     @MainActor
-    private func bringSettingsWindowToFront() async {
+    private func bringDashboardWindowToFront() async {
         for _ in 0..<10 {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.unhide(nil)
-            if let window = findSettingsWindow() {
+            if let window = findDashboardWindow() {
                 if window.isMiniaturized {
                     window.deminiaturize(nil)
                 }
@@ -90,8 +87,11 @@ struct MenuBarView: View {
     }
 
     @MainActor
-    private func findSettingsWindow() -> NSWindow? {
+    private func findDashboardWindow() -> NSWindow? {
         let normalWindows = NSApp.windows.filter { isSettingsCandidate($0) }
+        if let dashboard = normalWindows.first(where: { $0.title == "Dashboard" }) {
+            return dashboard
+        }
         if let titledWindow = normalWindows.first(where: { !$0.title.isEmpty }) {
             return titledWindow
         }
@@ -130,7 +130,7 @@ struct MenuBarView: View {
     var body: some View {
         let bindingProvider = MenuBarBindingProvider(
             appModel: appModel,
-            openSettings: openSettings,
+            openDashboard: openDashboard,
             quit: { NSApplication.shared.terminate(nil) }
         )
         A2UISurfaceView(
@@ -1412,7 +1412,7 @@ private enum MenuBarSurface {
                 "disabled": binding("menu.stopDisabled")
             ]),
             NormalizedComponent(id: "menu_divider_2", type: "Divider", props: [:]),
-            NormalizedComponent(id: "menu_open_dashboard", type: "SettingsLink", props: [
+            NormalizedComponent(id: "menu_open_dashboard", type: "Button", props: [
                 "label": .string("Open Dashboard"),
                 "action": .string("open_dashboard")
             ]),
@@ -1420,7 +1420,7 @@ private enum MenuBarSurface {
                 "label": .string("View Logs"),
                 "action": .string("view_logs")
             ]),
-            NormalizedComponent(id: "menu_open_help", type: "SettingsLink", props: [
+            NormalizedComponent(id: "menu_open_help", type: "Button", props: [
                 "label": .string("Help"),
                 "action": .string("open_help")
             ]),
@@ -1448,16 +1448,16 @@ private enum MenuBarSurface {
 @MainActor
 private final class MenuBarBindingProvider: A2UIBindingProvider {
     private let appModel: AppModel
-    private let openSettings: (SettingsTab) -> Void
+    private let openDashboard: (SettingsTab) -> Void
     private let quit: () -> Void
 
     init(
         appModel: AppModel,
-        openSettings: @escaping (SettingsTab) -> Void,
+        openDashboard: @escaping (SettingsTab) -> Void,
         quit: @escaping () -> Void
     ) {
         self.appModel = appModel
-        self.openSettings = openSettings
+        self.openDashboard = openDashboard
         self.quit = quit
     }
 
@@ -1489,18 +1489,18 @@ private final class MenuBarBindingProvider: A2UIBindingProvider {
         case "start":
             if appModel.normalizedRepoFullName() == nil {
                 appModel.lastErrorMessage = "Set the repo (Org/Repo) in Setup before starting services."
-                openSettings(.setup)
+                openDashboard(.setup)
                 return
             }
             appModel.startServices()
         case "stop":
             appModel.stopServices()
         case "open_dashboard":
-            appModel.selectedTab = .setup
+            openDashboard(.setup)
         case "view_logs":
             appModel.openLogs()
         case "open_help":
-            appModel.selectedTab = .help
+            openDashboard(.help)
         case "quit":
             quit()
         default:
@@ -2973,29 +2973,6 @@ private struct A2UISurfaceView: View {
                 return AnyView(button.buttonStyle(.borderedProminent))
             }
             return AnyView(button.buttonStyle(.bordered))
-
-        case "SettingsLink":
-            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? "Settings"
-            let actionId = resolved["action"]?.stringValue ?? rawProps["action"]?.stringValue ?? ""
-            let variant = resolved["variant"]?.stringValue ?? rawProps["variant"]?.stringValue
-            let disabled = resolveBool(from: rawProps["disabled"], fallback: resolved["disabled"]) ?? false
-            let link = SettingsLink {
-                Text(label)
-            }
-            .simultaneousGesture(TapGesture().onEnded {
-                guard !actionId.isEmpty else { return }
-                sendUserAction(name: actionId, componentId: componentId)
-            })
-            .disabled(disabled)
-            if isMenuStyle {
-                return AnyView(
-                    link.buttonStyle(MenuBarButtonStyle(isPrimary: variant == "primary"))
-                )
-            }
-            if variant == "primary" {
-                return AnyView(link.buttonStyle(.borderedProminent))
-            }
-            return AnyView(link.buttonStyle(.bordered))
 
         case "Spacer":
             return AnyView(Spacer())

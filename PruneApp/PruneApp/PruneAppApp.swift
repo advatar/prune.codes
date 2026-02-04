@@ -24,6 +24,13 @@ struct PruneAppApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        WindowGroup("Dashboard", id: "dashboard") {
+            SettingsView()
+                .environmentObject(appModel)
+                .environmentObject(a2uiAgent)
+        }
+        .defaultSize(width: 760, height: 540)
+
         Settings {
             SettingsView()
                 .environmentObject(appModel)
