@@ -870,6 +870,8 @@ final class AppModel: ObservableObject {
         self.refreshGitAvailability()
         if installState == .notInstalled, Self.shouldAutoInstall() {
             install()
+        } else {
+            autoStartServicesIfNeeded()
         }
     }
 
@@ -882,6 +884,24 @@ final class AppModel: ObservableObject {
             return false
         }
         return true
+    }
+
+    private static func shouldAutoStartServices() -> Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            return false
+        }
+        if env["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+        return env["PRUNE_DISABLE_AUTO_START"] == nil
+    }
+
+    private func autoStartServicesIfNeeded() {
+        guard Self.shouldAutoStartServices() else { return }
+        guard normalizedRepoFullName() != nil else { return }
+        guard canStart else { return }
+        startServices()
     }
 
     var appStatus: AppStatus {
@@ -1117,6 +1137,7 @@ final class AppModel: ObservableObject {
                 try configStore.save(config)
                 installState = .installed
                 ensureRepoDirectories()
+                autoStartServicesIfNeeded()
                 if result.warnings.isEmpty {
                     statusMessage = "Install completed."
                 } else {

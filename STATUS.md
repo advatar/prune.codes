@@ -75,6 +75,7 @@
 - Fixed ce-mcp Surreal pack strategy move to avoid borrow-after-move errors.
 - Fixed menu bar actions to dispatch immediately (bypass LLM latency) while still allowing A2UI updates.
 - Shortened health-check timeouts to avoid menu bar stalls when localhost endpoints are down.
+- Auto-start services on app launch when a repo is configured (starts webhook port 47801 via prune-sync).
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
