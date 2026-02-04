@@ -81,6 +81,7 @@
 - Tightened install detection to require executable bundled binaries so auto-install re-runs when MCP assets are missing.
 - Ensure menu bar actions can open the Settings window (Dashboard/Help use SettingsLink; Start still opens Setup when repo missing).
 - Added extensive logging for A2UI actions, menu commands, settings activation, and service lifecycle to debug no-op menu actions.
+- Filtered settings window selection to skip the menu bar popover and log window snapshots when focus fails.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.

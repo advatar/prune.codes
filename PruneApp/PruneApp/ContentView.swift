@@ -86,11 +86,19 @@ struct MenuBarView: View {
             await Task.yield()
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
-        AppLog.error("Failed to focus settings window after retries.")
+        logWindowSnapshot(reason: "Failed to focus settings window after retries.")
     }
 
     @MainActor
     private func findSettingsWindow() -> NSWindow? {
+        let normalWindows = NSApp.windows.filter { isSettingsCandidate($0) }
+        if let titledWindow = normalWindows.first(where: { !$0.title.isEmpty }) {
+            return titledWindow
+        }
+        if let visibleWindow = normalWindows.first(where: { $0.isVisible }) {
+            return visibleWindow
+        }
+
         if let keyWindow = NSApp.keyWindow, keyWindow.canBecomeKey {
             return keyWindow
         }
@@ -98,13 +106,25 @@ struct MenuBarView: View {
             return mainWindow
         }
         let candidates = NSApp.orderedWindows.filter { $0.canBecomeKey }
-        if let titledWindow = candidates.first(where: { !$0.title.isEmpty }) {
-            return titledWindow
-        }
-        if let visibleWindow = candidates.first(where: { $0.isVisible }) {
-            return visibleWindow
-        }
         return candidates.first
+    }
+
+    @MainActor
+    private func isSettingsCandidate(_ window: NSWindow) -> Bool {
+        if window.level != .normal { return false }
+        if !window.styleMask.contains(.titled) { return false }
+        return window.canBecomeKey
+    }
+
+    @MainActor
+    private func logWindowSnapshot(reason: String) {
+        let descriptions = NSApp.windows.map { window in
+            let title = window.title.isEmpty ? "<untitled>" : window.title
+            let level = window.level.rawValue
+            let masks = window.styleMask
+            return "window=\(title) level=\(level) visible=\(window.isVisible) titled=\(masks.contains(.titled)) keyable=\(window.canBecomeKey)"
+        }
+        AppLog.error("\(reason). windows=[\(descriptions.joined(separator: " | "))]")
     }
 
     var body: some View {
@@ -713,7 +733,9 @@ final class A2UIAgent: ObservableObject {
                         handler(request.name, request.payload)
                     }
                 } else if !resolvedActions.isEmpty {
-                    AppLog.error("A2UI resolved actions missing handler: surface=\(surfaceId) actions=\(resolvedActions.map { $0.name }.joined(separator: ","))")
+                    if surfaceId != "prune_menu" {
+                        AppLog.error("A2UI resolved actions missing handler: surface=\(surfaceId) actions=\(resolvedActions.map { $0.name }.joined(separator: ","))")
+                    }
                 }
             }
         }
