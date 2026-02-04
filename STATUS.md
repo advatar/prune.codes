@@ -6,6 +6,7 @@
 - Implement CR-003 LSP on-demand semantic resolver (ce-lsp crate, CLI wiring, pack hooks).
 - Integrate TS/TSX indexing (ce-lang-tsreact) plus tsconfig alias resolution + JSX tag edges in ce-store.
 - Update README + validation steps for TS/TSX support.
+- Fix ce-mcp Surreal pack strategy borrow-after-move error.
 
 ## Progress
 - Implemented CR-006: Context7 integration, optional docs provider, new ce-docs crate, docs CLI/MCP tools, and pack injection.
@@ -70,6 +71,7 @@
 - Implemented CR-005 Cortex external provider mode: vendor install/update/doctor, Codex/OpenCode integration for two MCP servers, OpenCode wrapper, AGENTS guidance, docs updates, and integration tests.
 - Ran `cargo test -p ce-cli`.
 - Converted Cortex vendor checkout to a git submodule at `prune/.prune/vendors/cortex`.
+- Fixed ce-mcp Surreal pack strategy move to avoid borrow-after-move errors.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.

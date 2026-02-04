@@ -922,7 +922,7 @@ fn tool_pack(app: &mut App, args: Value) -> Result<(String, bool)> {
                 repo_id: SURREAL_REPO_ID.to_string(),
                 query: task.to_string(),
                 query_vec: Some(qvec),
-                strategy,
+                strategy: strategy.clone(),
                 seen: if session_id.is_some() {
                     Some(seen.clone())
                 } else {
