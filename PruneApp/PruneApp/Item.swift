@@ -954,14 +954,14 @@ final class AppModel: ObservableObject {
         if !config.tunnelBaseURL.isEmpty {
             return config.tunnelBaseURL.trimmedSlashSuffix() + "/mcp"
         }
-        return "http://localhost:\(config.mcpPort)/mcp"
+        return "http://127.0.0.1:\(config.mcpPort)/mcp"
     }
 
     var webhookURL: String {
         if !config.tunnelBaseURL.isEmpty {
             return config.tunnelBaseURL.trimmedSlashSuffix() + "/github/webhook"
         }
-        return "http://localhost:\(config.webhookPort)/github/webhook"
+        return "http://127.0.0.1:\(config.webhookPort)/github/webhook"
     }
 
     var mcpServerURLBinding: Binding<String> {
