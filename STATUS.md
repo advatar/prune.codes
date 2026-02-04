@@ -7,6 +7,7 @@
 - Integrate TS/TSX indexing (ce-lang-tsreact) plus tsconfig alias resolution + JSX tag edges in ce-store.
 - Update README + validation steps for TS/TSX support.
 - Fix ce-mcp Surreal pack strategy borrow-after-move error.
+- Reduce health-check timeouts so menu bar actions don’t feel blocked.
 
 ## Progress
 - Implemented CR-006: Context7 integration, optional docs provider, new ce-docs crate, docs CLI/MCP tools, and pack injection.
@@ -73,6 +74,7 @@
 - Converted Cortex vendor checkout to a git submodule at `prune/.prune/vendors/cortex`.
 - Fixed ce-mcp Surreal pack strategy move to avoid borrow-after-move errors.
 - Fixed menu bar actions to dispatch immediately (bypass LLM latency) while still allowing A2UI updates.
+- Shortened health-check timeouts to avoid menu bar stalls when localhost endpoints are down.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.

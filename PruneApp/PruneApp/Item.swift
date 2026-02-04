@@ -1289,7 +1289,8 @@ final class AppModel: ObservableObject {
     }
 
     private func performHealthChecks() {
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             let mcpResult = await checkEndpoint(urlString: mcpServerURL)
             if let mcpResult {
                 statusMessage = "MCP \(mcpResult)"
@@ -1720,12 +1721,16 @@ final class AppModel: ObservableObject {
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.timeoutInterval = 2.0
             let (_, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse {
                 return "HTTP \(http.statusCode)"
             }
             return "reachable"
         } catch {
+            if let urlError = error as? URLError, urlError.code == .timedOut {
+                return "timeout"
+            }
             return "unreachable"
         }
     }
