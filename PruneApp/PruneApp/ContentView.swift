@@ -59,6 +59,10 @@ struct MenuBarView: View {
         appModel.selectedTab = tab
         NSApp.activate(ignoringOtherApps: true)
         NSApp.unhide(nil)
+        let didShowSettings = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if !didShowSettings {
+            _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
         await bringSettingsWindowToFront()
     }
 
