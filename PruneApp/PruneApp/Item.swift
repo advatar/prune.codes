@@ -9,6 +9,7 @@ import AppKit
 import Combine
 import Darwin
 import Foundation
+import os
 import Security
 import SwiftUI
 
@@ -457,6 +458,21 @@ struct LogStore {
     }
 }
 
+enum AppLog {
+    private static let logger = Logger(subsystem: "se.advatar.PruneApp", category: "app")
+    private static let logStore = LogStore(paths: AppPaths.defaultPaths())
+
+    static func info(_ message: String) {
+        logStore.append(message)
+        logger.info("\(message, privacy: .public)")
+    }
+
+    static func error(_ message: String) {
+        logStore.append("ERROR: \(message)")
+        logger.error("\(message, privacy: .public)")
+    }
+}
+
 struct InstallResult {
     var warnings: [String] = []
 }
@@ -895,6 +911,7 @@ final class AppModel: ObservableObject {
         self.logHandle = logStore.openForAppending()
         self.ensureRepoDirectories()
         self.refreshGitAvailability()
+        AppLog.info("AppModel init: installState=\(installState.label), repo=\(config.repoFullName), useLaunchAgents=\(config.useLaunchAgents), bin=\(paths.bin.path)")
         if installState == .notInstalled, Self.shouldAutoInstall() {
             install()
         } else {
@@ -1033,18 +1050,22 @@ final class AppModel: ObservableObject {
     func refreshGitAvailability() {
         Task { @MainActor in
             self.gitAvailability = await self.checkGitAvailability()
+            AppLog.info("Git availability refreshed: \(self.gitAvailability)")
         }
     }
 
     func installCommandLineTools() {
         statusMessage = "Requesting Xcode Command Line Tools installer..."
         lastErrorMessage = nil
+        AppLog.info("Command Line Tools install requested.")
         Task { @MainActor in
             do {
                 _ = try await self.runCommand("/usr/bin/xcode-select", args: ["--install"])
                 self.statusMessage = "Command Line Tools installer opened."
+                AppLog.info("Command Line Tools installer opened.")
             } catch {
                 self.statusMessage = "Command Line Tools: \(error.localizedDescription)"
+                AppLog.error("Command Line Tools install failed: \(error.localizedDescription)")
             }
             self.refreshGitAvailability()
         }
@@ -1057,6 +1078,7 @@ final class AppModel: ObservableObject {
                 self.config.repoFullName = newValue
                 self.saveConfig()
                 self.ensureRepoDirectories()
+                AppLog.info("Repo set via binding: \(newValue)")
             }
         )
     }
@@ -1064,6 +1086,7 @@ final class AppModel: ObservableObject {
     func detectRepoFromMirror() {
         statusMessage = "Detecting repository..."
         lastErrorMessage = nil
+        AppLog.info("Detect repository from mirrors requested.")
 
         Task { @MainActor in
             do {
@@ -1071,6 +1094,7 @@ final class AppModel: ObservableObject {
                     let mirror = paths.mirrorDirectory(repoFullName: repo)
                     if let candidate = try await repoCandidate(from: mirror) {
                         applyRepoCandidate(candidate)
+                        AppLog.info("Detected repo from current mirror: \(candidate.repoFullName)")
                         return
                     }
                 }
@@ -1078,16 +1102,20 @@ final class AppModel: ObservableObject {
                 let candidates = try await repoCandidatesFromMirrors()
                 guard !candidates.isEmpty else {
                     statusMessage = "No repository detected in mirrors."
+                    AppLog.info("No repository detected in mirrors.")
                     return
                 }
                 if candidates.count > 1 {
                     let names = candidates.map { $0.repoFullName }.sorted().joined(separator: ", ")
                     statusMessage = "Multiple repos found: \(names)."
+                    AppLog.info("Multiple repos detected: \(names)")
                     return
                 }
                 applyRepoCandidate(candidates[0])
+                AppLog.info("Detected repo from mirrors: \(candidates[0].repoFullName)")
             } catch {
                 lastErrorMessage = "Repository detection failed: \(error.localizedDescription)"
+                AppLog.error("Repository detection failed: \(error.localizedDescription)")
             }
         }
     }
@@ -1095,6 +1123,7 @@ final class AppModel: ObservableObject {
     func pickRepoFolder() async {
         statusMessage = "Select repository folder..."
         lastErrorMessage = nil
+        AppLog.info("Repository folder picker opened.")
 
         let panel = NSOpenPanel()
         panel.title = "Select Repository Folder"
@@ -1108,17 +1137,21 @@ final class AppModel: ObservableObject {
         let response = panel.runModal()
         guard response == .OK, let url = panel.url else {
             statusMessage = "Repository selection canceled."
+            AppLog.info("Repository folder selection canceled.")
             return
         }
 
         do {
             if let candidate = try await repoCandidate(from: url) {
                 applyRepoCandidate(candidate)
+                AppLog.info("Repository selected: \(candidate.repoFullName) at \(url.path)")
             } else {
                 statusMessage = "No git repository detected at \(url.path)."
+                AppLog.info("No git repo detected at \(url.path)")
             }
         } catch {
             lastErrorMessage = "Repository detection failed: \(error.localizedDescription)"
+            AppLog.error("Repository detection failed: \(error.localizedDescription)")
         }
     }
 
@@ -1152,6 +1185,7 @@ final class AppModel: ObservableObject {
         installState = .installing
         statusMessage = reinstallOnly ? "Reinstalling binaries..." : "Installing..."
         lastErrorMessage = nil
+        AppLog.info("Install started. reinstallOnly=\(reinstallOnly)")
 
         Task {
             do {
@@ -1167,12 +1201,15 @@ final class AppModel: ObservableObject {
                 autoStartServicesIfNeeded()
                 if result.warnings.isEmpty {
                     statusMessage = "Install completed."
+                    AppLog.info("Install completed with no warnings.")
                 } else {
                     statusMessage = "Install completed with warnings."
+                    AppLog.info("Install completed with warnings: \(result.warnings.joined(separator: ", "))")
                 }
             } catch {
                 installState = .failed
                 lastErrorMessage = "Install failed: \(error.localizedDescription)"
+                AppLog.error("Install failed: \(error.localizedDescription)")
             }
         }
     }
@@ -1180,14 +1217,17 @@ final class AppModel: ObservableObject {
     func startServices() {
         guard installState == .installed else {
             lastErrorMessage = "Install Prune before starting services."
+            AppLog.error("Start services blocked: not installed.")
             return
         }
         guard normalizedRepoFullName() != nil else {
             lastErrorMessage = "Set the repo (Org/Repo) in Setup before starting services."
+            AppLog.error("Start services blocked: repo not configured.")
             return
         }
         statusMessage = "Starting services..."
         lastErrorMessage = nil
+        AppLog.info("Starting services. useLaunchAgents=\(config.useLaunchAgents)")
         if config.useLaunchAgents {
             startServicesWithLaunchAgents()
         } else {
@@ -1201,6 +1241,7 @@ final class AppModel: ObservableObject {
     func stopServices() {
         statusMessage = "Stopping services..."
         lastErrorMessage = nil
+        AppLog.info("Stopping services. useLaunchAgents=\(config.useLaunchAgents)")
         if config.useLaunchAgents {
             stopServicesWithLaunchAgents()
         } else {
@@ -1240,6 +1281,7 @@ final class AppModel: ObservableObject {
     func installLaunchAgents() {
         statusMessage = "Installing LaunchAgents..."
         lastErrorMessage = nil
+        AppLog.info("Installing LaunchAgents.")
 
         Task {
             do {
@@ -1263,11 +1305,14 @@ final class AppModel: ObservableObject {
 
                 if warnings.isEmpty {
                     statusMessage = "LaunchAgents installed."
+                    AppLog.info("LaunchAgents installed.")
                 } else {
                     statusMessage = "LaunchAgents installed with warnings."
+                    AppLog.info("LaunchAgents installed with warnings: \(warnings.joined(separator: ", "))")
                 }
             } catch {
                 lastErrorMessage = "LaunchAgent install failed: \(error.localizedDescription)"
+                AppLog.error("LaunchAgent install failed: \(error.localizedDescription)")
             }
         }
     }
@@ -1275,6 +1320,7 @@ final class AppModel: ObservableObject {
     func removeLaunchAgents() {
         statusMessage = "Removing LaunchAgents..."
         lastErrorMessage = nil
+        AppLog.info("Removing LaunchAgents.")
 
         Task {
             let domain = launchctlDomain()
@@ -1287,21 +1333,25 @@ final class AppModel: ObservableObject {
                 }
             }
             statusMessage = "LaunchAgents removed."
+            AppLog.info("LaunchAgents removed.")
             await refreshLaunchAgentStatus()
         }
     }
 
     func openLaunchAgentsFolder() {
         NSWorkspace.shared.open(paths.launchAgents)
+        AppLog.info("Opened LaunchAgents folder.")
     }
 
     func copyLovableInstructions() {
         copyToClipboard(lovableInstructions)
+        AppLog.info("Copied Lovable instructions.")
     }
 
     private func startServicesWithLaunchAgents() {
         Task {
             do {
+                AppLog.info("Starting services with LaunchAgents.")
                 try await ensureLaunchAgentsInstalled()
                 let domain = launchctlDomain()
                 _ = try await runLaunchctl(["kickstart", "-k", "\(domain)/\(launchAgentLabel(for: .tunnel))"])
@@ -1311,12 +1361,14 @@ final class AppModel: ObservableObject {
                 performHealthChecks()
             } catch {
                 lastErrorMessage = "LaunchAgent start failed: \(error.localizedDescription)"
+                AppLog.error("LaunchAgent start failed: \(error.localizedDescription)")
             }
         }
     }
 
     private func stopServicesWithLaunchAgents() {
         Task {
+            AppLog.info("Stopping services with LaunchAgents.")
             let domain = launchctlDomain()
             _ = try? await runLaunchctl(["stop", "\(domain)/\(launchAgentLabel(for: .mcp))"])
             _ = try? await runLaunchctl(["stop", "\(domain)/\(launchAgentLabel(for: .sync))"])
@@ -1346,11 +1398,13 @@ final class AppModel: ObservableObject {
             let mcpResult = await checkEndpoint(urlString: mcpServerURL)
             if let mcpResult {
                 statusMessage = "MCP \(mcpResult)"
+                AppLog.info("Health check MCP: \(mcpResult)")
             }
             let webhookResult = await checkEndpoint(urlString: webhookURL)
             if let webhookResult {
                 let prefix = statusMessage ?? ""
                 statusMessage = prefix.isEmpty ? "Webhook \(webhookResult)" : "\(prefix) | Webhook \(webhookResult)"
+                AppLog.info("Health check webhook: \(webhookResult)")
             }
         }
     }
@@ -1364,9 +1418,11 @@ final class AppModel: ObservableObject {
             try logStore.ensureLogFile()
         } catch {
             lastErrorMessage = "Unable to create log file: \(error.localizedDescription)"
+            AppLog.error("Open logs failed: \(error.localizedDescription)")
             return
         }
         NSWorkspace.shared.open(paths.logFile)
+        AppLog.info("Opened log file.")
     }
 
     func refreshLogPreview() {
@@ -1398,6 +1454,7 @@ final class AppModel: ObservableObject {
         }
         if didChange {
             saveConfig()
+            AppLog.info("Sync status updated: webhookStatus=\(config.webhookStatus), lastIndexedSha=\(config.lastIndexedSha)")
         }
     }
 
@@ -1405,6 +1462,7 @@ final class AppModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
         statusMessage = "Copied to clipboard."
+        AppLog.info("Copied to clipboard (\(value.count) chars).")
     }
 
     func copyMcpURL() {
@@ -1561,8 +1619,10 @@ final class AppModel: ObservableObject {
     private func saveConfig() {
         do {
             try configStore.save(config)
+            AppLog.info("Config saved.")
         } catch {
             lastErrorMessage = "Failed to save config: \(error.localizedDescription)"
+            AppLog.error("Failed to save config: \(error.localizedDescription)")
         }
     }
 
@@ -1694,6 +1754,7 @@ final class AppModel: ObservableObject {
 
         for service in ServiceKind.allCases {
             let plistURL = try writeLaunchAgentPlist(for: service)
+            AppLog.info("Ensuring LaunchAgent: \(plistURL.lastPathComponent)")
             _ = try? await runLaunchctl(["bootout", domain, plistURL.path])
             _ = try await runLaunchctl(["bootstrap", domain, plistURL.path])
         }
@@ -1873,6 +1934,7 @@ final class AppModel: ObservableObject {
     private func startService(_ service: ServiceKind) {
         if let existing = processes[service], existing.isRunning {
             serviceStatuses[service] = ServiceStatus(state: .running, detail: "PID \(existing.processIdentifier)")
+            AppLog.info("\(service.displayName) already running (PID \(existing.processIdentifier)).")
             return
         }
         processes[service] = nil
@@ -1886,6 +1948,7 @@ final class AppModel: ObservableObject {
         let binaryURL = binaryURL(for: service)
         guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
             serviceStatuses[service] = ServiceStatus(state: .failed, detail: "Missing binary: \(binaryName)")
+            AppLog.error("\(service.displayName) missing binary: \(binaryURL.path)")
             return
         }
 
@@ -1894,12 +1957,17 @@ final class AppModel: ObservableObject {
         process.arguments = arguments(for: service)
         process.currentDirectoryURL = workingDirectory(for: service)
         process.environment = processEnvironment(for: service)
+        AppLog.info("Starting \(service.displayName): \(binaryURL.path) args=\(process.arguments ?? []) cwd=\(process.currentDirectoryURL?.path ?? "")")
         process.standardOutput = logHandle
         process.standardError = logHandle
+        let serviceName = service.displayName
         process.terminationHandler = { [weak self] _ in
             Task { @MainActor in
                 self?.serviceStatuses[service] = ServiceStatus(state: .stopped, detail: "")
                 self?.processes[service] = nil
+            }
+            Task { @MainActor in
+                AppLog.info("\(serviceName) exited.")
             }
         }
 
@@ -1908,8 +1976,10 @@ final class AppModel: ObservableObject {
             processes[service] = process
             serviceStatuses[service] = ServiceStatus(state: .running, detail: "PID \(process.processIdentifier)")
             logStore.append("\(service.displayName) started.")
+            AppLog.info("\(service.displayName) started (PID \(process.processIdentifier)).")
         } catch {
             serviceStatuses[service] = ServiceStatus(state: .failed, detail: error.localizedDescription)
+            AppLog.error("\(service.displayName) failed to start: \(error.localizedDescription)")
         }
     }
 
@@ -1919,6 +1989,7 @@ final class AppModel: ObservableObject {
         let binaryURL = binaryURL(for: service)
         guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
             serviceStatuses[service] = ServiceStatus(state: .failed, detail: "Missing binary: \(binaryName)")
+            AppLog.error("Tunnel missing binary: \(binaryURL.path)")
             return
         }
 
@@ -1929,12 +2000,17 @@ final class AppModel: ObservableObject {
         process.arguments = arguments(for: service)
         process.currentDirectoryURL = workingDirectory(for: service)
         process.environment = processEnvironment(for: service)
+        AppLog.info("Starting Tunnel: \(binaryURL.path) args=\(process.arguments ?? []) cwd=\(process.currentDirectoryURL?.path ?? "")")
         process.standardOutput = stdout
         process.standardError = stderr
+        let serviceName = service.displayName
         process.terminationHandler = { [weak self] _ in
             Task { @MainActor in
                 self?.serviceStatuses[service] = ServiceStatus(state: .stopped, detail: "")
                 self?.processes[service] = nil
+            }
+            Task { @MainActor in
+                AppLog.info("\(serviceName) exited.")
             }
         }
 
@@ -1945,8 +2021,10 @@ final class AppModel: ObservableObject {
             logStore.append("\(service.displayName) started.")
             monitorTunnelPipe(stdout, label: "stdout")
             monitorTunnelPipe(stderr, label: "stderr")
+            AppLog.info("Tunnel started (PID \(process.processIdentifier)).")
         } catch {
             serviceStatuses[service] = ServiceStatus(state: .failed, detail: error.localizedDescription)
+            AppLog.error("Tunnel failed to start: \(error.localizedDescription)")
         }
     }
 
@@ -1956,16 +2034,19 @@ final class AppModel: ObservableObject {
             do {
                 for try await line in handle.bytes.lines {
                     self?.logStore.append("[tunnel \(label)] \(line)")
+                    AppLog.info("[tunnel \(label)] \(line)")
                     if let url = Self.extractTunnelURL(from: line) {
                         if self?.config.tunnelBaseURL != url {
                             self?.config.tunnelBaseURL = url
                             self?.saveConfig()
                             self?.statusMessage = "Tunnel URL set."
+                            AppLog.info("Tunnel URL updated: \(url)")
                         }
                     }
                 }
             } catch {
                 self?.logStore.append("[tunnel \(label)] stream ended")
+                AppLog.info("[tunnel \(label)] stream ended")
             }
         }
     }
@@ -1991,14 +2072,17 @@ final class AppModel: ObservableObject {
     private func stopService(_ service: ServiceKind) {
         guard let process = processes[service] else {
             serviceStatuses[service] = ServiceStatus(state: .stopped, detail: "")
+            AppLog.info("\(service.displayName) already stopped.")
             return
         }
         serviceStatuses[service] = ServiceStatus(state: .stopping, detail: "Stopping...")
+        AppLog.info("Stopping \(service.displayName) (PID \(process.processIdentifier)).")
         process.terminate()
         Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
             if process.isRunning {
                 process.interrupt()
+                AppLog.info("\(service.displayName) interrupt sent.")
             }
         }
     }
@@ -2023,6 +2107,7 @@ final class AppModel: ObservableObject {
         let syncRunning = serviceStatuses[.sync]?.state == .running
         let tunnelRunning = serviceStatuses[.tunnel]?.state == .running
         guard syncRunning || tunnelRunning else { return }
+        AppLog.info("Ensuring MCP is running (sync=\(syncRunning), tunnel=\(tunnelRunning)).")
         startService(.mcp)
     }
 
@@ -2039,6 +2124,7 @@ final class AppModel: ObservableObject {
         saveConfig()
         ensureRepoDirectories()
         statusMessage = "Repository set to \(candidate.repoFullName)."
+        AppLog.info("Applied repo candidate: \(candidate.repoFullName) branch=\(candidate.defaultBranch ?? "")")
     }
 
     private func repoCandidate(from directory: URL) async throws -> RepoCandidate? {

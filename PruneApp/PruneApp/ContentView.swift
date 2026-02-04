@@ -59,10 +59,12 @@ struct MenuBarView: View {
         appModel.selectedTab = tab
         NSApp.activate(ignoringOtherApps: true)
         NSApp.unhide(nil)
+        AppLog.info("Open settings requested: tab=\(tab)")
         let didShowSettings = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         if !didShowSettings {
             _ = NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
+        AppLog.info("showSettingsWindow action result: \(didShowSettings)")
         await bringSettingsWindowToFront()
     }
 
@@ -78,11 +80,13 @@ struct MenuBarView: View {
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
                 NSApp.activate(ignoringOtherApps: true)
+                AppLog.info("Settings window focused: \(window.title)")
                 return
             }
             await Task.yield()
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
+        AppLog.error("Failed to focus settings window after retries.")
     }
 
     @MainActor
@@ -139,6 +143,7 @@ struct MenuBarView: View {
     }
 
     private func handleInteraction(_ event: A2UIUserActionEvent) {
+        AppLog.info("MenuBar interaction: action=\(event.name) component=\(event.componentId)")
         a2uiAgent.handleUserAction(
             surfaceId: surfaceId,
             store: store,
@@ -208,6 +213,7 @@ struct SettingsView: View {
     }
 
     private func handleInteraction(_ event: A2UIUserActionEvent) {
+        AppLog.info("Settings nav interaction: action=\(event.name) component=\(event.componentId)")
         a2uiAgent.handleUserAction(
             surfaceId: navSurfaceId,
             store: navStore,
@@ -637,6 +643,8 @@ final class A2UIAgent: ObservableObject {
         event: A2UIUserActionEvent
     ) {
         inflight[surfaceId]?.cancel()
+        let contextKeys = event.context.keys.sorted().joined(separator: ",")
+        AppLog.info("A2UI action: surface=\(surfaceId) name=\(event.name) component=\(event.componentId) contextKeys=[\(contextKeys)]")
 
         let availableActions = templateActionIds(from: template, surfaceId: surfaceId)
         let userActionLine = event.jsonLine()
@@ -663,6 +671,8 @@ final class A2UIAgent: ObservableObject {
 
         if canDispatchImmediately, let handler = actionHandlers[surfaceId] {
             handler(event.name, immediatePayload)
+        } else if canDispatchImmediately {
+            AppLog.error("A2UI immediate action missing handler: surface=\(surfaceId) name=\(event.name)")
         }
 
         let task = Task.detached { [weak self] in
@@ -702,6 +712,8 @@ final class A2UIAgent: ObservableObject {
                     for request in resolvedActions where !(canDispatchImmediately && request.name == event.name) {
                         handler(request.name, request.payload)
                     }
+                } else if !resolvedActions.isEmpty {
+                    AppLog.error("A2UI resolved actions missing handler: surface=\(surfaceId) actions=\(resolvedActions.map { $0.name }.joined(separator: ","))")
                 }
             }
         }
@@ -1450,6 +1462,7 @@ private final class MenuBarBindingProvider: A2UIBindingProvider {
     }
 
     func perform(action: String) {
+        AppLog.info("MenuBar action: \(action)")
         switch action {
         case "start":
             if appModel.normalizedRepoFullName() == nil {
