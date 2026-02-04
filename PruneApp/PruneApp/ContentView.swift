@@ -46,6 +46,7 @@ struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
     @EnvironmentObject private var a2uiAgent: A2UIAgent
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @StateObject private var store = NormalizedSurfaceStore()
     private let surfaceId = "prune_menu"
 
@@ -62,11 +63,19 @@ struct MenuBarView: View {
         NSApp.unhide(nil)
         AppLog.info("Open dashboard requested: tab=\(tab)")
         openWindow(id: "dashboard")
-        await bringDashboardWindowToFront()
+        if await bringDashboardWindowToFront() {
+            return
+        }
+        AppLog.info("Dashboard window not found after openWindow; trying Settings scene.")
+        openSettings()
+        if await bringDashboardWindowToFront() {
+            return
+        }
+        logWindowSnapshot(reason: "Failed to open settings window after openWindow + openSettings.")
     }
 
     @MainActor
-    private func bringDashboardWindowToFront() async {
+    private func bringDashboardWindowToFront() async -> Bool {
         for _ in 0..<10 {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.unhide(nil)
@@ -78,12 +87,12 @@ struct MenuBarView: View {
                 window.orderFrontRegardless()
                 NSApp.activate(ignoringOtherApps: true)
                 AppLog.info("Settings window focused: \(window.title)")
-                return
+                return true
             }
             await Task.yield()
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
-        logWindowSnapshot(reason: "Failed to focus settings window after retries.")
+        return false
     }
 
     @MainActor
@@ -1386,6 +1395,7 @@ private enum MenuBarSurface {
                         "menu_divider_1",
                         "menu_start",
                         "menu_stop",
+                        "menu_set_repo",
                         "menu_divider_2",
                         "menu_open_dashboard",
                         "menu_view_logs",
@@ -1414,6 +1424,10 @@ private enum MenuBarSurface {
                 "label": .string("Stop"),
                 "action": .string("stop"),
                 "disabled": binding("menu.stopDisabled")
+            ]),
+            NormalizedComponent(id: "menu_set_repo", type: "Button", props: [
+                "label": .string("Set Repo…"),
+                "action": .string("set_repo")
             ]),
             NormalizedComponent(id: "menu_divider_2", type: "Divider", props: [:]),
             NormalizedComponent(id: "menu_open_dashboard", type: "Button", props: [
@@ -1505,6 +1519,8 @@ private final class MenuBarBindingProvider: A2UIBindingProvider {
             appModel.openLogs()
         case "open_help":
             openDashboard(.help)
+        case "set_repo":
+            Task { await appModel.pickRepoFolder() }
         case "quit":
             quit()
         default:

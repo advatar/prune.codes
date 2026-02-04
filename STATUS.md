@@ -8,6 +8,7 @@
 - Update README + validation steps for TS/TSX support.
 - Fix ce-mcp Surreal pack strategy borrow-after-move error.
 - Reduce health-check timeouts so menu bar actions don’t feel blocked.
+- Fix Settings window not opening from dashboard when repo is missing.
 
 ## Progress
 - Implemented CR-006: Context7 integration, optional docs provider, new ce-docs crate, docs CLI/MCP tools, and pack injection.
@@ -83,6 +84,8 @@
 - Added extensive logging for A2UI actions, menu commands, settings activation, and service lifecycle to debug no-op menu actions.
 - Filtered settings window selection to skip the menu bar popover and log window snapshots when focus fails.
 - Log app bundle path/version in AppModel init to confirm which build is running.
+- Added Settings-scene fallback when opening the dashboard from the menu bar so Setup can be reached even if openWindow fails.
+- Added a menu bar “Set Repo…” action to pick a repo folder without opening the dashboard.
 
 ## Next Steps
 - Run Xcode build validation after bundle script changes and recheck DMG bundling.
