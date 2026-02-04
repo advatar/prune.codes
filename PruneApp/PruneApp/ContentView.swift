@@ -1390,7 +1390,7 @@ private enum MenuBarSurface {
                 "disabled": binding("menu.stopDisabled")
             ]),
             NormalizedComponent(id: "menu_divider_2", type: "Divider", props: [:]),
-            NormalizedComponent(id: "menu_open_dashboard", type: "Button", props: [
+            NormalizedComponent(id: "menu_open_dashboard", type: "SettingsLink", props: [
                 "label": .string("Open Dashboard"),
                 "action": .string("open_dashboard")
             ]),
@@ -1398,7 +1398,7 @@ private enum MenuBarSurface {
                 "label": .string("View Logs"),
                 "action": .string("view_logs")
             ]),
-            NormalizedComponent(id: "menu_open_help", type: "Button", props: [
+            NormalizedComponent(id: "menu_open_help", type: "SettingsLink", props: [
                 "label": .string("Help"),
                 "action": .string("open_help")
             ]),
@@ -1474,11 +1474,11 @@ private final class MenuBarBindingProvider: A2UIBindingProvider {
         case "stop":
             appModel.stopServices()
         case "open_dashboard":
-            openSettings(.setup)
+            appModel.selectedTab = .setup
         case "view_logs":
             appModel.openLogs()
         case "open_help":
-            openSettings(.help)
+            appModel.selectedTab = .help
         case "quit":
             quit()
         default:
@@ -2951,6 +2951,29 @@ private struct A2UISurfaceView: View {
                 return AnyView(button.buttonStyle(.borderedProminent))
             }
             return AnyView(button.buttonStyle(.bordered))
+
+        case "SettingsLink":
+            let label = resolveText(from: rawProps["label"], fallback: resolved["label"]) ?? "Settings"
+            let actionId = resolved["action"]?.stringValue ?? rawProps["action"]?.stringValue ?? ""
+            let variant = resolved["variant"]?.stringValue ?? rawProps["variant"]?.stringValue
+            let disabled = resolveBool(from: rawProps["disabled"], fallback: resolved["disabled"]) ?? false
+            let link = SettingsLink {
+                Text(label)
+            }
+            .simultaneousGesture(TapGesture().onEnded {
+                guard !actionId.isEmpty else { return }
+                sendUserAction(name: actionId, componentId: componentId)
+            })
+            .disabled(disabled)
+            if isMenuStyle {
+                return AnyView(
+                    link.buttonStyle(MenuBarButtonStyle(isPrimary: variant == "primary"))
+                )
+            }
+            if variant == "primary" {
+                return AnyView(link.buttonStyle(.borderedProminent))
+            }
+            return AnyView(link.buttonStyle(.bordered))
 
         case "Spacer":
             return AnyView(Spacer())
