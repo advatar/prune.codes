@@ -48,6 +48,7 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @StateObject private var store = NormalizedSurfaceStore()
+    @State private var fallbackWindow: NSWindow?
     private let surfaceId = "prune_menu"
 
     private func openDashboard(tab: SettingsTab) {
@@ -71,7 +72,8 @@ struct MenuBarView: View {
         if await bringDashboardWindowToFront() {
             return
         }
-        logWindowSnapshot(reason: "Failed to open settings window after openWindow + openSettings.")
+        AppLog.info("Settings scene did not appear; opening fallback dashboard window.")
+        showFallbackWindow()
     }
 
     @MainActor
@@ -80,6 +82,7 @@ struct MenuBarView: View {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.unhide(nil)
             if let window = findDashboardWindow() {
+                normalizeWindowFrame(window)
                 if window.isMiniaturized {
                     window.deminiaturize(nil)
                 }
@@ -134,6 +137,49 @@ struct MenuBarView: View {
             return "window=\(title) level=\(level) visible=\(window.isVisible) titled=\(masks.contains(.titled)) keyable=\(window.canBecomeKey)"
         }
         AppLog.error("\(reason). windows=[\(descriptions.joined(separator: " | "))]")
+    }
+
+    @MainActor
+    private func normalizeWindowFrame(_ window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        if frame.width < 200 || frame.height < 200 || !visible.intersects(frame) {
+            frame.size = CGSize(width: 760, height: 540)
+            frame.origin.x = visible.midX - frame.width / 2
+            frame.origin.y = visible.midY - frame.height / 2
+            window.setFrame(frame, display: true)
+        }
+    }
+
+    @MainActor
+    private func showFallbackWindow() {
+        if let window = fallbackWindow {
+            normalizeWindowFrame(window)
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let rootView = SettingsView()
+            .environmentObject(appModel)
+            .environmentObject(a2uiAgent)
+        let hosting = NSHostingController(rootView: rootView)
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Dashboard"
+        window.setContentSize(NSSize(width: 760, height: 540))
+        window.styleMask.insert([.titled, .resizable, .closable, .miniaturizable])
+        window.isReleasedWhenClosed = false
+        normalizeWindowFrame(window)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        fallbackWindow = window
+        AppLog.info("Fallback dashboard window created.")
     }
 
     var body: some View {

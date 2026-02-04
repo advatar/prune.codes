@@ -85,6 +85,7 @@
 - Filtered settings window selection to skip the menu bar popover and log window snapshots when focus fails.
 - Log app bundle path/version in AppModel init to confirm which build is running.
 - Added Settings-scene fallback when opening the dashboard from the menu bar so Setup can be reached even if openWindow fails.
+- Added a manual dashboard window fallback plus off-screen/window-size normalization when menu bar cannot surface settings.
 - Added a menu bar “Set Repo…” action to pick a repo folder without opening the dashboard.
 
 ## Next Steps
