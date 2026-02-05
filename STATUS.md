@@ -9,6 +9,7 @@
 - Fix ce-mcp Surreal pack strategy borrow-after-move error.
 - Reduce health-check timeouts so menu bar actions don’t feel blocked.
 - Fix Settings window not opening from dashboard when repo is missing.
+- Detect and handle services already bound to ports so Start doesn't spam bind errors.
 
 ## Progress
 - Implemented CR-006: Context7 integration, optional docs provider, new ce-docs crate, docs CLI/MCP tools, and pack injection.
@@ -86,6 +87,7 @@
 - Log app bundle path/version in AppModel init to confirm which build is running.
 - Added Settings-scene fallback when opening the dashboard from the menu bar so Setup can be reached even if openWindow fails.
 - Added a manual dashboard window fallback plus off-screen/window-size normalization when menu bar cannot surface settings.
+- Added local /health checks and port-in-use detection to avoid restart churn when services already listen.
 - Added a menu bar “Set Repo…” action to pick a repo folder without opening the dashboard.
 
 ## Next Steps

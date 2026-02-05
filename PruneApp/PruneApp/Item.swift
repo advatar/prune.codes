@@ -1011,6 +1011,14 @@ final class AppModel: ObservableObject {
         return "http://127.0.0.1:\(config.webhookPort)/github/webhook"
     }
 
+    var mcpHealthURL: String {
+        "http://127.0.0.1:\(config.mcpPort)/health"
+    }
+
+    var webhookHealthURL: String {
+        "http://127.0.0.1:\(config.webhookPort)/health"
+    }
+
     var mcpServerURLBinding: Binding<String> {
         Binding(get: { self.mcpServerURL }, set: { _ in })
     }
@@ -1234,10 +1242,12 @@ final class AppModel: ObservableObject {
         if config.useLaunchAgents {
             startServicesWithLaunchAgents()
         } else {
-            startService(.tunnel)
-            startService(.sync)
-            startService(.mcp)
-            performHealthChecks()
+            Task { @MainActor in
+                startService(.tunnel)
+                await startServiceWithHealthCheck(.sync)
+                await startServiceWithHealthCheck(.mcp)
+                performHealthChecks()
+            }
         }
     }
 
@@ -1262,6 +1272,7 @@ final class AppModel: ObservableObject {
             return
         }
 
+        var needsExternalCheck: [ServiceKind] = []
         for service in ServiceKind.allCases {
             if let process = processes[service] {
                 if process.isRunning {
@@ -1273,7 +1284,16 @@ final class AppModel: ObservableObject {
                     processes[service] = nil
                 }
             } else {
-                serviceStatuses[service]?.state = .stopped
+                if healthURL(for: service) != nil {
+                    needsExternalCheck.append(service)
+                } else {
+                    serviceStatuses[service]?.state = .stopped
+                }
+            }
+        }
+        if !needsExternalCheck.isEmpty {
+            Task { @MainActor in
+                await refreshExternalStatus(services: needsExternalCheck)
             }
         }
         refreshLogPreview()
@@ -1398,17 +1418,62 @@ final class AppModel: ObservableObject {
     private func performHealthChecks() {
         Task { [weak self] in
             guard let self else { return }
-            let mcpResult = await checkEndpoint(urlString: mcpServerURL)
+            let mcpResult = await checkEndpoint(urlString: mcpHealthURL)
             if let mcpResult {
                 statusMessage = "MCP \(mcpResult)"
                 AppLog.info("Health check MCP: \(mcpResult)")
             }
-            let webhookResult = await checkEndpoint(urlString: webhookURL)
+            let webhookResult = await checkEndpoint(urlString: webhookHealthURL)
             if let webhookResult {
                 let prefix = statusMessage ?? ""
                 statusMessage = prefix.isEmpty ? "Webhook \(webhookResult)" : "\(prefix) | Webhook \(webhookResult)"
                 AppLog.info("Health check webhook: \(webhookResult)")
             }
+        }
+    }
+
+    @MainActor
+    private func startServiceWithHealthCheck(_ service: ServiceKind) async {
+        guard let healthURL = healthURL(for: service) else {
+            startService(service)
+            return
+        }
+
+        let result = await checkEndpoint(urlString: healthURL) ?? "unreachable"
+        if result == "HTTP 200" {
+            serviceStatuses[service] = ServiceStatus(state: .running, detail: "existing listener")
+            AppLog.info("\(service.displayName) already listening at \(healthURL).")
+            return
+        }
+        if result == "unreachable" {
+            startService(service)
+            return
+        }
+
+        let port = servicePort(for: service) ?? 0
+        let detail = "port \(port) in use (\(result))"
+        serviceStatuses[service] = ServiceStatus(state: .failed, detail: detail)
+        let message = "\(service.displayName) port \(port) is already in use (\(result)). Stop the existing process or change the port."
+        lastErrorMessage = message
+        AppLog.error(message)
+    }
+
+    @MainActor
+    private func refreshExternalStatus(services: [ServiceKind]) async {
+        for service in services {
+            guard let healthURL = healthURL(for: service) else { continue }
+            let result = await checkEndpoint(urlString: healthURL) ?? "unreachable"
+            if result == "HTTP 200" {
+                serviceStatuses[service] = ServiceStatus(state: .running, detail: "existing listener")
+                continue
+            }
+            if result == "unreachable" {
+                serviceStatuses[service] = ServiceStatus(state: .stopped, detail: "")
+                continue
+            }
+            let port = servicePort(for: service) ?? 0
+            let detail = "port \(port) in use (\(result))"
+            serviceStatuses[service] = ServiceStatus(state: .failed, detail: detail)
         }
     }
 
@@ -1848,6 +1913,28 @@ final class AppModel: ObservableObject {
                 return "timeout"
             }
             return "unreachable"
+        }
+    }
+
+    private func healthURL(for service: ServiceKind) -> String? {
+        switch service {
+        case .mcp:
+            return mcpHealthURL
+        case .sync:
+            return webhookHealthURL
+        case .tunnel:
+            return nil
+        }
+    }
+
+    private func servicePort(for service: ServiceKind) -> Int? {
+        switch service {
+        case .mcp:
+            return config.mcpPort
+        case .sync:
+            return config.webhookPort
+        case .tunnel:
+            return nil
         }
     }
 
