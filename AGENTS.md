@@ -16,7 +16,6 @@ This repository uses Codex CLI as an autonomous coding agent.
 ## Tooling Notes
 
 - When reading `.xcresult` files, use `xcrun xcresulttool get object --legacy` (plain `get` is deprecated).
-- When running Vitest, always use `vitest run` (avoid watch mode hangs).
 - Use `python3` instead of `python`.
 
 ---
