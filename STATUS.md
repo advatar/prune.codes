@@ -1,6 +1,7 @@
 # Status
 
 ## Current Task
+- Make PruneApp downloadable via a signed/notarized DMG release pipeline and GitHub Releases automation.
 - Consolidate the repo by removing the checked-in `lovable-template` sample app and stale repo-level frontend guidance while preserving product Lovable integrations.
 - Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
 - Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
@@ -10,6 +11,9 @@
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
 
 ## Progress
+- Audited existing macOS distribution assets: `PruneApp/scripts/build-dmg.sh` already creates a local DMG, but signing/notarization and release publishing are still missing.
+- Added a downloadable-app release path: reusable DMG build script inputs, `PruneApp/scripts/release-dmg.sh`, `.github/workflows/release-macos-dmg.yml`, `docs/RELEASING-MACOS-DMG.md`, and canonical release commands in `prune/docs/ai/dev_commands.yaml`.
+- Verified release-path syntax with `bash -n` for the shell scripts, YAML parsing for the GitHub Actions workflow, and `git diff --check`; end-to-end notarization is not locally exercised because Apple signing secrets are not available in this workspace.
 - Confirmed `prune.codes/lovable-template` is an isolated Vite/Vitest sample app; cleanup will leave `PruneApp` Lovable MCP and instructions flows intact.
 - Removed `lovable-template/` and the stale Vitest note from `AGENTS.md`; repo-wide grep now shows no remaining `lovable-template` or `vitest` references outside this status log.
 - Verification attempted from `prune/docs/ai/dev_commands.yaml`: `cargo test` currently fails in `ce-lang-tsreact` / `ce-lang-swift` tree-sitter language setup, and `cd A2UIRuntime && swift test` currently fails due duplicate `A2UIProtocolVersion` / `JSONValue` definitions in `A2UIRuntime`.

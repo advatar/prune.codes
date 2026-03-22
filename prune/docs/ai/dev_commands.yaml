@@ -9,3 +9,9 @@ commands:
   - name: a2ui-tests
     command: cd A2UIRuntime && swift test
     description: Run A2UIRuntime Swift package tests.
+  - name: macos-dmg
+    command: ./PruneApp/scripts/build-dmg.sh
+    description: Build a local macOS DMG for PruneApp.
+  - name: macos-release-dmg
+    command: ./PruneApp/scripts/release-dmg.sh
+    description: Build, sign, and optionally notarize a PruneApp DMG (requires Apple release credentials).

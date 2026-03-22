@@ -3,17 +3,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="${ROOT}/PruneApp/PruneApp.xcodeproj"
-SCHEME="PruneApp"
+SCHEME="${SCHEME:-PruneApp}"
 CONFIGURATION="${CONFIGURATION:-Release}"
-BUILD_DIR="${ROOT}/build"
-DERIVED_DATA="${BUILD_DIR}/DerivedData"
-DMG_DIR="${BUILD_DIR}/dmg"
+BUILD_DIR="${BUILD_DIR:-${ROOT}/build}"
+DERIVED_DATA="${DERIVED_DATA:-${BUILD_DIR}/DerivedData}"
+DMG_DIR="${DMG_DIR:-${BUILD_DIR}/dmg}"
 STAGING="${DMG_DIR}/staging"
-OUTPUT_DIR="${DMG_DIR}/out"
+OUTPUT_DIR="${OUTPUT_DIR_OVERRIDE:-${DMG_DIR}/out}"
 
-xcodebuild -project "${PROJECT}" -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -derivedDataPath "${DERIVED_DATA}" build
-
-APP_PATH="${DERIVED_DATA}/Build/Products/${CONFIGURATION}/PruneApp.app"
+APP_PATH="${APP_PATH_OVERRIDE:-}"
+if [ -z "${APP_PATH}" ]; then
+  xcodebuild -project "${PROJECT}" -scheme "${SCHEME}" -configuration "${CONFIGURATION}" -derivedDataPath "${DERIVED_DATA}" build
+  APP_PATH="${DERIVED_DATA}/Build/Products/${CONFIGURATION}/PruneApp.app"
+fi
 if [ ! -d "${APP_PATH}" ]; then
   echo "error: app not found at ${APP_PATH}" >&2
   exit 1
