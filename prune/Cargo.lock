@@ -447,6 +447,8 @@ dependencies = [
  "bytemuck",
  "ce-core",
  "ce-lang-rust",
+ "ce-lang-swift",
+ "ce-lang-tsreact",
  "ce-store",
  "clap",
  "ignore",
@@ -475,6 +477,26 @@ dependencies = [
  "ce-core",
  "tree-sitter",
  "tree-sitter-rust",
+]
+
+[[package]]
+name = "ce-lang-swift"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ce-core",
+ "tree-sitter",
+ "tree-sitter-swift",
+]
+
+[[package]]
+name = "ce-lang-tsreact"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ce-core",
+ "tree-sitter",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -2186,9 +2208,9 @@ dependencies = [
 
 [[package]]
 name = "openssl"
-version = "0.10.75"
+version = "0.10.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08838db121398ad17ab8531ce9de97b244589089e290a384c900cb9ff7434328"
+checksum = "f38c4372413cdaaf3cc79dd92d29d7d9f5ab09b51b10dded508fb90bb70b9222"
 dependencies = [
  "bitflags 2.10.0",
  "cfg-if",
@@ -2218,9 +2240,9 @@ checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.111"
+version = "0.9.114"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321"
+checksum = "13ce1245cd07fcc4cfdb438f7507b0c7e4f3849a69fd84d52374c66d83741bb6"
 dependencies = [
  "cc",
  "libc",
@@ -3408,6 +3430,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-language"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
 name = "tree-sitter-rust"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3415,6 +3443,26 @@ checksum = "277690f420bf90741dea984f3da038ace46c4fe6047cba57a66822226cde1c93"
 dependencies = [
  "cc",
  "tree-sitter",
+]
+
+[[package]]
+name = "tree-sitter-swift"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ef216011c3e3df4fa864736f347cb8d509b1066cf0c8549fb1fd81ac9832e59"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]
