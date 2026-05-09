@@ -1,6 +1,8 @@
 # Status
 
 ## Current Task
+- Add a root MIT-style `LICENSE.md`.
+- Audit `RELEASE.md` Launch v1 scope against the current implementation and keep status honest about incomplete release work.
 - Make PruneApp downloadable via a signed/notarized DMG release pipeline and GitHub Releases automation.
 - Consolidate the repo by removing the checked-in `lovable-template` sample app and stale repo-level frontend guidance while preserving product Lovable integrations.
 - Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
@@ -11,6 +13,9 @@
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
 
 ## Progress
+- Added root MIT-style `LICENSE.md`.
+- Audited `RELEASE.md`: Launch v1 is not feature complete. DMG scripts/workflow exist, and parts of the app/service surface exist, but release readiness still depends on closing product gaps in setup, service lifecycle, Lovable MCP tools, diagnostics, analytics, and end-to-end verification.
+- Re-ran `cargo test` with network access; dependency resolution completed, but the workspace still fails in `ce-lang-swift` because `tree_sitter_swift::LANGUAGE.into()` does not compile against the current `tree-sitter`/grammar crate types.
 - Audited existing macOS distribution assets: `PruneApp/scripts/build-dmg.sh` already creates a local DMG, but signing/notarization and release publishing are still missing.
 - Added a downloadable-app release path: reusable DMG build script inputs, `PruneApp/scripts/release-dmg.sh`, `.github/workflows/release-macos-dmg.yml`, `docs/RELEASING-MACOS-DMG.md`, and canonical release commands in `prune/docs/ai/dev_commands.yaml`.
 - Verified release-path syntax with `bash -n` for the shell scripts, YAML parsing for the GitHub Actions workflow, and `git diff --check`; end-to-end notarization is not locally exercised because Apple signing secrets are not available in this workspace.
