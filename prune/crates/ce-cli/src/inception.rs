@@ -1,9 +1,9 @@
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::ValueEnum;
 use ce_store::Db;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum ProjectTemplate {
@@ -108,12 +108,11 @@ pub fn write_onboarding(repo: &Path, db: &Db, template: ProjectTemplate) -> Resu
 
     for p in chosen {
         if let Some(rowid) = api_map.get(&p) {
-            if let Some(frag) = db.get_fragment_by_rowid(*rowid)? {
-                md.push_str(&format!("### `{}`\n\n", p));
-                md.push_str("```text\n");
-                md.push_str(&frag.signature);
-                md.push_str("\n```\n\n");
-            }
+            let frag = db.get_fragment_by_rowid(*rowid)?;
+            md.push_str(&format!("### `{}`\n\n", p));
+            md.push_str("```text\n");
+            md.push_str(&frag.signature);
+            md.push_str("\n```\n\n");
         }
     }
 

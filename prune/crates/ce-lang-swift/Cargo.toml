@@ -7,7 +7,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1"
 ce-core = { path = "../ce-core" }
-tree-sitter = "0.22"
+tree-sitter = "0.24"
 # Swift grammar (tree-sitter)
 # NOTE: this is a lightweight wrapper crate that exposes `tree_sitter_swift::LANGUAGE`.
 tree-sitter-swift = "0"

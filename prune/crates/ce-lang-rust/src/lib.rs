@@ -156,7 +156,7 @@ fn parse_use_like_line(line: &str, out: &mut HashSet<String>) {
 impl RustAdapter {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        parser.set_language(&tree_sitter_rust::language())?;
+        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
         Ok(Self { parser })
     }
 
@@ -535,7 +535,7 @@ pub fn ast_prune_slice(
     }
 
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::language()).ok()?;
+    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).ok()?;
     let tree = parser.parse(body, None)?;
     let root = tree.root_node();
     let bytes = body.as_bytes();
@@ -689,7 +689,7 @@ pub fn ast_skeleton_slice(
     }
 
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::language()).ok()?;
+    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).ok()?;
     let tree = parser.parse(body, None)?;
     let root = tree.root_node();
     let bytes = body.as_bytes();

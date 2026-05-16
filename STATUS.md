@@ -11,6 +11,7 @@
 - Extend PruneApp A2UI diagnostics to support v0.8 fixtures, JSONL load, and live stream ingestion.
 - Update `.gitignore` to ignore PruneApp Xcode build artifacts (DerivedData and related outputs).
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
+- Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
 
 ## Progress
 - Added root MIT-style `LICENSE.md`.
@@ -21,7 +22,8 @@
 - Verified release-path syntax with `bash -n` for the shell scripts, YAML parsing for the GitHub Actions workflow, and `git diff --check`; end-to-end notarization is not locally exercised because Apple signing secrets are not available in this workspace.
 - Confirmed `prune.codes/lovable-template` is an isolated Vite/Vitest sample app; cleanup will leave `PruneApp` Lovable MCP and instructions flows intact.
 - Removed `lovable-template/` and the stale Vitest note from `AGENTS.md`; repo-wide grep now shows no remaining `lovable-template` or `vitest` references outside this status log.
-- Verification attempted from `prune/docs/ai/dev_commands.yaml`: `cargo test` currently fails in `ce-lang-tsreact` / `ce-lang-swift` tree-sitter language setup, and `cd A2UIRuntime && swift test` currently fails due duplicate `A2UIProtocolVersion` / `JSONValue` definitions in `A2UIRuntime`.
+- Earlier verification from `prune/docs/ai/dev_commands.yaml` exposed failures in `ce-lang-tsreact` / `ce-lang-swift` tree-sitter language setup and duplicate A2UIRuntime type definitions.
+- REVIEW follow-up: removed the stale nested A2UI aggregate runtime file, aligned all Rust language adapters on `tree-sitter` 0.24 APIs, refreshed `Cargo.lock`, fixed the stale `ce-cli` onboarding fragment lookup, and verified `cargo test` plus `cd A2UIRuntime && swift test` now pass in `prune.codes/prune`.
 - Triaged Xcode build failure: `cargo` missing in build phase PATH; adding explicit cargo discovery and error messaging.
 - Fixed `ce-cli` integration template include paths and rebuilt `cargo build -p ce-cli` (warnings remain).
 - Updated Bundle Prune Binaries script to resolve the prune repo root and ran `xcodebuild` (warnings remain).
