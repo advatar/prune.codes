@@ -5,6 +5,7 @@
 - Add a root MIT-style `LICENSE.md`.
 - Audit `RELEASE.md` Launch v1 scope against the current implementation and keep status honest about incomplete release work.
 - Make PruneApp downloadable via a signed/notarized DMG release pipeline and GitHub Releases automation.
+- Bundle a local/Homebrew Cloudflare tunnel helper into PruneApp build and DMG artifacts so the app is self-contained after installation.
 - Consolidate the repo by removing the checked-in `lovable-template` sample app and stale repo-level frontend guidance while preserving product Lovable integrations.
 - Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
 - Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
@@ -25,6 +26,9 @@
 - Restored PruneApp build cleanliness by moving the inception interview sheet to a valid view modifier position and adapting the local inception A2UI renderer to the current `A2UIRuntime` model (`NormalizedSurfaceInfo`, `NormalizedDataUpdate`, immutable `NormalizedComponent`, and type-erased recursive rendering).
 - Added root production repo contract docs in `README.md`, root canonical dev commands in `docs/ai/dev_commands.yaml`, and `scripts/check-engine-overlap.sh` to audit drift against a sibling standalone `../prune` checkout.
 - Verification after implementation: `git diff --check`, `bash -n scripts/check-engine-overlap.sh`, `./scripts/check-engine-overlap.sh`, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, and `./PruneApp/scripts/build-dmg.sh` all pass. The local unsigned DMG is at `build/dmg/out/PruneApp-1.0.dmg`; build output still warns that bundled `cloudflared` was not found at the expected vendor path.
+- Confirmed Homebrew `cloudflared` is installed at `/opt/homebrew/bin/cloudflared` (`2026.5.2`) and fixed the Bundle Prune Binaries phase to discover `CLOUDFLARED_SOURCE`, PATH/Homebrew installs, and the old vendor fallback.
+- Extracted the inline Xcode bundle phase into `PruneApp/scripts/bundle-prune-binaries.sh`, declared that script as an Xcode phase input for user-script sandboxing, and copied `cloudflared` into `Contents/Resources/bin/cloudflared` with the Rust helper binaries.
+- Verification for bundled `cloudflared`: `git diff --check`, `bash -n PruneApp/scripts/bundle-prune-binaries.sh`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, direct Debug app `cloudflared --version`, `./PruneApp/scripts/build-dmg.sh`, and direct DMG staging `cloudflared --version` all pass. The DMG is at `build/dmg/out/PruneApp-1.0.dmg` and the staged helper reports `cloudflared version 2026.5.2`.
 - Added root MIT-style `LICENSE.md`.
 - Audited `RELEASE.md`: Launch v1 is not feature complete. DMG scripts/workflow exist, and parts of the app/service surface exist, but release readiness still depends on closing product gaps in setup, service lifecycle, Lovable MCP tools, diagnostics, analytics, and end-to-end verification.
 - Re-ran `cargo test` with network access; dependency resolution completed, but the workspace still fails in `ce-lang-swift` because `tree_sitter_swift::LANGUAGE.into()` does not compile against the current `tree-sitter`/grammar crate types.
@@ -59,7 +63,7 @@
 - Fixed PruneApp startup crash and added an A2UI fixture diagnostics panel for inception testing.
 
 ## Next Steps
-- Validate Xcode build after updating cargo discovery in the Bundle Prune Binaries script.
+- Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Integrate ce-lang-tsreact and TS/TSX indexing + ApiSummary refs in CLI.
 - Port tsconfig alias resolution + JSX tag edges into `ce-store`.
 - Update README + validation steps for TS/TSX support.
