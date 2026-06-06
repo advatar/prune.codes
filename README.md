@@ -14,14 +14,15 @@ embedded Prune engine workspace used by the app.
 - `docs/` contains product and launch documentation.
 - `scripts/` contains repository-level maintenance checks.
 
-The sibling checkout sometimes present at `../prune` is the standalone engine
-repository (`advatar/prune.git`). It is not the production entry point. New
-product, release, macOS app, and bundled-engine work should land here first.
+The sibling checkout sometimes present at `../prune` is the retired standalone
+engine repository (`advatar/prune.git`). It is not the production entry point.
+New product, release, macOS app, and bundled-engine work should land here first.
 
-Until the standalone engine repository is archived, converted into a submodule,
-or mechanically synchronized, do not edit both engine copies independently.
-Use `scripts/check-engine-overlap.sh` to inspect overlap when both checkouts are
-available locally.
+Do not edit both engine copies independently. If `../prune` is a retired pointer
+checkout, `scripts/check-engine-overlap.sh` skips it. If `../prune` is ever
+revived as an engine repository, convert it to a submodule or mechanically
+synchronize it before active development resumes. See
+`docs/STANDALONE-PRUNE-RETIREMENT.md` for the retirement disposition.
 
 ## Core Checks
 

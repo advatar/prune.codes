@@ -10,6 +10,9 @@ standalone engine checkout, defaulting to ../prune.
 
 Without --strict, this reports overlap/drift and exits 0. With --strict, any
 drift, standalone-only files, or embedded-only files exit non-zero.
+
+If the sibling checkout has been retired into a pointer repository, the check
+prints a skip message and exits 0.
 USAGE
 }
 
@@ -62,6 +65,11 @@ fi
 
 if [[ ! -d "${standalone_path}/.git" ]]; then
   echo "standalone engine checkout not found; skipped: ${standalone_path}"
+  exit 0
+fi
+
+if [[ -f "${standalone_path}/RETIRED.md" ]] || [[ ! -f "${standalone_path}/Cargo.toml" ]]; then
+  echo "standalone engine checkout is retired or no longer an engine checkout; skipped: ${standalone_path}"
   exit 0
 fi
 

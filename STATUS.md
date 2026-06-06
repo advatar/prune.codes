@@ -14,6 +14,7 @@
 - Update `.gitignore` to ignore PruneApp Xcode build artifacts (DerivedData and related outputs).
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
 - Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
+- Retire the sibling standalone `../prune` checkout as an active development target by preserving useful standalone docs in `prune.codes`, eliminating drift noise, and replacing `advatar/prune` with a clear pointer to this canonical repo.
 
 ## Progress
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
@@ -61,6 +62,10 @@
 - Implemented A2UIRuntime Swift package with adapters, normalized store, fixtures, and tests.
 - Promoted A2UI v0.9 as the default protocol and updated versioning docs/adapter selection.
 - Fixed PruneApp startup crash and added an A2UI fixture diagnostics panel for inception testing.
+- Starting standalone `../prune` retirement: both working trees were clean, `prune.codes` is the canonical repo, and tracking issue https://github.com/advatar/prune.codes/issues/23 covers the retirement pass.
+- Preserved the useful standalone-only context in `docs/STANDALONE-PRUNE-RETIREMENT.md`, updated the root README to describe `advatar/prune` as retired, and taught `scripts/check-engine-overlap.sh` to skip a retired/non-engine sibling checkout.
+- Replaced the local standalone `../prune` checkout with a pointer repository (`README.md`, `RETIRED.md`, `STATUS.md`, `.gitignore`); `./scripts/check-engine-overlap.sh --strict` now exits successfully by recognizing the retired checkout.
+- Verification for standalone retirement: `git diff --check`, `bash -n scripts/check-engine-overlap.sh`, `./scripts/check-engine-overlap.sh --strict`, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` all pass.
 
 ## Next Steps
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
