@@ -342,22 +342,6 @@ struct InceptionView: View {
                         }
                     }
 
-                    // Sheet lives here so it has access to the same appModel + state.
-                    .sheet(isPresented: $showInterview) {
-                        InceptionInterviewSheet(
-                            template: template,
-                            cliSubtype: cliSubtype,
-                            repoURL: mirror,
-                            onOutput: { out in
-                                lastOutput = out
-                            },
-                            onError: { msg in
-                                lastError = msg
-                            }
-                        )
-                        .environmentObject(appModel)
-                        .frame(minWidth: 720, minHeight: 560)
-                    }
                 } else {
                     GroupBox {
                         VStack(alignment: .leading, spacing: 8) {
@@ -371,6 +355,27 @@ struct InceptionView: View {
                 }
             }
             .padding()
+        }
+        .sheet(isPresented: $showInterview) {
+            if let repoFullName = appModel.normalizedRepoFullName() {
+                let mirror = appModel.paths.mirrorDirectory(repoFullName: repoFullName)
+                InceptionInterviewSheet(
+                    template: template,
+                    cliSubtype: cliSubtype,
+                    repoURL: mirror,
+                    onOutput: { out in
+                        lastOutput = out
+                    },
+                    onError: { msg in
+                        lastError = msg
+                    }
+                )
+                .environmentObject(appModel)
+                .frame(minWidth: 720, minHeight: 560)
+            } else {
+                Text("No workspace configured")
+                    .frame(minWidth: 360, minHeight: 180)
+            }
         }
     }
 }
@@ -443,7 +448,7 @@ private struct InceptionInterviewSheet: View {
         }
         .padding()
         .onAppear {
-            store.reset()
+            store.apply(.deleteSurface(surfaceId: surfaceId))
             let msgs = buildInitialMsgs()
             for m in msgs { store.apply(m) }
         }
@@ -578,9 +583,16 @@ private struct InceptionInterviewSheet: View {
         ]
 
         return [
-            .createSurface(surfaceId: surfaceId, catalogId: "prune.inception", rootComponentId: "root"),
+            .createSurface(NormalizedSurfaceInfo(
+                surfaceId: surfaceId,
+                catalogId: "prune.inception",
+                rootComponentId: "root",
+                protocolVersion: .v09
+            )),
             .updateComponents(surfaceId: surfaceId, components: components),
-            .updateDataModel(surfaceId: surfaceId, updates: [(path: "/", value: initialModel)])
+            .updateDataModel(surfaceId: surfaceId, updates: [
+                NormalizedDataUpdate(path: "/", value: initialModel)
+            ])
         ]
     }
 
@@ -692,10 +704,18 @@ private struct InceptionInterviewSheet: View {
             }
 
             // Update container children
-            if var container = store.component(surfaceId: surfaceId, componentId: followupsContainerId) {
-                let existing = (container.props["children"]?.arrayValue ?? [])
-                container.props["children"] = .array(existing + newChildren)
-                newComponents.append(container)
+            if let container = store.component(surfaceId: surfaceId, componentId: followupsContainerId) {
+                var props = container.props
+                let existing = container.childComponentIds.map(JSONValue.string)
+                let mergedChildren = existing + newChildren
+                props["children"] = .array(mergedChildren)
+                newComponents.append(
+                    NormalizedComponent(
+                        id: container.id,
+                        type: container.type,
+                        props: props
+                    )
+                )
             }
 
             store.apply(.updateComponents(surfaceId: surfaceId, components: newComponents))
@@ -757,6 +777,57 @@ Return STRICT JSON only, with this exact shape:
     }
 }
 
+@MainActor
+private extension NormalizedSurfaceStore {
+    func component(surfaceId: String, componentId: String) -> NormalizedComponent? {
+        surfaces[surfaceId]?.components[componentId]
+    }
+
+    func dataModelValue(surfaceId: String, path: String) -> JSONValue? {
+        surfaces[surfaceId]?.dataModel.value(at: path)
+    }
+
+    func setDataModelValue(surfaceId: String, path: String, value: JSONValue) {
+        apply(.updateDataModel(surfaceId: surfaceId, updates: [
+            NormalizedDataUpdate(path: path, value: value)
+        ]))
+    }
+}
+
+private extension NormalizedComponent {
+    init(id: String, type: String, props: [String: JSONValue]) {
+        self.init(
+            id: id,
+            kind: type,
+            props: props,
+            childrenRefs: (props["children"]?.arrayValue ?? []).compactMap(\.stringValue),
+            childRef: props["child"]?.stringValue
+        )
+    }
+
+    var type: String { kind }
+
+    var childComponentIds: [String] {
+        if !childrenRefs.isEmpty {
+            return childrenRefs
+        }
+        return (props["children"]?.arrayValue ?? []).compactMap(\.stringValue)
+    }
+}
+
+private extension JSONValue {
+    init(fromAny value: Any) {
+        self = (try? JSONValue(jsonObject: value)) ?? .null
+    }
+}
+
+private struct A2UISelectOption: Identifiable {
+    let label: String
+    let value: String
+
+    var id: String { value }
+}
+
 /// A tiny SwiftUI renderer for a limited A2UI component catalog used by Prune inception.
 private struct A2UISurfaceView: View {
     @ObservedObject var store: NormalizedSurfaceStore
@@ -772,98 +843,114 @@ private struct A2UISurfaceView: View {
         }
     }
 
-    @ViewBuilder
-    private func render(componentId: String) -> some View {
+    private func render(componentId: String) -> AnyView {
         guard let component = store.component(surfaceId: surfaceId, componentId: componentId) else {
-            EmptyView()
-            return
+            return AnyView(EmptyView())
         }
 
-        let resolved = store.resolvedProps(surfaceId: surfaceId, componentId: componentId)
+        let resolved = store.resolvedProps(surfaceId: surfaceId, componentId: componentId) ?? [:]
 
         switch component.type {
         case "Column":
-            let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(children, id: \.self) { cid in
-                    render(componentId: cid)
+            let children = component.childComponentIds
+            return AnyView(
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(children, id: \.self) { cid in
+                        render(componentId: cid)
+                    }
                 }
-            }
+            )
 
         case "Row":
-            let children = (component.props["children"]?.arrayValue ?? []).compactMap { $0.stringValue }
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(children, id: \.self) { cid in
-                    render(componentId: cid)
+            let children = component.childComponentIds
+            return AnyView(
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(children, id: \.self) { cid in
+                        render(componentId: cid)
+                    }
                 }
-            }
+            )
 
         case "Divider":
-            Divider()
+            return AnyView(Divider())
 
         case "Text":
             let text = resolved["text"]?.stringValue ?? ""
-            Text(text)
+            return AnyView(Text(text))
 
         case "TextField":
             let label = resolved["label"]?.stringValue ?? ""
             let isMultiline = (component.props["multiline"]?.boolValue) ?? false
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
             if isMultiline {
-                VStack(alignment: .leading, spacing: 6) {
-                    if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
-                    TextEditor(text: Binding(
+                return AnyView(
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
+                        TextEditor(text: Binding(
+                            get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                            set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                        ))
+                        .frame(minHeight: 72)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                )
+            } else {
+                return AnyView(
+                    TextField(label, text: Binding(
                         get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
                         set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
                     ))
-                    .frame(minHeight: 72)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
-                    )
-                }
-            } else {
-                TextField(label, text: Binding(
-                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
-                ))
+                )
             }
 
         case "Toggle":
             let label = resolved["label"]?.stringValue ?? ""
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
-            Toggle(label, isOn: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
-            ))
+            return AnyView(
+                Toggle(label, isOn: Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.boolValue ?? false },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .bool($0)) }
+                ))
+            )
 
         case "Select":
             let label = resolved["label"]?.stringValue ?? ""
             let path = (component.props["value"]?.objectValue?["path"]?.stringValue) ?? ""
-            let options = (component.props["options"]?.arrayValue ?? []).compactMap { opt -> (String, String)? in
+            let options = (component.props["options"]?.arrayValue ?? []).compactMap { opt -> A2UISelectOption? in
                 if let obj = opt.objectValue {
-                    return (obj["label"]?.stringValue ?? "", obj["value"]?.stringValue ?? "")
+                    return A2UISelectOption(
+                        label: obj["label"]?.stringValue ?? "",
+                        value: obj["value"]?.stringValue ?? ""
+                    )
                 }
-                if let s = opt.stringValue { return (s, s) }
+                if let s = opt.stringValue {
+                    return A2UISelectOption(label: s, value: s)
+                }
                 return nil
             }
 
-            Picker(label, selection: Binding(
-                get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
-                set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
-            )) {
-                ForEach(options, id: \.1) { (lbl, val) in
-                    Text(lbl).tag(val)
+            return AnyView(
+                Picker(label, selection: Binding(
+                    get: { store.dataModelValue(surfaceId: surfaceId, path: path)?.stringValue ?? "" },
+                    set: { store.setDataModelValue(surfaceId: surfaceId, path: path, value: .string($0)) }
+                )) {
+                    ForEach(options) { option in
+                        Text(option.label).tag(option.value)
+                    }
                 }
-            }
-            .pickerStyle(.menu)
+                .pickerStyle(.menu)
+            )
 
         default:
-            // Unknown component in this minimal renderer.
             let fallback = "[Unsupported component: \(component.type)]"
-            Text(fallback)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            return AnyView(
+                Text(fallback)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            )
         }
     }
 }

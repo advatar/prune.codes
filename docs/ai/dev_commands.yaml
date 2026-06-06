@@ -1,0 +1,20 @@
+version: 1
+commands:
+  - name: engine-tests
+    command: cd prune && cargo test
+    description: Run the embedded Prune Rust workspace tests.
+  - name: a2ui-tests
+    command: cd prune/A2UIRuntime && swift test
+    description: Run A2UIRuntime Swift package tests.
+  - name: macos-build
+    command: xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build
+    description: Build PruneApp and bundled helper binaries locally.
+  - name: engine-overlap
+    command: ./scripts/check-engine-overlap.sh
+    description: Audit overlap between the embedded engine and a sibling standalone prune checkout when present.
+  - name: macos-dmg
+    command: ./PruneApp/scripts/build-dmg.sh
+    description: Build a local unsigned macOS DMG for PruneApp.
+  - name: macos-release-dmg
+    command: ./PruneApp/scripts/release-dmg.sh
+    description: Build, sign, and optionally notarize a PruneApp DMG; requires Apple release credentials.
