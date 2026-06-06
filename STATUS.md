@@ -1,6 +1,7 @@
 # Status
 
 ## Current Task
+- Clarify and productionize the `prune` vs `prune.codes` split: identify canonical ownership, quantify overlap/drift, and plan consolidation without losing app, release, language-pack, or standalone-engine work.
 - Add a root MIT-style `LICENSE.md`.
 - Audit `RELEASE.md` Launch v1 scope against the current implementation and keep status honest about incomplete release work.
 - Make PruneApp downloadable via a signed/notarized DMG release pipeline and GitHub Releases automation.
@@ -14,6 +15,12 @@
 - Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
 
 ## Progress
+- Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
+- Created tracking issue for consolidation and production readiness: https://github.com/advatar/prune.codes/issues/21.
+- Compared tracked engine files: 60 shared paths between `prune/` and `prune.codes/prune/`, 49 byte-identical shared files, 11 drifted shared files, 8 files only in standalone `prune/`, and 35 engine files only in the nested `prune.codes/prune/` copy.
+- Confirmed the nested engine copy is ahead functionally: it includes Swift and TS/React language crates, bootstrap/integration/doctor/MCP CLI flows, templates, and integration assets that are absent from standalone `prune/`.
+- Confirmed the product repo owns production distribution assets: menu-bar PruneApp, GitHub webhook/Keychain/LaunchAgent/tunnel service management, diagnostics UI, DMG scripts, notarization workflow, and release docs.
+- Verification for the consolidation audit: `git diff --check`, `cd prune && cargo test`, and `cd prune/A2UIRuntime && swift test` pass; `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` fails in `PruneApp/PruneApp/ContentView.swift` because A2UI diagnostics code is out of sync with the current `A2UIRuntime` API and there is an invalid `.sheet` modifier placement.
 - Added root MIT-style `LICENSE.md`.
 - Audited `RELEASE.md`: Launch v1 is not feature complete. DMG scripts/workflow exist, and parts of the app/service surface exist, but release readiness still depends on closing product gaps in setup, service lifecycle, Lovable MCP tools, diagnostics, analytics, and end-to-end verification.
 - Re-ran `cargo test` with network access; dependency resolution completed, but the workspace still fails in `ce-lang-swift` because `tree_sitter_swift::LANGUAGE.into()` does not compile against the current `tree-sitter`/grammar crate types.
