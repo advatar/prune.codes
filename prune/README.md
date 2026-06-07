@@ -118,7 +118,17 @@ Edge rebuild behavior:
 ./target/release/ce search --db .ce/index.sqlite --hnsw-dir .ce/hnsw --query "tokio spawn blocking deadlock" --k 8
 ```
 
-### 4) Create a context pack (signatures-first + diversified)
+### 4) Explain the repo graph
+
+```bash
+./target/release/ce graph-report --db .ce/index.sqlite --out .ce/GRAPH_REPORT.md
+```
+
+This writes a compact Markdown report with indexed fragment/edge counts, edge
+type distribution, top connected fragments, strongest cross-file relationships,
+and suggested follow-up questions.
+
+### 5) Create a context pack (signatures-first + diversified)
 
 ```bash
 ./target/release/ce pack --db .ce/index.sqlite --hnsw-dir .ce/hnsw \

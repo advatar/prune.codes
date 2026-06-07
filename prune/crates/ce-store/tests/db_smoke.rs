@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ce_core::model::{FragKind, Fragment, Span};
-use ce_store::Db;
+use ce_store::{Db, GraphReportOptions};
 use rusqlite::params;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -109,6 +109,64 @@ fn symbols_and_refs_roundtrip() -> Result<()> {
     assert!(symbols.contains("Widget"));
     assert!(symbols.contains("foo::Widget"));
     assert!(symbols.contains("crate::foo::Widget"));
+
+    Ok(())
+}
+
+#[test]
+fn graph_report_summarizes_edges_and_hubs() -> Result<()> {
+    let (_dir, db) = temp_db()?;
+
+    let service_file_id = db.upsert_file("src/service.rs", "rust", 40, 111, "hash-service")?;
+    let service_frag = sample_fragment(
+        "src/service.rs",
+        "frag-service",
+        Some("Service"),
+        "service entry",
+        0,
+        vec![],
+    );
+    let service_rowid = db.upsert_fragment(service_file_id, &service_frag)?;
+
+    let model_file_id = db.upsert_file("src/model.rs", "rust", 40, 222, "hash-model")?;
+    let model_frag = sample_fragment(
+        "src/model.rs",
+        "frag-model",
+        Some("Model"),
+        "model type",
+        10,
+        vec![],
+    );
+    let model_rowid = db.upsert_fragment(model_file_id, &model_frag)?;
+
+    db.upsert_edge(service_rowid, model_rowid, "refers", 1.5)?;
+    db.upsert_edge(model_rowid, service_rowid, "imported_by", 0.8)?;
+
+    let report = db.graph_report(GraphReportOptions {
+        max_hubs: 5,
+        max_edges: 5,
+    })?;
+
+    assert_eq!(report.fragment_count, 2);
+    assert_eq!(report.edge_count, 2);
+    assert!(report
+        .edge_types
+        .iter()
+        .any(|edge_type| edge_type.edge_type == "refers" && edge_type.count == 1));
+    assert!(report
+        .top_hubs
+        .iter()
+        .any(|hub| hub.symbol.as_deref() == Some("Service")));
+    assert!(report
+        .strong_edges
+        .iter()
+        .any(|edge| edge.edge_type == "refers" && edge.from_path == "src/service.rs"));
+
+    let markdown = report.to_markdown();
+    assert!(markdown.contains("# Prune Graph Report"));
+    assert!(markdown.contains("## Top Hubs"));
+    assert!(markdown.contains("Service (src/service.rs)"));
+    assert!(markdown.contains("## Suggested Questions"));
 
     Ok(())
 }

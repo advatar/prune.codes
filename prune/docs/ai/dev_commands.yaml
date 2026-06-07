@@ -3,6 +3,9 @@ commands:
   - name: tests
     command: cargo test
     description: Run workspace unit tests.
+  - name: graph-report
+    command: cargo run -p ce-cli -- graph-report --db .ce/index.sqlite --out .ce/GRAPH_REPORT.md
+    description: Generate a Markdown graph explainability report from an existing index.
   - name: coverage
     command: ./scripts/codex/coverage.sh
     description: Generate an llvm-cov summary for the workspace (requires cargo-llvm-cov).

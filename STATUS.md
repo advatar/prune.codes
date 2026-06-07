@@ -15,6 +15,7 @@
 - Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
 - Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
 - Retire the sibling standalone `../prune` checkout as an active development target by preserving useful standalone docs in `prune.codes`, eliminating drift noise, and replacing `advatar/prune` with a clear pointer to this canonical repo.
+- Learn from the added Graphify repository and adopt the useful graph explainability pattern in `prune.codes` without duplicating Prune's existing indexing/packing engine.
 
 ## Progress
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
@@ -66,6 +67,10 @@
 - Preserved the useful standalone-only context in `docs/STANDALONE-PRUNE-RETIREMENT.md`, updated the root README to describe `advatar/prune` as retired, and taught `scripts/check-engine-overlap.sh` to skip a retired/non-engine sibling checkout.
 - Replaced the local standalone `../prune` checkout with a pointer repository (`README.md`, `RETIRED.md`, `STATUS.md`, `.gitignore`); `./scripts/check-engine-overlap.sh --strict` now exits successfully by recognizing the retired checkout.
 - Verification for standalone retirement: `git diff --check`, `bash -n scripts/check-engine-overlap.sh`, `./scripts/check-engine-overlap.sh --strict`, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` all pass.
+- Assessed `../graphify`: the highest-value transferable pattern is its compact graph report/explainability layer (hub nodes, strong relationships, and suggested follow-up questions), while Prune already has the core graph substrate via resolved edges, graph expansion, connected subgraph packing, signals, and recipe memory. Tracking issue: https://github.com/advatar/prune.codes/issues/24.
+- Added `ce graph-report` backed by Prune's existing SQLite graph. It summarizes fragment/edge counts, edge type distribution, top connected fragments, strongest cross-file relationships, and suggested questions, with Markdown written to stdout or `--out`.
+- Documented the adopted Graphify pattern in `docs/GRAPHIFY_TAKEAWAYS.md`, added the command to the engine README and AI command catalogs, and covered report generation with a `ce-store` smoke test.
+- Verification for Graphify adoption: `git diff --check`, `cd prune && cargo test`, `cd prune && cargo run -p ce-cli -- graph-report --help`, `cd prune/A2UIRuntime && swift test`, `./scripts/check-engine-overlap.sh`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` all pass.
 
 ## Next Steps
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.

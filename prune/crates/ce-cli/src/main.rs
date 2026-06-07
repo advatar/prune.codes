@@ -6,7 +6,7 @@ use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
 use ce_core::snippet;
 use ce_lang_rust::RustAdapter;
-use ce_store::{Db, Embedder};
+use ce_store::{Db, Embedder, GraphReportOptions};
 use ce_store::query;
 use ignore::WalkBuilder;
 use rayon::prelude::*;
@@ -120,6 +120,21 @@ enum Cmd {
         k: usize,
         #[arg(long, default_value_t = 0.5)]
         alpha: f32,
+    },
+
+    /// Explain the indexed repo graph as a compact Markdown report.
+    GraphReport {
+        #[arg(long)]
+        db: String,
+        /// Optional output path. If omitted, the report is printed to stdout.
+        #[arg(long)]
+        out: Option<String>,
+        /// Maximum connected fragments to include in the hub table.
+        #[arg(long, default_value_t = 10)]
+        max_hubs: usize,
+        /// Maximum cross-file relationships to include.
+        #[arg(long, default_value_t = 12)]
+        max_edges: usize,
     },
 
     /// Build a minimal context pack for a task.
@@ -453,6 +468,9 @@ fn main() -> Result<()> {
             cmd_bootstrap(&repo, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths)
         },
         Cmd::Search { db, hnsw_dir, query, k, alpha } => cmd_search(&db, &hnsw_dir, &query, k, alpha),
+        Cmd::GraphReport { db, out, max_hubs, max_edges } => {
+            cmd_graph_report(&db, out.as_deref(), max_hubs, max_edges)
+        },
         Cmd::Pack { db, hnsw_dir, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
             cmd_pack(&db, &hnsw_dir, &task, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), budget_chars, budget_tokens, tokenizer.as_deref(), max_bodies, alpha, format)
         }
@@ -850,6 +868,21 @@ fn cmd_search(db_path: &str, hnsw_dir: &str, query: &str, k: usize, alpha: f32) 
             println!("  symbol: {sym}");
         }
         println!("  {}", indent(&h.signature.trim(), 2));
+    }
+
+    Ok(())
+}
+
+fn cmd_graph_report(db_path: &str, out_path: Option<&str>, max_hubs: usize, max_edges: usize) -> Result<()> {
+    let db = Db::open(db_path)?;
+    let report = db.graph_report(GraphReportOptions { max_hubs, max_edges })?;
+    let markdown = report.to_markdown();
+
+    if let Some(out_path) = out_path {
+        fs::write(out_path, markdown)?;
+        println!("wrote graph report to {out_path}");
+    } else {
+        print!("{markdown}");
     }
 
     Ok(())

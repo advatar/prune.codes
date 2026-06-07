@@ -3,6 +3,9 @@ commands:
   - name: engine-tests
     command: cd prune && cargo test
     description: Run the embedded Prune Rust workspace tests.
+  - name: engine-graph-report
+    command: cd prune && cargo run -p ce-cli -- graph-report --db .ce/index.sqlite --out .ce/GRAPH_REPORT.md
+    description: Generate a Markdown graph explainability report from an existing engine index.
   - name: a2ui-tests
     command: cd prune/A2UIRuntime && swift test
     description: Run A2UIRuntime Swift package tests.
