@@ -6,6 +6,9 @@ commands:
   - name: engine-graph-report
     command: cd prune && cargo run -p ce-cli -- graph-report --db .ce/index.sqlite --out .ce/GRAPH_REPORT.md
     description: Generate a Markdown graph explainability report from an existing engine index.
+  - name: api-smoke
+    command: curl -fsS https://api.prune.codes/health && curl -fsS https://api.prune.codes/mcp
+    description: Verify the deployed Prune API TLS endpoint and MCP health route.
   - name: a2ui-tests
     command: cd prune/A2UIRuntime && swift test
     description: Run A2UIRuntime Swift package tests.

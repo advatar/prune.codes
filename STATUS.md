@@ -16,6 +16,7 @@
 - Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
 - Retire the sibling standalone `../prune` checkout as an active development target by preserving useful standalone docs in `prune.codes`, eliminating drift noise, and replacing `advatar/prune` with a clear pointer to this canonical repo.
 - Learn from the added Graphify repository and adopt the useful graph explainability pattern in `prune.codes` without duplicating Prune's existing indexing/packing engine.
+- Deploy Prune backend services to `api.prune.codes` on `johansellstrom@192.168.2.126`, including persistent service setup, reverse proxy routing, and TLS once DNS/ports are ready.
 
 ## Progress
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
@@ -71,6 +72,14 @@
 - Added `ce graph-report` backed by Prune's existing SQLite graph. It summarizes fragment/edge counts, edge type distribution, top connected fragments, strongest cross-file relationships, and suggested questions, with Markdown written to stdout or `--out`.
 - Documented the adopted Graphify pattern in `docs/GRAPHIFY_TAKEAWAYS.md`, added the command to the engine README and AI command catalogs, and covered report generation with a `ce-store` smoke test.
 - Verification for Graphify adoption: `git diff --check`, `cd prune && cargo test`, `cd prune && cargo run -p ce-cli -- graph-report --help`, `cd prune/A2UIRuntime && swift test`, `./scripts/check-engine-overlap.sh`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` all pass.
+- Starting backend deployment for `api.prune.codes`: tracking issue https://github.com/advatar/prune.codes/issues/25 covers the service layout, SSH target, reverse proxy/TLS plan, and verification steps.
+- Confirmed deployable HTTP services: `prune-mcp` serves `/mcp` and proxies sync/webhook requests on `127.0.0.1:47800`; `prune-sync` serves `/sync`, `/github/webhook`, and `/health` on `127.0.0.1:47801`; `ce` and `ce-mcp` are local helper binaries.
+- Fixed the runtime indexer failure exposed by deployment by upgrading the language adapter crates to `tree-sitter` 0.26, which supports the Swift grammar's language version 15.
+- Deployed `ce`, `ce-mcp`, `prune-mcp`, and `prune-sync` to `/Users/johansellstrom/services/prune-api/bin` on `johansellstrom@192.168.2.126`; installed launchd services `codes.prune.sync` and `codes.prune.mcp`.
+- Completed the initial remote index for `advatar/prune.codes` at `f381d346622536b9ed30db1951d06d5282ef03c6`; remote graph report shows 821 fragments and 4320 resolved edges.
+- Configured the existing Colima `metabolog-caddy` proxy for `api.prune.codes`, obtained a Let's Encrypt certificate, and routed public `/health`, `/mcp`, and `/github/webhook`; public `/sync` is intentionally not exposed.
+- Created GitHub webhook `638081546` for `https://api.prune.codes/github/webhook`; ping delivery returned HTTP 202.
+- Verification for backend deployment: `cd prune && cargo test`, release build for `ce`/`ce-mcp`/`prune-mcp`/`prune-sync`, full local `ce index` smoke plus `ce graph-report`, remote launchd health checks, Caddy container reachability checks, `openssl s_client -servername api.prune.codes`, `curl https://api.prune.codes/health`, `curl https://api.prune.codes/mcp`, unauthenticated MCP POST returning 401, and public `/sync` returning 404 all pass.
 
 ## Next Steps
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
