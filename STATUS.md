@@ -17,6 +17,7 @@
 - Retire the sibling standalone `../prune` checkout as an active development target by preserving useful standalone docs in `prune.codes`, eliminating drift noise, and replacing `advatar/prune` with a clear pointer to this canonical repo.
 - Learn from the added Graphify repository and adopt the useful graph explainability pattern in `prune.codes` without duplicating Prune's existing indexing/packing engine.
 - Deploy Prune backend services to `api.prune.codes` on `johansellstrom@192.168.2.126`, including persistent service setup, reverse proxy routing, and TLS once DNS/ports are ready.
+- Reassess the parent `CONSOLIDATION_PLAN.md` after repository drift and confirm whether any Lovable-template cleanup work remains (tracking issue: https://github.com/advatar/prune.codes/issues/26).
 
 ## Progress
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
@@ -80,6 +81,8 @@
 - Configured the existing Colima `metabolog-caddy` proxy for `api.prune.codes`, obtained a Let's Encrypt certificate, and routed public `/health`, `/mcp`, and `/github/webhook`; public `/sync` is intentionally not exposed.
 - Created GitHub webhook `638081546` for `https://api.prune.codes/github/webhook`; ping delivery returned HTTP 202.
 - Verification for backend deployment: `cd prune && cargo test`, release build for `ce`/`ce-mcp`/`prune-mcp`/`prune-sync`, full local `ce index` smoke plus `ce graph-report`, remote launchd health checks, Caddy container reachability checks, `openssl s_client -servername api.prune.codes`, `curl https://api.prune.codes/health`, `curl https://api.prune.codes/mcp`, unauthenticated MCP POST returning 401, and public `/sync` returning 404 all pass.
+- Reassessed the parent `CONSOLIDATION_PLAN.md`: the `lovable-template` sample app and stale Vitest guidance had already been removed from `prune.codes`; tracked source now has no `lovable-template` or `vitest` entries. Remaining Lovable/Vite references are product integration UI/copy, generic web inception defaults, and the reference-only `prune/templates/web_lovable_vite_supabase` kit that the old plan explicitly deferred.
+- Verification for the consolidation-plan reassessment: tracked-file grep found no `lovable-template` or `vitest` entries; source grep found only historical `STATUS.md` mentions; `git diff --check`, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` all pass. Rust warnings remain pre-existing.
 
 ## Next Steps
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
