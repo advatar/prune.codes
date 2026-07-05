@@ -1,24 +1,9 @@
 # Status
 
 ## Current Task
-- Clarify and productionize the `prune` vs `prune.codes` split: identify canonical ownership, quantify overlap/drift, and plan consolidation without losing app, release, language-pack, or standalone-engine work.
-- Add a root MIT-style `LICENSE.md`.
-- Audit `RELEASE.md` Launch v1 scope against the current implementation and keep status honest about incomplete release work.
-- Make PruneApp downloadable via a signed/notarized DMG release pipeline and GitHub Releases automation.
-- Bundle a local/Homebrew Cloudflare tunnel helper into PruneApp build and DMG artifacts so the app is self-contained after installation.
-- Consolidate the repo by removing the checked-in `lovable-template` sample app and stale repo-level frontend guidance while preserving product Lovable integrations.
-- Sync context-engine-v24 REACT/TSX language pack into `prune` (TS/TSX parser, import graph alias resolution, JSX edges, CLI/DB updates, README).
-- Add Codex MCP autostart helper to avoid `context_engine` startup failures in new terminals.
-- Add coverage runner + baseline report and expand tests (ce-store + ce-mcp JSON-RPC + MCP smoke).
-- Extend PruneApp A2UI diagnostics to support v0.8 fixtures, JSONL load, and live stream ingestion.
-- Update `.gitignore` to ignore PruneApp Xcode build artifacts (DerivedData and related outputs).
-- Fix `.gitignore` for the `prune` Rust workspace (Cargo artifacts and rustfmt backups).
-- Resolve still-relevant `REVIEW.md` consolidation fallout in the nested `prune` copy so canonical checks target a buildable package surface.
-- Retire the sibling standalone `../prune` checkout as an active development target by preserving useful standalone docs in `prune.codes`, eliminating drift noise, and replacing `advatar/prune` with a clear pointer to this canonical repo.
-- Learn from the added Graphify repository and adopt the useful graph explainability pattern in `prune.codes` without duplicating Prune's existing indexing/packing engine.
-- Deploy Prune backend services to `api.prune.codes` on `johansellstrom@192.168.2.126`, including persistent service setup, reverse proxy routing, and TLS once DNS/ports are ready.
-- Reassess the parent `CONSOLIDATION_PLAN.md` after repository drift and confirm whether any Lovable-template cleanup work remains (tracking issue: https://github.com/advatar/prune.codes/issues/26).
-- Perform an extensive PruneApp UX/code review and polish the macOS utility experience for design review readiness (tracking issue: https://github.com/advatar/prune.codes/issues/27).
+- Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
+- Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
+- Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
@@ -87,12 +72,12 @@
 - Starting PruneApp design-review pass: review found weak first-pane orientation, a text-only menu bar extra, inconsistent primary action hierarchy, plain status/error affordances, missing desktop command shortcuts, and long path/URL rows that can degrade layout polish.
 - Completed PruneApp UX polish: added a launch-visible dashboard window, native Prune command menu shortcuts, a status-rich menu bar extra, a dashboard readiness overview with next-best action, icon-backed primary controls, stronger status/error banners, compact path/service/webhook rows, checklist-style help content, and unit tests for readiness/status presentation logic.
 - Verification for PruneApp UX polish: `git diff --check`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' test -only-testing:PruneAppTests`, `cd prune && cargo test`, and `cd prune/A2UIRuntime && swift test` all pass. Visual screenshot check confirmed the dashboard opens on launch and the first pane renders without obvious overlap.
+- Starting stale-status cleanup: tracking issue https://github.com/advatar/prune.codes/issues/28 covers removing completed work from the active task list and deleting obsolete local-dirty notes.
+- Cleaned stale local artifacts: removed the parent `CONSOLIDATION_PLAN.md` scratch plan, the superseded parent `REVIEW.md`, and parent `.DS_Store`; narrowed `Current Task` to unfinished release, TS/TSX, and A2UI diagnostics work.
+- Verification for stale-status cleanup: `git diff --check`, parent stale-file check, stale status grep, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' test -only-testing:PruneAppTests` all pass. Rust warnings remain pre-existing.
 
 ## Next Steps
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Integrate ce-lang-tsreact and TS/TSX indexing + ApiSummary refs in CLI.
 - Port tsconfig alias resolution + JSX tag edges into `ce-store`.
 - Update README + validation steps for TS/TSX support.
-
-## Notes
-- Local repo has uncommitted changes in `Cargo.toml`, `Cargo.lock`, `crates/prune-mcp/`, and `crates/prune-sync/` (left untouched).
