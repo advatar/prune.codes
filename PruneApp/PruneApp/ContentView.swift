@@ -45,33 +45,82 @@ struct MenuBarView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        Text("Status: \(appModel.statusLabel)")
-        if let message = appModel.statusMessage {
-            Text(message)
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Prune \(appModel.statusLabel)", systemImage: appModel.appStatus.symbolName)
+                .font(.headline)
+            if let repo = appModel.normalizedRepoFullName() {
+                Label(repo, systemImage: "shippingbox")
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Repository not set", systemImage: "shippingbox")
+                    .foregroundStyle(.secondary)
+            }
+            Text(shortMenuValue(appModel.mcpServerURL))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         Divider()
-        Button("Start") {
+
+        ForEach(ServiceKind.allCases) { service in
+            let status = appModel.serviceStatus(for: service)
+            HStack {
+                Label(service.displayName, systemImage: service.menuSystemImage)
+                Spacer()
+                Text(status.state.label)
+                    .foregroundStyle(status.state.tone.color)
+            }
+        }
+
+        Divider()
+        Button {
             appModel.startServices()
+        } label: {
+            Label("Start Services", systemImage: "play.fill")
         }
         .disabled(!appModel.canStart)
-        Button("Stop") {
+        Button {
             appModel.stopServices()
+        } label: {
+            Label("Stop Services", systemImage: "stop.fill")
         }
         .disabled(!appModel.canStop)
+        Button {
+            appModel.refreshStatus()
+        } label: {
+            Label("Refresh Status", systemImage: "arrow.clockwise")
+        }
         Divider()
-        Button("Open Dashboard") {
+        Button {
             appModel.openSettings(.setup)
+        } label: {
+            Label("Open Dashboard", systemImage: "rectangle.grid.2x2")
         }
-        Button("View Logs") {
+        Button {
+            appModel.copyMcpURL()
+        } label: {
+            Label("Copy MCP URL", systemImage: "doc.on.doc")
+        }
+        Button {
             appModel.openLogs()
+        } label: {
+            Label("View Logs", systemImage: "doc.text.magnifyingglass")
         }
-        Button("Help") {
+        Button {
             appModel.openSettings(.help)
+        } label: {
+            Label("Help", systemImage: "questionmark.circle")
         }
         Divider()
-        Button("Quit") {
+        Button {
             NSApplication.shared.terminate(nil)
+        } label: {
+            Label("Quit", systemImage: "power")
         }
+    }
+
+    private func shortMenuValue(_ value: String) -> String {
+        guard value.count > 34 else { return value }
+        return String(value.prefix(31)) + "..."
     }
 }
 
@@ -117,7 +166,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.privacy)
         }
         .padding(20)
-        .frame(minWidth: 760, minHeight: 540)
+        .frame(minWidth: 860, minHeight: 620)
     }
 }
 
@@ -126,36 +175,49 @@ struct SetupView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    StatusBadge(
-                        title: "Install Status",
-                        value: appModel.installStateLabel,
-                        tone: appModel.installStateTone
-                    )
-                    Spacer()
-                    Button("Install") {
+            VStack(alignment: .leading, spacing: 18) {
+                SettingsPageHeader(
+                    title: "Dashboard",
+                    subtitle: "Connect Prune to a repository, run the local services, and hand Lovable a fresh MCP endpoint.",
+                    systemImage: "rectangle.grid.2x2"
+                )
+
+                SetupOverviewPanel(appModel: appModel)
+
+                HStack(spacing: 10) {
+                    Button {
                         appModel.install()
+                    } label: {
+                        Label("Install", systemImage: "square.and.arrow.down")
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(appModel.installState == .installing)
-                    Button("Reinstall Binaries") {
+
+                    Button {
                         appModel.install(reinstallOnly: true)
+                    } label: {
+                        Label("Reinstall Binaries", systemImage: "arrow.down.app")
                     }
                     .disabled(appModel.installState == .installing)
+
+                    Spacer()
                 }
 
                 GroupBox("Repository") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             TextField("ORG/REPO", text: appModel.repoBinding())
-                            Button("Detect from Mirror") {
+                            Button {
                                 appModel.detectRepoFromMirror()
+                            } label: {
+                                Label("Detect from Mirror", systemImage: "scope")
                             }
                         }
                         TextField("Default Branch", text: appModel.binding(\.defaultBranch))
                         TextField("Last Indexed SHA", text: appModel.binding(\.lastIndexedSha))
-                        Text("Webhook Status: \(appModel.webhookStatusLabel)")
-                            .foregroundStyle(.secondary)
+                        LabeledContent("Webhook Status") {
+                            StatusPill(text: appModel.webhookStatusLabel, tone: appModel.webhookStatusTone)
+                        }
                     }
                     .textFieldStyle(.roundedBorder)
                 }
@@ -212,6 +274,7 @@ struct SetupView: View {
                     error: appModel.lastErrorMessage
                 )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -265,8 +328,11 @@ struct InceptionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Inception")
-                    .font(.headline)
+                SettingsPageHeader(
+                    title: "Inception",
+                    subtitle: "Bootstrap repo-specific Prune guidance and project preferences before major implementation work.",
+                    systemImage: "sparkles.rectangle.stack"
+                )
 
                 if let repoFullName = appModel.normalizedRepoFullName() {
                     let mirror = appModel.paths.mirrorDirectory(repoFullName: repoFullName)
@@ -286,15 +352,19 @@ struct InceptionView: View {
                                 .textSelection(.enabled)
 
                             HStack {
-                                Button("Open Mirror") {
+                                Button {
                                     NSWorkspace.shared.open(mirror)
+                                } label: {
+                                    Label("Open Mirror", systemImage: "folder")
                                 }
 
                                 Spacer()
 
-                                Button("Start A2UI Interview") {
+                                Button {
                                     lastError = nil
                                     showInterview = true
+                                } label: {
+                                    Label("Start A2UI Interview", systemImage: "wand.and.stars")
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
@@ -355,6 +425,7 @@ struct InceptionView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .sheet(isPresented: $showInterview) {
             if let repoFullName = appModel.normalizedRepoFullName() {
@@ -408,7 +479,11 @@ private struct InceptionInterviewSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Close") { dismiss() }
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Close", systemImage: "xmark")
+                }
             }
 
             Divider()
@@ -421,19 +496,25 @@ private struct InceptionInterviewSheet: View {
             Divider()
 
             HStack(spacing: 10) {
-                Button("Generate followups") {
+                Button {
                     Task { await generateFollowups() }
+                } label: {
+                    Label("Generate Followups", systemImage: "sparkles")
                 }
 
                 Spacer()
 
-                Button("Save preferences") {
+                Button {
                     Task { await savePreferences() }
+                } label: {
+                    Label("Save Preferences", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
 
-                Button("Save + bootstrap") {
+                Button {
                     Task { await saveAndBootstrap() }
+                } label: {
+                    Label("Save + Bootstrap", systemImage: "play.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(isBusy)
@@ -961,17 +1042,30 @@ struct ServicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                SettingsPageHeader(
+                    title: "Services",
+                    subtitle: "Run and inspect the local tunnel, sync server, and MCP gateway that keep context fresh.",
+                    systemImage: "bolt.horizontal.circle"
+                )
+
                 HStack(spacing: 12) {
-                    Button("Start") {
+                    Button {
                         appModel.startServices()
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!appModel.canStart)
-                    Button("Stop") {
+                    Button {
                         appModel.stopServices()
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
                     }
                     .disabled(!appModel.canStop)
-                    Button("Refresh Status") {
+                    Button {
                         appModel.refreshStatus()
+                    } label: {
+                        Label("Refresh Status", systemImage: "arrow.clockwise")
                     }
                     .disabled(appModel.installState != .installed)
                 }
@@ -980,14 +1074,20 @@ struct ServicesView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle("Manage services with LaunchAgents", isOn: appModel.binding(\.useLaunchAgents))
                         HStack {
-                            Button("Install LaunchAgents") {
+                            Button {
                                 appModel.installLaunchAgents()
+                            } label: {
+                                Label("Install LaunchAgents", systemImage: "gear.badge")
                             }
-                            Button("Remove LaunchAgents") {
+                            Button {
                                 appModel.removeLaunchAgents()
+                            } label: {
+                                Label("Remove LaunchAgents", systemImage: "trash")
                             }
-                            Button("Open LaunchAgents Folder") {
+                            Button {
                                 appModel.openLaunchAgentsFolder()
+                            } label: {
+                                Label("Open Folder", systemImage: "folder")
                             }
                         }
                     }
@@ -1022,11 +1122,15 @@ struct ServicesView: View {
                 GroupBox("Logs") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Button("View Logs") {
+                            Button {
                                 appModel.openLogs()
+                            } label: {
+                                Label("View Logs", systemImage: "doc.text.magnifyingglass")
                             }
-                            Button("Refresh Logs") {
+                            Button {
                                 appModel.refreshLogPreview()
+                            } label: {
+                                Label("Refresh Logs", systemImage: "arrow.clockwise")
                             }
                         }
                         TextEditor(text: $appModel.logPreview)
@@ -1041,6 +1145,7 @@ struct ServicesView: View {
                     error: appModel.lastErrorMessage
                 )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -1051,6 +1156,12 @@ struct IntegrationsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                SettingsPageHeader(
+                    title: "Integrations",
+                    subtitle: "Copy the MCP endpoint, install GitHub webhooks, and store the secrets needed for fresh context.",
+                    systemImage: "link"
+                )
+
                 GroupBox("Lovable MCP") {
                     VStack(alignment: .leading, spacing: 8) {
                         LabeledContent("Tunnel Base URL") {
@@ -1061,25 +1172,35 @@ struct IntegrationsView: View {
                             TextField("MCP Server URL", text: appModel.mcpServerURLBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(true)
+                                .textSelection(.enabled)
                         }
                         LabeledContent("Webhook URL") {
                             TextField("Webhook URL", text: appModel.webhookURLBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(true)
+                                .textSelection(.enabled)
                         }
                         HStack {
-                            Button("Copy MCP URL") {
+                            Button {
                                 appModel.copyMcpURL()
+                            } label: {
+                                Label("Copy MCP URL", systemImage: "doc.on.doc")
                             }
-                            Button("Copy Webhook URL") {
+                            Button {
                                 appModel.copyWebhookURL()
+                            } label: {
+                                Label("Copy Webhook URL", systemImage: "link.badge.plus")
                             }
-                            Button("Test MCP Connection") {
+                            Button {
                                 appModel.testMcpConnection()
+                            } label: {
+                                Label("Test MCP", systemImage: "network")
                             }
                         }
                         if let status = appModel.mcpTestStatus {
                             Text(status)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
                         }
                     }
                 }
@@ -1090,8 +1211,10 @@ struct IntegrationsView: View {
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 160)
                             .disabled(true)
-                        Button("Copy Instructions") {
+                        Button {
                             appModel.copyLovableInstructions()
+                        } label: {
+                            Label("Copy Instructions", systemImage: "doc.on.doc")
                         }
                     }
                 }
@@ -1101,11 +1224,15 @@ struct IntegrationsView: View {
                         Text("Repository: \(appModel.config.repoFullName.isEmpty ? "Not set" : appModel.config.repoFullName)")
                         Text("Branch: \(appModel.config.defaultBranch)")
                         HStack {
-                            Button("Create Webhook") {
+                            Button {
                                 appModel.createGitHubWebhook()
+                            } label: {
+                                Label("Create Webhook", systemImage: "plus.circle")
                             }
-                            Button("Refresh Webhooks") {
+                            Button {
                                 appModel.refreshGitHubWebhooks()
+                            } label: {
+                                Label("Refresh Webhooks", systemImage: "arrow.clockwise")
                             }
                         }
                         if !appModel.webhooks.isEmpty {
@@ -1113,9 +1240,14 @@ struct IntegrationsView: View {
                                 ForEach(appModel.webhooks) { hook in
                                     HStack {
                                         Text("Hook \(hook.id) - \(hook.displayURL)")
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .textSelection(.enabled)
                                         Spacer()
-                                        Button("Delete") {
+                                        Button {
                                             appModel.deleteGitHubWebhook(id: hook.id)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
                                     }
                                 }
@@ -1123,26 +1255,40 @@ struct IntegrationsView: View {
                         }
                         if let status = appModel.githubStatusMessage {
                             Text(status)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
                         }
                     }
                 }
 
                 GroupBox("Secrets") {
                     VStack(alignment: .leading, spacing: 12) {
-                        SecureField("GitHub Token", text: $appModel.githubTokenInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save GitHub Token") {
-                            appModel.saveGitHubToken()
+                        HStack {
+                            SecureField("GitHub Token", text: $appModel.githubTokenInput)
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                appModel.saveGitHubToken()
+                            } label: {
+                                Label("Save", systemImage: "key")
+                            }
                         }
-                        SecureField("Webhook Secret", text: $appModel.webhookSecretInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save Webhook Secret") {
-                            appModel.saveWebhookSecret()
+                        HStack {
+                            SecureField("Webhook Secret", text: $appModel.webhookSecretInput)
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                appModel.saveWebhookSecret()
+                            } label: {
+                                Label("Save", systemImage: "key")
+                            }
                         }
-                        SecureField("MCP Bearer Token (optional)", text: $appModel.mcpTokenInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save MCP Token") {
-                            appModel.saveMcpToken()
+                        HStack {
+                            SecureField("MCP Bearer Token (optional)", text: $appModel.mcpTokenInput)
+                                .textFieldStyle(.roundedBorder)
+                            Button {
+                                appModel.saveMcpToken()
+                            } label: {
+                                Label("Save", systemImage: "key")
+                            }
                         }
                     }
                 }
@@ -1152,6 +1298,7 @@ struct IntegrationsView: View {
                     error: appModel.lastErrorMessage
                 )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -1215,10 +1362,11 @@ struct A2UIDiagnosticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("A2UI Inception Diagnostics")
-                    .font(.title2)
-                Text("Run fixtures, load JSONL, or stream live messages into A2UIRuntime.")
-                    .foregroundStyle(.secondary)
+                SettingsPageHeader(
+                    title: "A2UI Diagnostics",
+                    subtitle: "Run fixtures, load JSONL, or stream live messages into A2UIRuntime.",
+                    systemImage: "sparkles"
+                )
                 inputSection
                 statusSection
                 outputSection
@@ -1231,9 +1379,11 @@ struct A2UIDiagnosticsView: View {
         ) { result in
             switch result {
             case .success(let url):
-                let needsAccess = url.startAccessingSecurityScopedResource()
-                if needsAccess {
-                    defer { url.stopAccessingSecurityScopedResource() }
+                let didStartAccessing = url.startAccessingSecurityScopedResource()
+                defer {
+                    if didStartAccessing {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                 }
                 filePath = url.path
                 loadJSONL(from: url)
@@ -1278,11 +1428,15 @@ struct A2UIDiagnosticsView: View {
             }
             .pickerStyle(.segmented)
             HStack(spacing: 12) {
-                Button("Run Fixture") {
+                Button {
                     runFixture()
+                } label: {
+                    Label("Run Fixture", systemImage: "play.circle")
                 }
-                Button("Reset") {
+                Button {
                     resetState()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
                 }
                 if isRunning {
                     ProgressView()
@@ -1292,14 +1446,20 @@ struct A2UIDiagnosticsView: View {
             TextField("JSONL file path", text: $filePath)
                 .textFieldStyle(.roundedBorder)
             HStack(spacing: 12) {
-                Button("Browse") {
+                Button {
                     isFileImporterPresented = true
+                } label: {
+                    Label("Browse", systemImage: "folder")
                 }
-                Button("Load File") {
+                Button {
                     loadJSONLFromPath()
+                } label: {
+                    Label("Load File", systemImage: "doc.text")
                 }
-                Button("Reset") {
+                Button {
                     resetState()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
                 }
                 if isRunning {
                     ProgressView()
@@ -1313,16 +1473,22 @@ struct A2UIDiagnosticsView: View {
                 .textFieldStyle(.roundedBorder)
             HStack(spacing: 12) {
                 if isStreaming {
-                    Button("Stop Stream") {
+                    Button {
                         stopStreaming()
+                    } label: {
+                        Label("Stop Stream", systemImage: "stop.circle")
                     }
                 } else {
-                    Button("Start Stream") {
+                    Button {
                         startStreaming()
+                    } label: {
+                        Label("Start Stream", systemImage: "dot.radiowaves.left.and.right")
                     }
                 }
-                Button("Reset") {
+                Button {
                     resetState()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
                 }
                 if isStreaming {
                     ProgressView()
@@ -1587,14 +1753,20 @@ struct HelpView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                SettingsPageHeader(
+                    title: "Help",
+                    subtitle: "Use this checklist to connect Prune, Lovable, and GitHub without leaving the app.",
+                    systemImage: "questionmark.circle"
+                )
+
                 GroupBox("Quickstart") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Install Prune.app and click Install.")
-                        Text("2. Click Start to bring up the tunnel and services.")
-                        Text("3. Copy the MCP Server URL.")
-                        Text("4. In Lovable: Settings -> Connectors -> Personal connectors -> New MCP server.")
-                        Text("5. Connect Lovable project to GitHub (default branch sync).")
-                        Text("6. Confirm Last Indexed SHA updates after edits.")
+                        ChecklistRow(step: 1, text: "Install Prune.app and click Install.")
+                        ChecklistRow(step: 2, text: "Click Start to bring up the tunnel and services.")
+                        ChecklistRow(step: 3, text: "Copy the MCP Server URL.")
+                        ChecklistRow(step: 4, text: "In Lovable, add a personal MCP connector.")
+                        ChecklistRow(step: 5, text: "Connect the Lovable project to GitHub default-branch sync.")
+                        ChecklistRow(step: 6, text: "Confirm Last Indexed SHA updates after edits.")
                     }
                 }
 
@@ -1609,11 +1781,16 @@ struct HelpView: View {
 
                 GroupBox("Diagnostics") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Button("Export Diagnostics") {
+                        Button {
                             appModel.exportDiagnostics()
+                        } label: {
+                            Label("Export Diagnostics", systemImage: "square.and.arrow.up")
                         }
                         if let path = appModel.lastDiagnosticsPath {
                             Text("Last export: \(path.path)")
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
                         }
                     }
                 }
@@ -1623,6 +1800,7 @@ struct HelpView: View {
                     error: appModel.lastErrorMessage
                 )
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -1632,11 +1810,222 @@ struct PrivacyView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            SettingsPageHeader(
+                title: "Privacy",
+                subtitle: "Prune is local-first. Secrets stay in Keychain and diagnostics are exported only when requested.",
+                systemImage: "hand.raised"
+            )
             Toggle("Share anonymous usage analytics", isOn: $appModel.analyticsOptIn)
             Text("Analytics are opt-in and never include code, prompts, or repository contents.")
                 .foregroundStyle(.secondary)
             Link("Privacy Policy", destination: URL(string: "https://prune.dev/privacy")!)
             Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SettingsPageHeader: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.bottom, 2)
+    }
+}
+
+struct SetupOverviewPanel: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(readinessTitle)
+                        .font(.title3.weight(.semibold))
+                    Text(readinessSubtitle)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 16)
+
+                nextActionButton
+            }
+
+            HStack(spacing: 12) {
+                ReadinessMetricCard(
+                    title: "Install",
+                    value: appModel.installStateLabel,
+                    detail: "Bundled helpers",
+                    tone: appModel.installStateTone,
+                    systemImage: "shippingbox"
+                )
+                ReadinessMetricCard(
+                    title: "Services",
+                    value: appModel.statusLabel,
+                    detail: serviceDetail,
+                    tone: appModel.appStatus.tone,
+                    systemImage: "bolt.horizontal.circle"
+                )
+                ReadinessMetricCard(
+                    title: "Repository",
+                    value: appModel.normalizedRepoFullName() ?? "Not set",
+                    detail: appModel.config.defaultBranch.isEmpty ? "main" : appModel.config.defaultBranch,
+                    tone: appModel.normalizedRepoFullName() == nil ? .warning : .good,
+                    systemImage: "shippingbox"
+                )
+                ReadinessMetricCard(
+                    title: "MCP",
+                    value: appModel.config.tunnelBaseURL.isEmpty ? "Local" : "Tunnel",
+                    detail: appModel.mcpServerURL,
+                    tone: appModel.config.tunnelBaseURL.isEmpty ? .neutral : .good,
+                    systemImage: "network"
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var nextActionButton: some View {
+        if appModel.installState == .installing {
+            ProgressView()
+                .controlSize(.small)
+        } else if appModel.installState != .installed {
+            Button {
+                appModel.install()
+            } label: {
+                Label("Install Prune", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderedProminent)
+        } else if appModel.normalizedRepoFullName() == nil {
+            Button {
+                appModel.detectRepoFromMirror()
+            } label: {
+                Label("Detect Repository", systemImage: "scope")
+            }
+            .buttonStyle(.borderedProminent)
+        } else if appModel.canStart {
+            Button {
+                appModel.startServices()
+            } label: {
+                Label("Start Services", systemImage: "play.fill")
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                appModel.copyMcpURL()
+            } label: {
+                Label("Copy MCP URL", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var readinessTitle: String {
+        if appModel.installState == .installing {
+            return "Installing Prune"
+        }
+        if appModel.installState != .installed {
+            return "Prune is not installed yet"
+        }
+        if appModel.normalizedRepoFullName() == nil {
+            return "Connect a repository"
+        }
+        if appModel.appStatus == .running {
+            return "Ready for fresh context"
+        }
+        if appModel.appStatus == .error {
+            return "Service attention needed"
+        }
+        return "Ready to start services"
+    }
+
+    private var readinessSubtitle: String {
+        if appModel.installState != .installed {
+            return "Install copies the bundled helper binaries and creates local app support folders."
+        }
+        if appModel.normalizedRepoFullName() == nil {
+            return "Set an ORG/REPO value or detect it from an existing mirror before starting sync."
+        }
+        if appModel.appStatus == .running {
+            return "Copy the MCP URL into Lovable and keep GitHub webhooks enabled for fresh packs."
+        }
+        return "Start the tunnel, sync server, and MCP gateway when you are ready to connect external agents."
+    }
+
+    private var serviceDetail: String {
+        let running = ServiceKind.allCases.filter {
+            appModel.serviceStatus(for: $0).state == .running
+        }.count
+        return "\(running)/\(ServiceKind.allCases.count) running"
+    }
+}
+
+struct ReadinessMetricCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let tone: StatusTone
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(tone.color)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            Text(value)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct ChecklistRow: View {
+    let step: Int
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(step)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.accentColor))
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1677,11 +2066,17 @@ struct PathRow: View {
                     .foregroundStyle(.secondary)
                 Text(path)
                     .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
             }
             Spacer()
-            Button("Copy") {
+            Button {
                 onCopy()
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
             }
+            .help("Copy \(title)")
         }
     }
 }
@@ -1711,16 +2106,26 @@ struct ServiceRow: View {
     let status: ServiceStatus
 
     var body: some View {
-        HStack {
-            Text(name)
-                .font(.headline)
-            Spacer()
-            StatusPill(text: status.state.label, tone: status.state.tone)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: ServiceKind.systemImage(forDisplayName: name))
+                    .foregroundStyle(status.state.tone.color)
+                    .frame(width: 18)
+                Text(name)
+                    .font(.headline)
+                Spacer()
+                StatusPill(text: status.state.label, tone: status.state.tone)
+            }
+            if !status.detail.isEmpty {
+                Text(status.detail)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
         }
-        if !status.detail.isEmpty {
-            Text(status.detail)
-                .foregroundStyle(.secondary)
-        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -1743,15 +2148,87 @@ struct StatusBanner: View {
     let error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let message {
-                Text(message)
-                    .foregroundStyle(.secondary)
+        if message != nil || error != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                if let message {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                if let error {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                    }
+                }
             }
-            if let error {
-                Text(error)
-                    .foregroundStyle(.red)
-            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+extension AppStatus {
+    var tone: StatusTone {
+        switch self {
+        case .running:
+            return .good
+        case .starting, .stopping:
+            return .warning
+        case .error:
+            return .bad
+        case .stopped:
+            return .neutral
+        }
+    }
+}
+
+extension AppModel {
+    var webhookStatusTone: StatusTone {
+        let normalized = webhookStatusLabel.lowercased()
+        if normalized == "ok" || normalized == "active" || normalized == "ready" {
+            return .good
+        }
+        if normalized == "error" || normalized == "failed" {
+            return .bad
+        }
+        if normalized == "unknown" || normalized.isEmpty {
+            return .neutral
+        }
+        return .warning
+    }
+}
+
+extension ServiceKind {
+    var menuSystemImage: String {
+        switch self {
+        case .tunnel:
+            return "network"
+        case .sync:
+            return "arrow.triangle.2.circlepath"
+        case .mcp:
+            return "point.3.connected.trianglepath.dotted"
+        }
+    }
+
+    static func systemImage(forDisplayName name: String) -> String {
+        switch name {
+        case ServiceKind.tunnel.displayName:
+            return ServiceKind.tunnel.menuSystemImage
+        case ServiceKind.sync.displayName:
+            return ServiceKind.sync.menuSystemImage
+        case ServiceKind.mcp.displayName:
+            return ServiceKind.mcp.menuSystemImage
+        default:
+            return "gearshape"
         }
     }
 }

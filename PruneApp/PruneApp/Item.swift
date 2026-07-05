@@ -22,7 +22,7 @@ enum SettingsTab: Hashable {
     case privacy
 }
 
-enum StatusTone {
+enum StatusTone: Equatable {
     case neutral
     case good
     case warning
