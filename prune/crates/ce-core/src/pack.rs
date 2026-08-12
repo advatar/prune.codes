@@ -1,4 +1,7 @@
-use crate::model::{ContextPack, DeferredItem, FragKind, FragmentView, PackItem, PackMetrics, SignalBundle, Span, StrategyConfig, UnresolvedSymbol};
+use crate::model::{
+    ContextPack, DeferredItem, FragKind, FragmentView, MissingLinksSummary, PackItem, PackMetrics,
+    SignalBundle, Span, StrategyConfig, UnresolvedSymbol,
+};
 use crate::tokenizer::TokenCounter;
 use crate::util::{extract_ident_tokens, hash_text_hex, jaccard_sorted};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -8,9 +11,16 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// - MMR-style diversification (cheap lexical proxy)
 /// - per-file caps
 /// - body "upgrades" (replace signature with body to avoid duplication)
-pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candidate>) -> ContextPack {
+pub fn pack_with_strategy(
+    strategy: &StrategyConfig,
+    mut candidates: Vec<Candidate>,
+) -> ContextPack {
     // Sort descending relevance score.
-    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let budget_chars = strategy.budget_chars;
     let budget_tokens = strategy.budget_tokens;
@@ -99,12 +109,13 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
             id_to_idx.insert(cand.id.clone(), i);
         }
 
-        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); candidates.len()];
+        let mut adj: Vec<Vec<(usize, f32)>> = vec![Vec::new(); candidates.len()];
         for (i, cand) in candidates.iter().enumerate() {
             for nb in &cand.neighbors {
                 if let Some(&j) = id_to_idx.get(&nb.id) {
-                    adj[i].push(j);
-                    adj[j].push(i);
+                    let weight = nb.weight.max(0.001);
+                    adj[i].push((j, weight));
+                    adj[j].push((i, weight));
                 }
             }
         }
@@ -179,7 +190,27 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
                 if selected.contains(&seed) {
                     continue;
                 }
-                if let Some(path) = shortest_path(&adj, &selected, seed, hop_cap) {
+                if let Some((path, connection_cost)) =
+                    cheapest_connection(&adj, &selected, seed, hop_cap)
+                {
+                    let path_cost: f32 = path
+                        .iter()
+                        .filter(|idx| !selected.contains(idx))
+                        .map(|idx| {
+                            let (chars, tokens) = cost(&candidates[*idx].signature);
+                            if budget_tokens.is_some() {
+                                tokens as f32
+                            } else {
+                                chars as f32
+                            }
+                        })
+                        .sum();
+                    let prize = candidates[seed].score.max(0.0);
+                    let normalized_cost = connection_cost + path_cost / 1_000.0;
+                    let forced_signal = candidates[seed].reason.contains("signal:");
+                    if !forced_signal && prize <= strategy.connectivity_penalty * normalized_cost {
+                        continue;
+                    }
                     for idx in path {
                         if selected.contains(&idx) {
                             continue;
@@ -200,8 +231,13 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
                     if selected.contains(&i) {
                         continue;
                     }
-                    let Some(d) = dist[i] else { continue; };
+                    let Some(d) = dist[i] else {
+                        continue;
+                    };
                     if d == 0 {
+                        continue;
+                    }
+                    if cand.score.max(0.0) <= strategy.connectivity_penalty * d as f32 {
                         continue;
                     }
                     let (c_chars, c_tokens) = cost(&cand.signature);
@@ -368,7 +404,6 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
             });
             item_index_by_id.insert(cand.id.clone(), idx_item);
         }
-
     }
 
     // ---------------------------------
@@ -475,7 +510,9 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
             let mut suggestions: Vec<DeferredItem> = Vec::new();
 
             for cand in &candidates {
-                let Some(sym) = cand.symbol.as_ref() else { continue; };
+                let Some(sym) = cand.symbol.as_ref() else {
+                    continue;
+                };
                 if !symbol_matches_token(sym, &tok) {
                     continue;
                 }
@@ -518,13 +555,14 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
                 continue;
             };
 
-            let (content, view, add_sig, add_body): (String, FragmentView, bool, bool) = if strategy.support_signature_only {
-                (cand.signature.clone(), FragmentView::Signature, true, false)
-            } else {
-                let v = cand.body_view.clone();
-                let is_sig = matches!(v, FragmentView::Signature);
-                (cand.body.clone(), v, is_sig, !is_sig)
-            };
+            let (content, view, add_sig, add_body): (String, FragmentView, bool, bool) =
+                if strategy.support_signature_only {
+                    (cand.signature.clone(), FragmentView::Signature, true, false)
+                } else {
+                    let v = cand.body_view.clone();
+                    let is_sig = matches!(v, FragmentView::Signature);
+                    (cand.body.clone(), v, is_sig, !is_sig)
+                };
 
             if add_sig {
                 let count = *file_sig_counts.get(&cand.path).unwrap_or(&0);
@@ -634,6 +672,7 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
     metrics.unbound_symbol_count = unresolved_symbols.len();
     metrics.support_defs_added = support_defs_added;
     metrics.connectivity_score = connectivity_score(&items, &candidates);
+    let missing_links = build_missing_links_summary(strategy, &items, &candidates);
 
     ContextPack {
         pack_id,
@@ -650,12 +689,14 @@ pub fn pack_with_strategy(strategy: &StrategyConfig, mut candidates: Vec<Candida
         unresolved_symbols,
         metrics,
         recipe_excerpt: None,
+        repository_memory_excerpt: None,
+        missing_links,
+        strategy_selection: None,
     }
 }
 
 // (We no longer expose approx token helpers here; token counting is centralized
 // in `tokenizer::TokenCounter` with heuristic fallback.)
-
 
 /// Neighbor edge used for connected-subgraph selection.
 #[derive(Debug, Clone)]
@@ -693,8 +734,11 @@ pub struct Candidate {
     pub body_view: FragmentView,
 }
 
-
-fn bfs_distances(adj: &[Vec<usize>], sources: &HashSet<usize>, max_hops: usize) -> Vec<Option<usize>> {
+fn bfs_distances(
+    adj: &[Vec<(usize, f32)>],
+    sources: &HashSet<usize>,
+    max_hops: usize,
+) -> Vec<Option<usize>> {
     let mut dist: Vec<Option<usize>> = vec![None; adj.len()];
     let mut q: VecDeque<usize> = VecDeque::new();
 
@@ -711,7 +755,7 @@ fn bfs_distances(adj: &[Vec<usize>], sources: &HashSet<usize>, max_hops: usize) 
             continue;
         }
         let nd = d + 1;
-        for &nb in &adj[node] {
+        for &(nb, _) in &adj[node] {
             if dist[nb].is_none() {
                 dist[nb] = Some(nd);
                 q.push_back(nb);
@@ -722,58 +766,134 @@ fn bfs_distances(adj: &[Vec<usize>], sources: &HashSet<usize>, max_hops: usize) 
     dist
 }
 
-fn shortest_path(
-    adj: &[Vec<usize>],
+/// Multi-source, hop-bounded cheapest connection. Edge weights encode graph
+/// confidence, so weak links cost more. This is the connection primitive used
+/// by the prize-collecting Steiner approximation above.
+fn cheapest_connection(
+    adj: &[Vec<(usize, f32)>],
     sources: &HashSet<usize>,
     target: usize,
     max_hops: usize,
-) -> Option<Vec<usize>> {
+) -> Option<(Vec<usize>, f32)> {
     if sources.is_empty() || target >= adj.len() {
         return None;
     }
 
     let mut parent: Vec<Option<usize>> = vec![None; adj.len()];
-    let mut dist: Vec<Option<usize>> = vec![None; adj.len()];
-    let mut q: VecDeque<usize> = VecDeque::new();
+    let mut dist: Vec<f32> = vec![f32::INFINITY; adj.len()];
+    let mut hops: Vec<usize> = vec![usize::MAX; adj.len()];
+    let mut open: Vec<usize> = Vec::new();
 
     for &s in sources {
         if s < adj.len() {
-            dist[s] = Some(0);
-            q.push_back(s);
+            dist[s] = 0.0;
+            hops[s] = 0;
+            open.push(s);
         }
     }
 
-    while let Some(node) = q.pop_front() {
-        let d = dist[node].unwrap_or(0);
-        if d >= max_hops {
+    while !open.is_empty() {
+        let best_pos = open
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                dist[**a]
+                    .partial_cmp(&dist[**b])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(position, _)| position)?;
+        let node = open.swap_remove(best_pos);
+        if node == target {
+            break;
+        }
+        if hops[node] >= max_hops {
             continue;
         }
-        let nd = d + 1;
-        for &nb in &adj[node] {
-            if dist[nb].is_none() {
-                dist[nb] = Some(nd);
+        for &(nb, weight) in &adj[node] {
+            let next_hops = hops[node] + 1;
+            let next_cost = dist[node] + 1.0 / weight.max(0.001);
+            if next_hops <= max_hops && next_cost < dist[nb] {
+                dist[nb] = next_cost;
+                hops[nb] = next_hops;
                 parent[nb] = Some(node);
-                if nb == target {
-                    let mut path = vec![nb];
-                    let mut cur = nb;
-                    while let Some(p) = parent[cur] {
-                        path.push(p);
-                        cur = p;
-                        if sources.contains(&cur) {
-                            break;
-                        }
-                    }
-                    path.reverse();
-                    return Some(path);
+                if !open.contains(&nb) {
+                    open.push(nb);
                 }
-                q.push_back(nb);
             }
         }
     }
-
-    None
+    if !dist[target].is_finite() {
+        return None;
+    }
+    let mut path = vec![target];
+    let mut cur = target;
+    while let Some(p) = parent[cur] {
+        path.push(p);
+        cur = p;
+        if sources.contains(&cur) {
+            break;
+        }
+    }
+    path.reverse();
+    Some((path, dist[target]))
 }
 
+fn build_missing_links_summary(
+    strategy: &StrategyConfig,
+    items: &[PackItem],
+    candidates: &[Candidate],
+) -> MissingLinksSummary {
+    if !strategy.subgraph_enabled || items.is_empty() {
+        return MissingLinksSummary::default();
+    }
+    let selected: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
+    let omitted: Vec<String> = candidates
+        .iter()
+        .filter(|candidate| !selected.contains(candidate.id.as_str()))
+        .filter(|candidate| candidate.reason.contains("signal:") || candidate.score > 0.0)
+        .map(|candidate| candidate.id.clone())
+        .collect();
+    if omitted.is_empty() {
+        return MissingLinksSummary::default();
+    }
+    MissingLinksSummary {
+        degraded: true,
+        selected_component_size: items.len(),
+        omitted_component_count: count_omitted_components(candidates, &selected),
+        omitted_fragment_ids: omitted,
+        reasons: vec!["budget-or-connectivity-constraint".to_string()],
+    }
+}
+
+fn count_omitted_components(candidates: &[Candidate], selected: &HashSet<&str>) -> usize {
+    let omitted: HashSet<&str> = candidates
+        .iter()
+        .map(|c| c.id.as_str())
+        .filter(|id| !selected.contains(id))
+        .collect();
+    let neighbors: HashMap<&str, &Candidate> =
+        candidates.iter().map(|c| (c.id.as_str(), c)).collect();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut count = 0;
+    for &start in &omitted {
+        if !seen.insert(start) {
+            continue;
+        }
+        count += 1;
+        let mut queue = VecDeque::from([start]);
+        while let Some(id) = queue.pop_front() {
+            if let Some(candidate) = neighbors.get(id) {
+                for neighbor in &candidate.neighbors {
+                    let next = neighbor.id.as_str();
+                    if omitted.contains(next) && seen.insert(next) {
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+    }
+    count
+}
 
 fn connectivity_score(items: &[PackItem], candidates: &[Candidate]) -> Option<f32> {
     if items.is_empty() {
@@ -843,11 +963,130 @@ fn symbol_matches_token(sym: &str, tok: &str) -> bool {
 fn is_stop_token(tok: &str) -> bool {
     matches!(
         tok,
-        "fn" | "let" | "pub" | "use" | "mod" | "struct" | "enum" | "trait" | "impl" | "type" | "where"
-            | "self" | "super" | "crate" | "return" | "if" | "else" | "match" | "for" | "while" | "loop"
-            | "async" | "await" | "class" | "func" | "var" | "val" | "const" | "interface" | "protocol"
-            | "extension" | "import" | "from" | "in" | "new" | "switch" | "case" | "break" | "continue"
-            | "default" | "true" | "false" | "nil" | "null" | "this"
+        "fn" | "let"
+            | "pub"
+            | "use"
+            | "mod"
+            | "struct"
+            | "enum"
+            | "trait"
+            | "impl"
+            | "type"
+            | "where"
+            | "self"
+            | "super"
+            | "crate"
+            | "return"
+            | "if"
+            | "else"
+            | "match"
+            | "for"
+            | "while"
+            | "loop"
+            | "async"
+            | "await"
+            | "class"
+            | "func"
+            | "var"
+            | "val"
+            | "const"
+            | "interface"
+            | "protocol"
+            | "extension"
+            | "import"
+            | "from"
+            | "in"
+            | "new"
+            | "switch"
+            | "case"
+            | "break"
+            | "continue"
+            | "default"
+            | "true"
+            | "false"
+            | "nil"
+            | "null"
+            | "this"
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(id: &str, score: f32, neighbors: &[(&str, f32)]) -> Candidate {
+        Candidate {
+            id: id.to_string(),
+            rowid: 0,
+            path: format!("src/{id}.rs"),
+            kind: FragKind::Function,
+            symbol: Some(id.to_string()),
+            span: Span {
+                start_byte: 0,
+                end_byte: 1,
+                start_line: 0,
+                start_col: 0,
+                end_line: 0,
+                end_col: 1,
+            },
+            score,
+            reason: if id == "seed" {
+                "signal:symbol:seed".to_string()
+            } else {
+                "lexical".to_string()
+            },
+            signature: format!("fn {id}();"),
+            body: format!("fn {id}() {{}}"),
+            neighbors: neighbors
+                .iter()
+                .map(|(neighbor, weight)| CandidateNeighbor {
+                    id: (*neighbor).to_string(),
+                    weight: *weight,
+                })
+                .collect(),
+            body_view: FragmentView::Body,
+        }
+    }
+
+    #[test]
+    fn connected_subgraph_is_enabled_by_default() {
+        assert!(StrategyConfig::default().subgraph_enabled);
+    }
+
+    #[test]
+    fn reports_missing_components_when_budget_forces_degradation() {
+        let mut strategy = StrategyConfig::default();
+        strategy.budget_tokens = None;
+        strategy.budget_chars = 120;
+        strategy.max_bodies = 0;
+        let pack = pack_with_strategy(
+            &strategy,
+            vec![
+                candidate("seed", 10.0, &[("near", 1.0)]),
+                candidate("near", 2.0, &[("seed", 1.0)]),
+                candidate("island", 1.0, &[]),
+            ],
+        );
+        assert!(pack.missing_links.degraded);
+        assert!(pack.missing_links.omitted_component_count >= 1);
+        assert!(!pack.missing_links.omitted_fragment_ids.is_empty());
+    }
+
+    #[test]
+    fn weak_expensive_connection_is_not_collected_for_low_prize() {
+        let mut strategy = StrategyConfig::default();
+        strategy.budget_tokens = Some(1_000);
+        strategy.max_bodies = 0;
+        strategy.connectivity_penalty = 1.0;
+        let pack = pack_with_strategy(
+            &strategy,
+            vec![
+                candidate("seed", 10.0, &[("bridge", 0.001)]),
+                candidate("bridge", 0.01, &[("seed", 0.001), ("target", 0.001)]),
+                candidate("target", 0.1, &[("bridge", 0.001)]),
+            ],
+        );
+        assert!(pack.items.iter().any(|item| item.id == "seed"));
+        assert!(!pack.items.iter().any(|item| item.id == "target"));
+    }
+}

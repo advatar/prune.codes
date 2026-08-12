@@ -17,6 +17,8 @@ serde_json = "1"
 ce-core = { path = "../ce-core" }
 ce-store = { path = "../ce-store" }
 ce-lang-rust = { path = "../ce-lang-rust" }
+ce-lang-tsreact = { path = "../ce-lang-tsreact" }
+ce-lang-swift = { path = "../ce-lang-swift" }
 
 bytemuck = { version = "1", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }

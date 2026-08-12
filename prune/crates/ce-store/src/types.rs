@@ -33,6 +33,19 @@ pub struct RecipeRecord {
     pub created_at_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryMemoryRecord {
+    pub memory_id: i64,
+    pub kind: String,
+    pub title: String,
+    pub content: String,
+    pub tokens: String,
+    pub path: Option<String>,
+    pub tags: Option<String>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
 /// Stored strategy configuration (the DGM “genome”).
 ///
 /// `config_json` is a serialized `ce_core::model::StrategyConfig`.

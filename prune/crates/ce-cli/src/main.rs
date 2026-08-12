@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Result};
-use clap::{Parser, Subcommand, ValueEnum};
 use ce_core::model::{ContextPack, FragmentView, SignalBundle, StrategyConfig};
 use ce_core::pack::{pack_with_strategy, Candidate, CandidateNeighbor};
-use ce_core::tokenizer::TokenCounter;
 use ce_core::signals;
 use ce_core::snippet;
+use ce_core::tokenizer::TokenCounter;
 use ce_lang_rust::RustAdapter;
-use ce_store::{Db, Embedder, GraphReportOptions};
 use ce_store::query;
+use ce_store::{Db, Embedder, GraphReportOptions};
+use clap::{Parser, Subcommand, ValueEnum};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json as json;
 
-mod tasks;
 mod inception;
+mod stage_b;
+mod tasks;
 use ce_cli::integrations;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -227,6 +228,12 @@ enum Cmd {
         cmd: RecipeCmd,
     },
 
+    /// Manage repository decisions and golden paths.
+    Memory {
+        #[command(subcommand)]
+        cmd: MemoryCmd,
+    },
+
     /// Manage stored strategy configs (DGM “genomes”).
     Strategy {
         #[command(subcommand)]
@@ -289,7 +296,7 @@ enum McpCmd {
         /// If the index is missing, build it automatically.
         #[arg(long, default_value_t = true)]
         auto_index: bool,
-    }
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -341,6 +348,34 @@ enum RecipeCmd {
 }
 
 #[derive(Subcommand, Debug)]
+enum MemoryCmd {
+    Add {
+        #[arg(long)]
+        db: String,
+        #[arg(long, value_parser = ["decision", "golden_path"])]
+        kind: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        tags: Option<String>,
+    },
+    List {
+        #[arg(long)]
+        db: String,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum TasksCmd {
     /// Convert SWE-bench-ish JSON/JSONL into Context Engine eval JSONL.
     ///
@@ -364,6 +399,28 @@ enum TasksCmd {
         /// Also attempt to derive Rust symbol names from the patch.
         #[arg(long, default_value_t = false)]
         derive_symbols: bool,
+    },
+    /// Run checkout, index, pack, optional patch agent, and official harness evaluation.
+    RunSweBench {
+        #[arg(long)]
+        input: String,
+        #[arg(long)]
+        workspace: String,
+        #[arg(long)]
+        out: String,
+        #[arg(long)]
+        instance_id: Option<String>,
+        #[arg(long)]
+        agent_command: Option<String>,
+        #[arg(
+            long,
+            default_value = "python -m swebench.harness.run_evaluation --dataset_name {dataset} --predictions_path {predictions} --run_id {run_id}"
+        )]
+        harness_command: String,
+        #[arg(long, default_value = "prune-stage-b")]
+        run_id: String,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
 }
 
@@ -463,39 +520,142 @@ enum StrategyCmd {
 fn main() -> Result<()> {
     let args = Args::parse();
     match args.cmd {
-        Cmd::Index { repo, db, hnsw_dir, full, prune, skip_edges, max_files } => cmd_index(&repo, &db, &hnsw_dir, full, prune, skip_edges, max_files),
-        Cmd::Bootstrap { repo, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths } => {
-            cmd_bootstrap(&repo, template, subtype, force, skip_index, full, prune, skip_edges, max_files, skip_onboarding, skip_golden_paths)
-        },
-        Cmd::Search { db, hnsw_dir, query, k, alpha } => cmd_search(&db, &hnsw_dir, &query, k, alpha),
-        Cmd::GraphReport { db, out, max_hubs, max_edges } => {
-            cmd_graph_report(&db, out.as_deref(), max_hubs, max_edges)
-        },
-        Cmd::Pack { db, hnsw_dir, task, strategy_id, strategy_file, strategy_json, strategy_toml, budget_chars, budget_tokens, tokenizer, max_bodies, alpha, format } => {
-            cmd_pack(&db, &hnsw_dir, &task, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), budget_chars, budget_tokens, tokenizer.as_deref(), max_bodies, alpha, format)
-        }
+        Cmd::Index {
+            repo,
+            db,
+            hnsw_dir,
+            full,
+            prune,
+            skip_edges,
+            max_files,
+        } => cmd_index(&repo, &db, &hnsw_dir, full, prune, skip_edges, max_files),
+        Cmd::Bootstrap {
+            repo,
+            template,
+            subtype,
+            force,
+            skip_index,
+            full,
+            prune,
+            skip_edges,
+            max_files,
+            skip_onboarding,
+            skip_golden_paths,
+        } => cmd_bootstrap(
+            &repo,
+            template,
+            subtype,
+            force,
+            skip_index,
+            full,
+            prune,
+            skip_edges,
+            max_files,
+            skip_onboarding,
+            skip_golden_paths,
+        ),
+        Cmd::Search {
+            db,
+            hnsw_dir,
+            query,
+            k,
+            alpha,
+        } => cmd_search(&db, &hnsw_dir, &query, k, alpha),
+        Cmd::GraphReport {
+            db,
+            out,
+            max_hubs,
+            max_edges,
+        } => cmd_graph_report(&db, out.as_deref(), max_hubs, max_edges),
+        Cmd::Pack {
+            db,
+            hnsw_dir,
+            task,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            budget_chars,
+            budget_tokens,
+            tokenizer,
+            max_bodies,
+            alpha,
+            format,
+        } => cmd_pack(
+            &db,
+            &hnsw_dir,
+            &task,
+            strategy_id.as_deref(),
+            strategy_file.as_deref(),
+            strategy_json.as_deref(),
+            strategy_toml.as_deref(),
+            budget_chars,
+            budget_tokens,
+            tokenizer.as_deref(),
+            max_bodies,
+            alpha,
+            format,
+        ),
 
-        Cmd::Eval { db, hnsw_dir, tasks, strategy_id, strategy_file, strategy_json, strategy_toml, limit, out } => {
-            cmd_eval(&db, &hnsw_dir, &tasks, strategy_id.as_deref(), strategy_file.as_deref(), strategy_json.as_deref(), strategy_toml.as_deref(), limit, out.as_deref())
-        }
+        Cmd::Eval {
+            db,
+            hnsw_dir,
+            tasks,
+            strategy_id,
+            strategy_file,
+            strategy_json,
+            strategy_toml,
+            limit,
+            out,
+        } => cmd_eval(
+            &db,
+            &hnsw_dir,
+            &tasks,
+            strategy_id.as_deref(),
+            strategy_file.as_deref(),
+            strategy_json.as_deref(),
+            strategy_toml.as_deref(),
+            limit,
+            out.as_deref(),
+        ),
 
         Cmd::Recipe { cmd } => cmd_recipe(cmd),
+        Cmd::Memory { cmd } => cmd_memory(cmd),
         Cmd::Strategy { cmd } => cmd_strategy(cmd),
         Cmd::Tasks { cmd } => cmd_tasks(cmd),
 
-        Cmd::Integrate { repo, agent, write_global, dry_run } => {
-            integrations::cmd_integrate(&repo, agent, write_global, dry_run)
-        }
+        Cmd::Integrate {
+            repo,
+            agent,
+            write_global,
+            dry_run,
+        } => integrations::cmd_integrate(&repo, agent, write_global, dry_run),
         Cmd::Doctor { repo, agent } => integrations::cmd_doctor(&repo, agent),
         Cmd::Mcp { cmd } => match cmd {
-            McpCmd::Serve { repo, db, hnsw_dir, ce_mcp_path, auto_index } => {
-                cmd_mcp_serve(&repo, db.as_deref(), hnsw_dir.as_deref(), ce_mcp_path.as_deref(), auto_index)
-            }
+            McpCmd::Serve {
+                repo,
+                db,
+                hnsw_dir,
+                ce_mcp_path,
+                auto_index,
+            } => cmd_mcp_serve(
+                &repo,
+                db.as_deref(),
+                hnsw_dir.as_deref(),
+                ce_mcp_path.as_deref(),
+                auto_index,
+            ),
         },
     }
 }
 
-fn cmd_mcp_serve(repo: &str, db: Option<&str>, hnsw_dir: Option<&str>, ce_mcp_path: Option<&str>, auto_index: bool) -> Result<()> {
+fn cmd_mcp_serve(
+    repo: &str,
+    db: Option<&str>,
+    hnsw_dir: Option<&str>,
+    ce_mcp_path: Option<&str>,
+    auto_index: bool,
+) -> Result<()> {
     let repo_path = PathBuf::from(repo);
     if !repo_path.exists() {
         return Err(anyhow!("repo not found: {repo}"));
@@ -540,7 +700,15 @@ fn cmd_mcp_serve(repo: &str, db: Option<&str>, hnsw_dir: Option<&str>, ce_mcp_pa
     }
 }
 
-fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool, skip_edges: bool, max_files: usize) -> Result<()> {
+fn cmd_index(
+    repo: &str,
+    db_path: &str,
+    hnsw_dir: &str,
+    full: bool,
+    prune: bool,
+    skip_edges: bool,
+    max_files: usize,
+) -> Result<()> {
     use ce_lang_swift::SwiftAdapter;
     use ce_lang_tsreact::TsReactAdapter;
 
@@ -599,7 +767,10 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
             };
 
             if let Some(lang) = lang {
-                files.push(CandidateFile { disk_path: path.to_path_buf(), language: lang.to_string() });
+                files.push(CandidateFile {
+                    disk_path: path.to_path_buf(),
+                    language: lang.to_string(),
+                });
                 if files.len() >= max_files {
                     truncated = true;
                     break;
@@ -612,8 +783,14 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
     let n_swift = files.iter().filter(|f| f.language == "swift").count();
     let n_ts = files.iter().filter(|f| f.language == "ts").count();
     let n_tsx = files.iter().filter(|f| f.language == "tsx").count();
-    println!("Indexing {} files (rust={}, swift={}, ts={}, tsx={})…", files.len(), n_rust, n_swift, n_ts, n_tsx);
-
+    println!(
+        "Indexing {} files (rust={}, swift={}, ts={}, tsx={})…",
+        files.len(),
+        n_rust,
+        n_swift,
+        n_ts,
+        n_tsx
+    );
 
     #[derive(Clone)]
     struct FileInfo {
@@ -638,7 +815,9 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
             let language = p.language.clone();
 
             // Store repo-relative paths in the DB so the index is stable across clones.
-            let rel = disk_path.strip_prefix(&repo_path).unwrap_or(disk_path.as_path());
+            let rel = disk_path
+                .strip_prefix(&repo_path)
+                .unwrap_or(disk_path.as_path());
             let index_path_str = rel.to_string_lossy().to_string().replace('\\', "/");
             let index_path = PathBuf::from(&index_path_str);
 
@@ -652,7 +831,8 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
 
-            let content_hash = ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
+            let content_hash =
+                ce_core::util::hash_text_hex(&ce_core::util::normalize_whitespace(&src));
 
             Some(FileInfo {
                 disk_path,
@@ -686,7 +866,12 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
         to_index.push(fi);
     }
 
-    println!("Files to (re)index: {} (full={}, prune={})", to_index.len(), full, prune);
+    println!(
+        "Files to (re)index: {} (full={}, prune={})",
+        to_index.len(),
+        full,
+        prune
+    );
 
     // Parse only changed files (in parallel) into fragments.
     let parsed: Vec<(FileInfo, Vec<ce_core::model::Fragment>)> = to_index
@@ -746,14 +931,24 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
 
     // Insert into DB and embed.
     for (fi, frags) in parsed {
-        let file_id = db.upsert_file(&fi.index_path_str, &fi.language, fi.size_bytes, fi.mtime_ms, &fi.content_hash)?;
+        let file_id = db.upsert_file(
+            &fi.index_path_str,
+            &fi.language,
+            fi.size_bytes,
+            fi.mtime_ms,
+            &fi.content_hash,
+        )?;
         touched_file_ids.push(file_id);
         // Clear existing fragments for this file to avoid stale index entries.
         db.delete_fragments_by_file_id(file_id)?;
 
         // Embed in small batches for this file.
         let texts: Vec<String> = frags.iter().map(|f| f.retrieval_text.clone()).collect();
-        let vectors = if texts.is_empty() { vec![] } else { embedder.embed_passages(&texts)? };
+        let vectors = if texts.is_empty() {
+            vec![]
+        } else {
+            embedder.embed_passages(&texts)?
+        };
 
         for (frag, vec) in frags.into_iter().zip(vectors.into_iter()) {
             let rowid = db.upsert_fragment(file_id, &frag)?;
@@ -821,8 +1016,15 @@ fn cmd_index(repo: &str, db_path: &str, hnsw_dir: &str, full: bool, prune: bool,
             let n = db.rebuild_ref_edges_all(max_refs_per_fragment, max_defs_per_ref)?;
             println!("Rebuilt resolved edges (full): {n}");
         } else {
-            let n = db.rebuild_ref_edges_incremental(&touched_file_ids, max_refs_per_fragment, max_defs_per_ref)?;
-            println!("Rebuilt resolved edges (incremental; touched_files={}): {n}", touched_file_ids.len());
+            let n = db.rebuild_ref_edges_incremental(
+                &touched_file_ids,
+                max_refs_per_fragment,
+                max_defs_per_ref,
+            )?;
+            println!(
+                "Rebuilt resolved edges (incremental; touched_files={}): {n}",
+                touched_file_ids.len()
+            );
         }
     } else {
         println!("Skipped edge rebuild (--skip-edges)");
@@ -859,9 +1061,11 @@ fn cmd_search(db_path: &str, hnsw_dir: &str, query: &str, k: usize, alpha: f32) 
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
 
     // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index =
+        query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
 
-    let hits = query::hybrid_search_with_index(&db, &embedder, Some(&vec_index), query, 50, 50, k, alpha)?;
+    let hits =
+        query::hybrid_search_with_index(&db, &embedder, Some(&vec_index), query, 50, 50, k, alpha)?;
     for h in hits {
         println!("\n[{:.3}] {} {:?} {}", h.score, h.frag_id, h.kind, h.path);
         if let Some(sym) = &h.symbol {
@@ -873,9 +1077,17 @@ fn cmd_search(db_path: &str, hnsw_dir: &str, query: &str, k: usize, alpha: f32) 
     Ok(())
 }
 
-fn cmd_graph_report(db_path: &str, out_path: Option<&str>, max_hubs: usize, max_edges: usize) -> Result<()> {
+fn cmd_graph_report(
+    db_path: &str,
+    out_path: Option<&str>,
+    max_hubs: usize,
+    max_edges: usize,
+) -> Result<()> {
     let db = Db::open(db_path)?;
-    let report = db.graph_report(GraphReportOptions { max_hubs, max_edges })?;
+    let report = db.graph_report(GraphReportOptions {
+        max_hubs,
+        max_edges,
+    })?;
     let markdown = report.to_markdown();
 
     if let Some(out_path) = out_path {
@@ -906,7 +1118,29 @@ fn cmd_pack(
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
 
-    let mut strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
+    let automatic = strategy_id.is_none()
+        && strategy_file.is_none()
+        && strategy_json.is_none()
+        && strategy_toml.is_none();
+    let (mut strategy, selection) = if automatic {
+        ce_core::strategy_select::select_strategy(task, &repository_signals(&db)?)
+    } else {
+        (
+            load_strategy_for_pack(
+                &db,
+                strategy_id,
+                strategy_file,
+                strategy_json,
+                strategy_toml,
+            )?,
+            ce_core::model::StrategySelection {
+                task_class: "manual".into(),
+                repository_archetype: "manual".into(),
+                confidence: 1.0,
+                reason: "explicit strategy supplied".into(),
+            },
+        )
+    };
 
     // Apply per-invocation overrides (if provided)
     if let Some(b) = budget_chars {
@@ -927,14 +1161,20 @@ fn cmd_pack(
 
     // If we didn't load a strategy (defaults), ensure per-CLI defaults.
     // This keeps backward-friendly behavior when no strategy is supplied.
-    if strategy_id.is_none() && strategy_file.is_none() && strategy_json.is_none() && strategy_toml.is_none() {
+    if strategy_id.is_none()
+        && strategy_file.is_none()
+        && strategy_json.is_none()
+        && strategy_toml.is_none()
+    {
         strategy.budget_chars = strategy.budget_chars.max(2000);
     }
 
     // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index =
+        query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
 
-    let pack = build_pack(&db, &embedder, Some(&vec_index), task, &strategy, None)?;
+    let mut pack = build_pack(&db, &embedder, Some(&vec_index), task, &strategy, None)?;
+    pack.strategy_selection = Some(selection);
 
     match format {
         PackFormat::Text => {
@@ -952,6 +1192,15 @@ fn cmd_pack(
     Ok(())
 }
 
+fn repository_signals(db: &Db) -> Result<ce_core::strategy_select::RepositorySignals> {
+    Ok(ce_core::strategy_select::RepositorySignals {
+        rust_files: db.list_files_by_language("rust")?.len(),
+        ts_files: db.list_files_by_language("ts")?.len(),
+        tsx_files: db.list_files_by_language("tsx")?.len(),
+        swift_files: db.list_files_by_language("swift")?.len(),
+    })
+}
+
 fn cmd_eval(
     db_path: &str,
     hnsw_dir: &str,
@@ -967,10 +1216,17 @@ fn cmd_eval(
 
     let db = Db::open(db_path)?;
     let embedder = Embedder::new(ce_store::embed::DEFAULT_MODEL)?;
-    let strategy = load_strategy_for_pack(&db, strategy_id, strategy_file, strategy_json, strategy_toml)?;
+    let strategy = load_strategy_for_pack(
+        &db,
+        strategy_id,
+        strategy_file,
+        strategy_json,
+        strategy_toml,
+    )?;
 
     // Load a persisted HNSW dump if available; otherwise rebuild once and dump it.
-    let vec_index = query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
+    let vec_index =
+        query::load_or_build_hnsw(&db, Path::new(hnsw_dir), query::DEFAULT_HNSW_BASE, false)?;
 
     let f = fs::File::open(tasks_path)?;
     let reader = BufReader::new(f);
@@ -1012,9 +1268,20 @@ fn cmd_eval(
         let v: json::Value = json::from_str(line)?;
         let t = crate::tasks::parse_eval_task(&v)?;
 
-        let mut pack = build_pack(&db, &embedder, Some(&vec_index), &t.task, &strategy, Some(&seen_ids))?;
+        let mut pack = build_pack(
+            &db,
+            &embedder,
+            Some(&vec_index),
+            &t.task,
+            &strategy,
+            Some(&seen_ids),
+        )?;
 
-        let repeated = pack.items.iter().filter(|it| seen_ids.contains(&it.id)).count();
+        let repeated = pack
+            .items
+            .iter()
+            .filter(|it| seen_ids.contains(&it.id))
+            .count();
         let redundancy_pct = if pack.items.is_empty() {
             0.0
         } else {
@@ -1051,9 +1318,9 @@ fn cmd_eval(
         } else {
             sym_cases += 1;
             let hit = t.expect_symbols.iter().any(|s| {
-                pack.items.iter().any(|it| {
-                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
-                })
+                pack.items
+                    .iter()
+                    .any(|it| it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s))
             });
             if hit {
                 sym_hits += 1;
@@ -1080,7 +1347,12 @@ fn cmd_eval(
         }
 
         if let Some(w) = out_file.as_mut() {
-            let top_paths: Vec<String> = pack.items.iter().take(8).map(|it| it.path.clone()).collect();
+            let top_paths: Vec<String> = pack
+                .items
+                .iter()
+                .take(8)
+                .map(|it| it.path.clone())
+                .collect();
             let r = json::json!({
                 "id": t.id,
                 "path_hit": path_hit,
@@ -1103,31 +1375,62 @@ fn cmd_eval(
     println!("[ce-eval v0]");
     println!("tasks: {}", total);
     if total > 0 {
-        println!("avg_used_chars: {:.1}", sum_used_chars as f64 / total as f64);
-        println!("avg_used_tokens: {:.1}", sum_used_tokens as f64 / total as f64);
-        println!("avg_unbound_symbol_count: {:.2}", sum_unbound as f64 / total as f64);
+        println!(
+            "avg_used_chars: {:.1}",
+            sum_used_chars as f64 / total as f64
+        );
+        println!(
+            "avg_used_tokens: {:.1}",
+            sum_used_tokens as f64 / total as f64
+        );
+        println!(
+            "avg_unbound_symbol_count: {:.2}",
+            sum_unbound as f64 / total as f64
+        );
         if baseline_cases > 0 {
-            println!("avg_baseline_tokens: {:.1}", sum_baseline_tokens as f64 / baseline_cases as f64);
-            println!("avg_saved_pct: {:.1}", sum_saved_pct / baseline_cases as f64);
+            println!(
+                "avg_baseline_tokens: {:.1}",
+                sum_baseline_tokens as f64 / baseline_cases as f64
+            );
+            println!(
+                "avg_saved_pct: {:.1}",
+                sum_saved_pct / baseline_cases as f64
+            );
         }
     }
     if path_cases > 0 {
-        println!("path_hit_rate: {:.3} ({}/{})", path_hits as f64 / path_cases as f64, path_hits, path_cases);
+        println!(
+            "path_hit_rate: {:.3} ({}/{})",
+            path_hits as f64 / path_cases as f64,
+            path_hits,
+            path_cases
+        );
     } else {
         println!("path_hit_rate: n/a (no expect_paths)");
     }
     if iteration_cases > 0 {
-        println!("avg_iterations_per_fix: {:.2}", sum_iterations / iteration_cases as f64);
+        println!(
+            "avg_iterations_per_fix: {:.2}",
+            sum_iterations / iteration_cases as f64
+        );
     } else {
         println!("avg_iterations_per_fix: n/a (no iterations)");
     }
     if redundancy_cases > 0 {
-        println!("avg_redundancy_pct: {:.1}", sum_redundancy / redundancy_cases as f64);
+        println!(
+            "avg_redundancy_pct: {:.1}",
+            sum_redundancy / redundancy_cases as f64
+        );
     } else {
         println!("avg_redundancy_pct: n/a (no tasks)");
     }
     if sym_cases > 0 {
-        println!("symbol_hit_rate: {:.3} ({}/{})", sym_hits as f64 / sym_cases as f64, sym_hits, sym_cases);
+        println!(
+            "symbol_hit_rate: {:.3} ({}/{})",
+            sym_hits as f64 / sym_cases as f64,
+            sym_hits,
+            sym_cases
+        );
     } else {
         println!("symbol_hit_rate: n/a (no expect_symbols)");
     }
@@ -1141,12 +1444,77 @@ fn cmd_eval(
 
 fn cmd_recipe(cmd: RecipeCmd) -> Result<()> {
     match cmd {
-        RecipeCmd::Add { db, failure, failure_file, pack_summary, patch_meta, tags, success_tokens, iterations } => {
-            cmd_recipe_add(&db, failure, failure_file, pack_summary, patch_meta, tags, success_tokens, iterations)
-        }
+        RecipeCmd::Add {
+            db,
+            failure,
+            failure_file,
+            pack_summary,
+            patch_meta,
+            tags,
+            success_tokens,
+            iterations,
+        } => cmd_recipe_add(
+            &db,
+            failure,
+            failure_file,
+            pack_summary,
+            patch_meta,
+            tags,
+            success_tokens,
+            iterations,
+        ),
         RecipeCmd::List { db, limit, offset } => cmd_recipe_list(&db, limit, offset),
         RecipeCmd::Export { db, out } => cmd_recipe_export(&db, &out),
     }
+}
+
+fn cmd_memory(cmd: MemoryCmd) -> Result<()> {
+    match cmd {
+        MemoryCmd::Add {
+            db,
+            kind,
+            title,
+            content,
+            path,
+            tags,
+        } => {
+            let db = Db::open(&db)?;
+            let tokens = ce_core::util::failure_tokens(&format!(
+                "{title} {content} {}",
+                path.as_deref().unwrap_or_default()
+            ))
+            .join(" ");
+            let id = db.add_repository_memory(
+                &kind,
+                &title,
+                &content,
+                &tokens,
+                path.as_deref(),
+                tags.as_deref(),
+            )?;
+            println!("memory_id: {id}");
+        }
+        MemoryCmd::List {
+            db,
+            kind,
+            limit,
+            offset,
+        } => {
+            let db = Db::open(&db)?;
+            for record in db.list_repository_memory(kind.as_deref(), limit, offset)? {
+                println!(
+                    "- #{} [{}] {} path={} tags={}\n  {}",
+                    record.memory_id,
+                    record.kind,
+                    record.title,
+                    record.path.as_deref().unwrap_or("-"),
+                    record.tags.as_deref().unwrap_or("-"),
+                    record.content
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn cmd_recipe_add(
@@ -1166,8 +1534,7 @@ fn cmd_recipe_add(
     let failure_text = if let Some(text) = failure {
         text
     } else if let Some(path) = failure_file {
-        fs::read_to_string(&path)
-            .map_err(|e| anyhow!("failed to read failure_file {path}: {e}"))?
+        fs::read_to_string(&path).map_err(|e| anyhow!("failed to read failure_file {path}: {e}"))?
     } else {
         return Err(anyhow!("missing --failure or --failure_file"));
     };
@@ -1188,7 +1555,11 @@ fn cmd_recipe_add(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        if cleaned.is_empty() { None } else { Some(cleaned.join(",")) }
+        if cleaned.is_empty() {
+            None
+        } else {
+            Some(cleaned.join(","))
+        }
     });
 
     let db = Db::open(db_path)?;
@@ -1254,13 +1625,40 @@ fn cmd_recipe_export(db_path: &str, out_path: &str) -> Result<()> {
 
 fn cmd_tasks(cmd: TasksCmd) -> Result<()> {
     match cmd {
-        TasksCmd::ImportSweBench { input, out, limit, derive_symbols } => {
-            cmd_tasks_import_swebench(&input, &out, limit, derive_symbols)
-        }
+        TasksCmd::ImportSweBench {
+            input,
+            out,
+            limit,
+            derive_symbols,
+        } => cmd_tasks_import_swebench(&input, &out, limit, derive_symbols),
+        TasksCmd::RunSweBench {
+            input,
+            workspace,
+            out,
+            instance_id,
+            agent_command,
+            harness_command,
+            run_id,
+            dry_run,
+        } => stage_b::run(stage_b::StageBOptions {
+            input: input.into(),
+            workspace: workspace.into(),
+            out: out.into(),
+            instance_id,
+            agent_command,
+            harness_command,
+            run_id,
+            dry_run,
+        }),
     }
 }
 
-fn cmd_tasks_import_swebench(input: &str, out: &str, limit: usize, derive_symbols: bool) -> Result<()> {
+fn cmd_tasks_import_swebench(
+    input: &str,
+    out: &str,
+    limit: usize,
+    derive_symbols: bool,
+) -> Result<()> {
     use std::io::{BufRead, BufReader, Write};
 
     let in_file = fs::File::open(input)?;
@@ -1356,7 +1754,28 @@ struct EvalSummary {
     sym_hits: usize,
     avg_used_chars: f64,
     avg_used_tokens: f64,
+    avg_latency_ms: f64,
+    redundancy_pct: f64,
+    missing_definition_risk: f64,
     score: f64,
+}
+
+impl EvalSummary {
+    fn objectives(&self) -> ce_core::evolution::ObjectiveVector {
+        let cases = self.path_cases + self.sym_cases;
+        let hits = self.path_hits + self.sym_hits;
+        ce_core::evolution::ObjectiveVector {
+            resolved_rate: if cases == 0 {
+                0.0
+            } else {
+                hits as f64 / cases as f64
+            },
+            tokens: self.avg_used_tokens,
+            latency_ms: self.avg_latency_ms,
+            redundancy_pct: self.redundancy_pct,
+            missing_definition_risk: self.missing_definition_risk,
+        }
+    }
 }
 
 fn eval_strategy(
@@ -1380,6 +1799,10 @@ fn eval_strategy(
     let mut sum_used_chars = 0usize;
     let mut sum_used_tokens = 0usize;
     let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut repeated_items = 0usize;
+    let mut packed_items = 0usize;
+    let mut missing_definitions = 0usize;
+    let mut latency_ms = 0.0f64;
 
     for line in reader.lines() {
         let line = line?;
@@ -1394,7 +1817,17 @@ fn eval_strategy(
         let v: json::Value = json::from_str(line)?;
         let t = crate::tasks::parse_eval_task(&v)?;
 
-        let pack = build_pack(db, embedder, Some(vec_index), &t.task, strategy, Some(&seen_ids))?;
+        let started = std::time::Instant::now();
+        let pack = build_pack(
+            db,
+            embedder,
+            Some(vec_index),
+            &t.task,
+            strategy,
+            Some(&seen_ids),
+        )?;
+        latency_ms += started.elapsed().as_secs_f64() * 1_000.0;
+        missing_definitions += pack.metrics.unbound_symbol_count;
 
         if !t.expect_paths.is_empty() {
             path_cases += 1;
@@ -1411,9 +1844,9 @@ fn eval_strategy(
         if !t.expect_symbols.is_empty() {
             sym_cases += 1;
             let hit = t.expect_symbols.iter().any(|s| {
-                pack.items.iter().any(|it| {
-                    it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s)
-                })
+                pack.items
+                    .iter()
+                    .any(|it| it.symbol.as_deref() == Some(s.as_str()) || it.content.contains(s))
             });
             if hit {
                 sym_hits += 1;
@@ -1424,18 +1857,47 @@ fn eval_strategy(
         sum_used_chars += pack.used_chars;
         sum_used_tokens += pack.used_tokens;
         for it in &pack.items {
-            seen_ids.insert(it.id.clone());
+            packed_items += 1;
+            if !seen_ids.insert(it.id.clone()) {
+                repeated_items += 1;
+            }
         }
     }
 
-    let avg_used_chars = if total == 0 { 0.0 } else { sum_used_chars as f64 / total as f64 };
-    let avg_used_tokens = if total == 0 { 0.0 } else { sum_used_tokens as f64 / total as f64 };
+    let avg_used_chars = if total == 0 {
+        0.0
+    } else {
+        sum_used_chars as f64 / total as f64
+    };
+    let avg_used_tokens = if total == 0 {
+        0.0
+    } else {
+        sum_used_tokens as f64 / total as f64
+    };
 
-    let path_hr = if path_cases == 0 { 0.0 } else { path_hits as f64 / path_cases as f64 };
-    let sym_hr = if sym_cases == 0 { 0.0 } else { sym_hits as f64 / sym_cases as f64 };
+    let path_hr = if path_cases == 0 {
+        0.0
+    } else {
+        path_hits as f64 / path_cases as f64
+    };
+    let sym_hr = if sym_cases == 0 {
+        0.0
+    } else {
+        sym_hits as f64 / sym_cases as f64
+    };
 
     // Fitness: prioritize retrieval correctness, lightly penalize token usage.
     let score = (0.6 * path_hr + 0.4 * sym_hr) - (avg_used_tokens / 200_000.0);
+    let redundancy_pct = if packed_items == 0 {
+        0.0
+    } else {
+        repeated_items as f64 * 100.0 / packed_items as f64
+    };
+    let missing_definition_risk = if total == 0 {
+        0.0
+    } else {
+        missing_definitions as f64 / total as f64
+    };
 
     Ok(EvalSummary {
         total,
@@ -1445,6 +1907,13 @@ fn eval_strategy(
         sym_hits,
         avg_used_chars,
         avg_used_tokens,
+        avg_latency_ms: if total == 0 {
+            0.0
+        } else {
+            latency_ms / total as f64
+        },
+        redundancy_pct,
+        missing_definition_risk,
         score,
     })
 }
@@ -1468,89 +1937,152 @@ fn cmd_strategy_evolve(
     // Build HNSW once for the whole evolution run.
     let (vec_index, _map) = query::build_hnsw_from_db(&db)?;
 
-    let base = load_strategy_for_pack(&db, base_strategy_id, base_strategy_file, base_strategy_json, base_strategy_toml)?;
+    let base = load_strategy_for_pack(
+        &db,
+        base_strategy_id,
+        base_strategy_file,
+        base_strategy_json,
+        base_strategy_toml,
+    )?;
 
     let mut rng = Rng64::new(seed);
 
     let base_eval = eval_strategy(&db, &embedder, &vec_index, tasks_path, &base, limit)?;
     println!("[ce-evolve v0]");
-    println!("base: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1}",
+    println!(
+        "base: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1}",
         base_eval.score,
-        if base_eval.path_cases == 0 { 0.0 } else { base_eval.path_hits as f64 / base_eval.path_cases as f64 },
-        if base_eval.sym_cases == 0 { 0.0 } else { base_eval.sym_hits as f64 / base_eval.sym_cases as f64 },
+        if base_eval.path_cases == 0 {
+            0.0
+        } else {
+            base_eval.path_hits as f64 / base_eval.path_cases as f64
+        },
+        if base_eval.sym_cases == 0 {
+            0.0
+        } else {
+            base_eval.sym_hits as f64 / base_eval.sym_cases as f64
+        },
         base_eval.avg_used_tokens,
     );
 
-    let mut best_cfg = base.clone();
-    let mut best_eval = base_eval.clone();
-    let mut best_id: Option<String> = base_strategy_id.map(|s| s.to_string());
+    let mut archive: Vec<(StrategyConfig, EvalSummary, Option<String>)> = vec![(
+        base.clone(),
+        base_eval.clone(),
+        base_strategy_id.map(str::to_string),
+    )];
 
     let generations = generations.max(1);
     let population = population.max(1);
 
     for gen in 0..generations {
-        let mut gen_best_cfg = best_cfg.clone();
-        let mut gen_best_eval = best_eval.clone();
+        let archive_objectives: Vec<_> = archive
+            .iter()
+            .map(|(_, eval, _)| eval.objectives())
+            .collect();
+        let parent_front = ce_core::evolution::pareto_front(&archive_objectives);
+        let parents: Vec<StrategyConfig> = parent_front
+            .iter()
+            .map(|&index| archive[index].0.clone())
+            .collect();
+        let mut generation: Vec<(StrategyConfig, EvalSummary)> = Vec::new();
 
         for i in 0..population {
-            let cfg = if gen == 0 && i == 0 {
-                best_cfg.clone()
+            let cfg = if i == 0 {
+                parents[0].clone()
             } else {
-                mutate_strategy(&best_cfg, &mut rng)
+                let left = &parents[rng.range_usize(0, parents.len() - 1)];
+                let right = &parents[rng.range_usize(0, parents.len() - 1)];
+                let child = ce_core::evolution::crossover_strategy(left, right, rng.next_u64());
+                mutate_strategy(&child, &mut rng)
             };
 
             let ev = eval_strategy(&db, &embedder, &vec_index, tasks_path, &cfg, limit)?;
-            if ev.score > gen_best_eval.score {
-                gen_best_eval = ev;
-                gen_best_cfg = cfg;
-            }
+            generation.push((cfg, ev));
         }
 
-        // Persist generation best into DB (DGM "genome" archive).
-        let cfg_json = json::to_string(&gen_best_cfg)?;
-        let strategy_id = ce_core::util::hash_text_hex(&cfg_json);
-        let name = format!("{}_g{:02}", name_prefix, gen);
-        db.upsert_strategy(&strategy_id, &name, &cfg_json, best_id.as_deref(), Some(gen_best_eval.score))?;
-
-        best_id = Some(strategy_id.clone());
-        best_cfg = gen_best_cfg;
-        best_eval = gen_best_eval;
-
-        let path_hr = if best_eval.path_cases == 0 { 0.0 } else { best_eval.path_hits as f64 / best_eval.path_cases as f64 };
-        let sym_hr = if best_eval.sym_cases == 0 { 0.0 } else { best_eval.sym_hits as f64 / best_eval.sym_cases as f64 };
+        let objectives: Vec<_> = generation
+            .iter()
+            .map(|(_, eval)| eval.objectives())
+            .collect();
+        let front = ce_core::evolution::pareto_front(&objectives);
+        let mut next_archive = Vec::new();
+        for (rank, &index) in front.iter().enumerate() {
+            let (cfg, eval) = generation[index].clone();
+            let cfg_json = json::to_string(&cfg)?;
+            let strategy_id = ce_core::util::hash_text_hex(&cfg_json);
+            let name = format!("{}_g{:02}_p{:02}", name_prefix, gen, rank);
+            db.upsert_strategy(&strategy_id, &name, &cfg_json, None, Some(eval.score))?;
+            next_archive.push((cfg, eval, Some(strategy_id)));
+        }
+        next_archive.sort_by(|a, b| {
+            b.1.score
+                .partial_cmp(&a.1.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        next_archive.truncate(population.max(2));
+        let champion = &next_archive[0];
+        let objectives = champion.1.objectives();
         println!(
-            "gen {:02}: score={:.4} path_hr={:.3} sym_hr={:.3} avg_tokens={:.1} id={}",
+            "gen {:02}: pareto={} resolved={:.3} tokens={:.1} latency_ms={:.1} redundancy={:.1}% missing_risk={:.2} id={}",
             gen,
-            best_eval.score,
-            path_hr,
-            sym_hr,
-            best_eval.avg_used_tokens,
-            short_id(&strategy_id)
+            next_archive.len(),
+            objectives.resolved_rate,
+            objectives.tokens,
+            objectives.latency_ms,
+            objectives.redundancy_pct,
+            objectives.missing_definition_risk,
+            short_id(champion.2.as_deref().unwrap_or_default())
         );
+        archive = next_archive;
     }
 
+    let (best_cfg, _best_eval, best_id) = archive
+        .iter()
+        .max_by(|a, b| {
+            a.1.score
+                .partial_cmp(&b.1.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .expect("evolution archive is non-empty");
     if let Some(id) = best_id {
         println!("best_strategy_id: {id}");
     }
-    println!("best_strategy_json:\n{}", json::to_string_pretty(&best_cfg)?);
+    println!("best_strategy_json:\n{}", json::to_string_pretty(best_cfg)?);
     Ok(())
 }
 
 fn cmd_strategy(cmd: StrategyCmd) -> Result<()> {
     match cmd {
-        StrategyCmd::Add { db, name, config, config_json, config_toml, parent_id } => {
+        StrategyCmd::Add {
+            db,
+            name,
+            config,
+            config_json,
+            config_toml,
+            parent_id,
+        } => {
             let db = Db::open(&db)?;
-            let cfg = load_strategy_from_sources(config.as_deref(), config_json.as_deref(), config_toml.as_deref())?;
+            let cfg = load_strategy_from_sources(
+                config.as_deref(),
+                config_json.as_deref(),
+                config_toml.as_deref(),
+            )?;
             let cfg_json = json::to_string(&cfg)?;
             let id = db.add_strategy(&name, &cfg_json, parent_id.as_deref())?;
             println!("strategy_id: {id}");
             Ok(())
         }
-        StrategyCmd::List { db, limit, offset, show_config } => {
+        StrategyCmd::List {
+            db,
+            limit,
+            offset,
+            show_config,
+        } => {
             let db = Db::open(&db)?;
             let rows = db.list_strategies(limit, offset)?;
             for r in rows {
-                println!("- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}",
+                println!(
+                    "- {}  name=\"{}\"  score={:?}  parent={:?}  created_at_ms={}",
                     short_id(&r.strategy_id),
                     r.name,
                     r.score,
@@ -1583,9 +2115,31 @@ fn cmd_strategy(cmd: StrategyCmd) -> Result<()> {
             Ok(())
         }
 
-        StrategyCmd::Evolve { db, tasks, base_strategy_id, base_strategy_file, base_strategy_json, base_strategy_toml, generations, population, limit, seed, name_prefix } => {
-            cmd_strategy_evolve(&db, &tasks, base_strategy_id.as_deref(), base_strategy_file.as_deref(), base_strategy_json.as_deref(), base_strategy_toml.as_deref(), generations, population, limit, seed, &name_prefix)
-        }
+        StrategyCmd::Evolve {
+            db,
+            tasks,
+            base_strategy_id,
+            base_strategy_file,
+            base_strategy_json,
+            base_strategy_toml,
+            generations,
+            population,
+            limit,
+            seed,
+            name_prefix,
+        } => cmd_strategy_evolve(
+            &db,
+            &tasks,
+            base_strategy_id.as_deref(),
+            base_strategy_file.as_deref(),
+            base_strategy_json.as_deref(),
+            base_strategy_toml.as_deref(),
+            generations,
+            population,
+            limit,
+            seed,
+            &name_prefix,
+        ),
     }
 }
 
@@ -1640,7 +2194,11 @@ fn load_strategy_from_sources(
 }
 
 fn short_id(id: &str) -> String {
-    if id.len() <= 12 { id.to_string() } else { id[..12].to_string() }
+    if id.len() <= 12 {
+        id.to_string()
+    } else {
+        id[..12].to_string()
+    }
 }
 
 fn build_pack(
@@ -1718,11 +2276,18 @@ fn build_pack(
 
         // Optional compaction: replace full body with a slice when it saves meaningful tokens.
         if strategy.body_snippet_mode != "full" {
-            if let Some((slice_reason, slice_text)) = compute_best_slice(&frag, &file_line_hints, &task_tokens, &focus_tokens, strategy) {
+            if let Some((slice_reason, slice_text)) = compute_best_slice(
+                &frag,
+                &file_line_hints,
+                &task_tokens,
+                &focus_tokens,
+                strategy,
+            ) {
                 let decorated = decorate_slice(&frag, &slice_reason, &slice_text);
                 let full_toks = token_counter.count(&full_body);
                 let slice_toks = token_counter.count(&decorated);
-                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens {
+                if full_toks.saturating_sub(slice_toks) >= strategy.body_snippet_min_savings_tokens
+                {
                     body_view = FragmentView::Slice;
                     body_text = decorated;
                 }
@@ -1755,7 +2320,9 @@ fn build_pack(
     pack.metrics.signals_used = signals_used_stats;
     pack.metrics.redundancy_pct = Some(0.0);
 
-    if let Some(baseline_tokens) = compute_baseline_tokens(db, task, &signal_bundle, &token_counter)? {
+    if let Some(baseline_tokens) =
+        compute_baseline_tokens(db, task, &signal_bundle, &token_counter)?
+    {
         pack.metrics.baseline_tokens_total = Some(baseline_tokens);
         if baseline_tokens > 0 {
             let saved = (baseline_tokens as f32 - pack.used_tokens as f32) / baseline_tokens as f32;
@@ -1766,6 +2333,8 @@ fn build_pack(
     if let Some(recipe_excerpt) = build_recipe_excerpt(db, task, strategy, &token_counter)? {
         pack.recipe_excerpt = Some(recipe_excerpt);
     }
+    pack.repository_memory_excerpt =
+        build_repository_memory_excerpt(db, task, strategy, &token_counter)?;
 
     Ok(pack)
 }
@@ -1822,7 +2391,11 @@ fn attach_candidate_neighbors(
             .into_iter()
             .map(|(id, weight)| CandidateNeighbor { id, weight })
             .collect();
-        neighbors.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+        neighbors.sort_by(|a, b| {
+            b.weight
+                .partial_cmp(&a.weight)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         neighbors.truncate(24);
         cands[idx].neighbors = neighbors;
     }
@@ -1850,7 +2423,11 @@ fn build_recipe_excerpt(
     let recipes = db.load_recipes(200)?;
     let mut scored: Vec<(f32, ce_store::types::RecipeRecord)> = Vec::new();
     for rec in recipes {
-        let mut rec_tokens: Vec<String> = rec.tokens.split_whitespace().map(|s| s.to_string()).collect();
+        let mut rec_tokens: Vec<String> = rec
+            .tokens
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
         rec_tokens.sort();
         rec_tokens.dedup();
         let sim = ce_core::util::jaccard_sorted(&task_tokens, &rec_tokens);
@@ -1873,7 +2450,10 @@ fn build_recipe_excerpt(
         let failure = truncate_line(&rec.failure_excerpt, 160);
         let pack = truncate_line(&rec.pack_summary, 160);
         let patch = truncate_line(&rec.patch_meta, 160);
-        let block = format!("- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n", rec.recipe_id, sim, failure, pack, patch);
+        let block = format!(
+            "- recipe #{} (sim {:.2})\n  - failure: {}\n  - pack: {}\n  - patch: {}\n",
+            rec.recipe_id, sim, failure, pack, patch
+        );
         let next = format!("{}{}", out, block);
         if token_counter.count(&next) > max_tokens {
             break;
@@ -1886,6 +2466,38 @@ fn build_recipe_excerpt(
     }
 
     Ok(Some(out))
+}
+
+fn build_repository_memory_excerpt(
+    db: &Db,
+    task: &str,
+    strategy: &StrategyConfig,
+    token_counter: &TokenCounter,
+) -> Result<Option<String>> {
+    if !strategy.repository_memory_enabled {
+        return Ok(None);
+    }
+    let records =
+        db.search_repository_memory(task, strategy.repository_memory_min_similarity, 6)?;
+    if records.is_empty() {
+        return Ok(None);
+    }
+    let mut out = String::from("[repository-memory]\nRelevant decisions and golden paths:\n");
+    for (score, record) in records {
+        let block = format!(
+            "- [{}] {} (relevance {:.2}, path {})\n  {}\n",
+            record.kind,
+            record.title,
+            score,
+            record.path.as_deref().unwrap_or("-"),
+            truncate_line(&record.content, 240)
+        );
+        if token_counter.count(&format!("{out}{block}")) > strategy.repository_memory_max_tokens {
+            break;
+        }
+        out.push_str(&block);
+    }
+    Ok((out.lines().count() > 2).then_some(out))
 }
 
 fn truncate_line(s: &str, max: usize) -> String {
@@ -2042,7 +2654,7 @@ fn compute_best_slice(
 
     // Precompute signal targets once (also useful for AST pruning).
     let mut targets: Vec<u32> = Vec::new();
-    if allow_signals || allow_ast {
+    if allow_signals || allow_ast || allow_skeleton {
         let frag_path = frag.file.display().to_string();
         for (p, line1) in file_line_hints {
             let path_match = frag_path == *p || frag_path.ends_with(p);
@@ -2058,10 +2670,49 @@ fn compute_best_slice(
         targets.dedup();
     }
 
+    // Uniform policy-driven AST slicing. All supported languages implement the
+    // same semantic contract; legacy modes below remain compatibility fallbacks.
+    let policy_tokens = if focus_tokens.is_empty() {
+        task_tokens
+    } else {
+        focus_tokens
+    };
+    let request = ce_core::slicing::AstSliceRequest {
+        source: &frag.body,
+        fragment_start_line: frag.span.start_line,
+        target_lines: &targets,
+        focus_symbols: policy_tokens,
+        policy: &cfg.ast_slice_policy,
+    };
+    let extension = frag
+        .file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let policy_slice = match extension {
+        "rs" => ce_lang_rust::policy_ast_slice(request),
+        "ts" | "js" => ce_lang_tsreact::policy_ast_slice(request, false),
+        "tsx" | "jsx" => ce_lang_tsreact::policy_ast_slice(request, true),
+        "swift" => ce_lang_swift::policy_ast_slice(request),
+        _ => Ok(None),
+    };
+    if let Ok(Some(slice)) = policy_slice {
+        return Some((
+            format!("policy-ast:{}:{}-nodes", extension, slice.included_nodes),
+            slice.text,
+        ));
+    }
+
     // A) signal-driven slice
     if allow_signals {
         if !targets.is_empty() {
-            if let Some(s) = snippet::slice_by_file_lines(&frag.body, frag.span.start_line, &targets, ctx, max_lines) {
+            if let Some(s) = snippet::slice_by_file_lines(
+                &frag.body,
+                frag.span.start_line,
+                &targets,
+                ctx,
+                max_lines,
+            ) {
                 let frag_path = frag.file.display().to_string();
                 let head = targets.get(0).copied().unwrap_or(0);
                 let reason = format!("signal:{}:{}", frag_path, head);
@@ -2072,7 +2723,13 @@ fn compute_best_slice(
 
     // B) symbol-focused grep slice (narrower than full task token grep)
     if allow_symbols {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, focus_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            focus_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = focus_tokens.iter().take(8).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -2087,8 +2744,19 @@ fn compute_best_slice(
     // C) AST-based pruning slice (Rust)
     if allow_ast {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_prune_slice(&frag.body, frag.span.start_line, &targets, toks, ctx, max_lines) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_prune_slice(
+            &frag.body,
+            frag.span.start_line,
+            &targets,
+            toks,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -2103,8 +2771,19 @@ fn compute_best_slice(
     // D) AST skeletonization (Rust)
     if allow_skeleton {
         // Prefer symbol-focused tokens; fall back to task tokens.
-        let toks: &[String] = if !focus_tokens.is_empty() { focus_tokens } else { task_tokens };
-        if let Some(s) = ce_lang_rust::ast_skeleton_slice(&frag.body, frag.span.start_line, frag.kind, &targets, toks, cfg) {
+        let toks: &[String] = if !focus_tokens.is_empty() {
+            focus_tokens
+        } else {
+            task_tokens
+        };
+        if let Some(s) = ce_lang_rust::ast_skeleton_slice(
+            &frag.body,
+            frag.span.start_line,
+            frag.kind,
+            &targets,
+            toks,
+            cfg,
+        ) {
             let mut show: Vec<String> = toks.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -2118,7 +2797,11 @@ fn compute_best_slice(
 
     // E) TSX skeletonization
     if allow_tsx {
-        if let Some(s) = snippet::skeletonize_tsx(&frag.body, cfg.tsx_skeleton_max_depth, cfg.tsx_skeleton_max_props) {
+        if let Some(s) = snippet::skeletonize_tsx(
+            &frag.body,
+            cfg.tsx_skeleton_max_depth,
+            cfg.tsx_skeleton_max_props,
+        ) {
             let reason = "tsx_skeleton".to_string();
             return Some((reason, s));
         }
@@ -2126,7 +2809,11 @@ fn compute_best_slice(
 
     // F) SwiftUI skeletonization
     if allow_swiftui {
-        if let Some(s) = snippet::skeletonize_swiftui(&frag.body, cfg.swiftui_skeleton_max_depth, cfg.swiftui_skeleton_max_modifiers) {
+        if let Some(s) = snippet::skeletonize_swiftui(
+            &frag.body,
+            cfg.swiftui_skeleton_max_depth,
+            cfg.swiftui_skeleton_max_modifiers,
+        ) {
             let reason = "swiftui_skeleton".to_string();
             return Some((reason, s));
         }
@@ -2134,7 +2821,13 @@ fn compute_best_slice(
 
     // G) token-grep slice
     if allow_query {
-        if let Some(s) = snippet::slice_by_grep(&frag.body, frag.span.start_line, task_tokens, ctx, max_lines) {
+        if let Some(s) = snippet::slice_by_grep(
+            &frag.body,
+            frag.span.start_line,
+            task_tokens,
+            ctx,
+            max_lines,
+        ) {
             let mut show: Vec<String> = task_tokens.iter().take(6).cloned().collect();
             show.retain(|t| !t.is_empty());
             let reason = if show.is_empty() {
@@ -2159,7 +2852,10 @@ fn render_pack(pack: &ContextPack) -> String {
         out.push_str(&format!("budget_tokens: {}\n", bt));
     }
     out.push_str(&format!("used_tokens: {}\n", pack.used_tokens));
-    out.push_str(&format!("pack_tokens_total: {}\n", pack.metrics.pack_tokens_total));
+    out.push_str(&format!(
+        "pack_tokens_total: {}\n",
+        pack.metrics.pack_tokens_total
+    ));
     if let Some(bt) = pack.metrics.baseline_tokens_total {
         out.push_str(&format!("baseline_tokens_total: {}\n", bt));
     }
@@ -2184,17 +2880,37 @@ fn render_pack(pack: &ContextPack) -> String {
     if let Some(score) = pack.metrics.connectivity_score {
         out.push_str(&format!("connectivity_score: {:.2}\n", score));
     }
-    out.push_str(&format!("unbound_symbol_count: {}\n\n", pack.metrics.unbound_symbol_count));
+    out.push_str(&format!(
+        "unbound_symbol_count: {}\n\n",
+        pack.metrics.unbound_symbol_count
+    ));
+    if let Some(selection) = &pack.strategy_selection {
+        out.push_str(&format!(
+            "strategy_selection: task={} repo={} confidence={:.2} reason={}\n\n",
+            selection.task_class,
+            selection.repository_archetype,
+            selection.confidence,
+            selection.reason
+        ));
+    }
 
     if let Some(recipe) = &pack.recipe_excerpt {
         out.push_str("## Recipe Memory\n\n");
         out.push_str(recipe);
         out.push_str("\n\n");
     }
+    if let Some(memory) = &pack.repository_memory_excerpt {
+        out.push_str("## Repository Memory\n\n");
+        out.push_str(memory);
+        out.push_str("\n\n");
+    }
 
     out.push_str("## Included\n\n");
     for it in &pack.items {
-        out.push_str(&format!("### {} ({:?}, score={:.3}, reason={})\n\n", it.id, it.view, it.score, it.reason));
+        out.push_str(&format!(
+            "### {} ({:?}, score={:.3}, reason={})\n\n",
+            it.id, it.view, it.score, it.reason
+        ));
         out.push_str(&it.content);
         out.push_str("\n\n");
     }
@@ -2202,20 +2918,45 @@ fn render_pack(pack: &ContextPack) -> String {
     if !pack.unresolved_symbols.is_empty() {
         out.push_str("\n## Unresolved Symbols\n\n");
         for sym in &pack.unresolved_symbols {
-            let reason = sym.reason.clone().unwrap_or_else(|| "unresolved".to_string());
+            let reason = sym
+                .reason
+                .clone()
+                .unwrap_or_else(|| "unresolved".to_string());
             out.push_str(&format!("- {} ({})\n", sym.symbol, reason));
+        }
+    }
+
+    if pack.missing_links.degraded {
+        out.push_str("\n## Missing Links\n\n");
+        out.push_str(&format!(
+            "Selected the best connected component ({} fragments); {} omitted component(s) could not fit or connect under budget.\n",
+            pack.missing_links.selected_component_size,
+            pack.missing_links.omitted_component_count
+        ));
+        for id in &pack.missing_links.omitted_fragment_ids {
+            out.push_str(&format!("- {id}\n"));
         }
     }
 
     if !pack.deferred.is_empty() {
         out.push_str("## Deferred\n\n");
         for d in &pack.deferred {
-            let span = format!("L{}-L{}", d.span.start_line.saturating_add(1), d.span.end_line.saturating_add(1));
+            let span = format!(
+                "L{}-L{}",
+                d.span.start_line.saturating_add(1),
+                d.span.end_line.saturating_add(1)
+            );
             let sym = d.symbol.clone().unwrap_or_default();
             if sym.is_empty() {
-                out.push_str(&format!("- {} {:?} {} [{}] ({})\n", d.id, d.kind, d.path, span, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] ({})\n",
+                    d.id, d.kind, d.path, span, d.reason
+                ));
             } else {
-                out.push_str(&format!("- {} {:?} {} [{}] sym={} ({})\n", d.id, d.kind, d.path, span, sym, d.reason));
+                out.push_str(&format!(
+                    "- {} {:?} {} [{}] sym={} ({})\n",
+                    d.id, d.kind, d.path, span, sym, d.reason
+                ));
             }
         }
     }
@@ -2225,7 +2966,10 @@ fn render_pack(pack: &ContextPack) -> String {
 
 fn indent(s: &str, spaces: usize) -> String {
     let pad = " ".repeat(spaces);
-    s.lines().map(|l| format!("{pad}{l}")).collect::<Vec<_>>().join("\n")
+    s.lines()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // -----------------------------------------------------------------------------
@@ -2354,7 +3098,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.edge_prioritize_by_type = !cfg.edge_prioritize_by_type;
     }
     if rng.chance(0.50) {
-        cfg.edge_max_nodes_per_seed = scale_usize(rng, cfg.edge_max_nodes_per_seed, 0.6, 1.8, 16, 140);
+        cfg.edge_max_nodes_per_seed =
+            scale_usize(rng, cfg.edge_max_nodes_per_seed, 0.6, 1.8, 16, 140);
     }
     if rng.chance(0.50) {
         cfg.neighbors_k = scale_usize(rng, cfg.neighbors_k, 0.4, 2.0, 0, 12);
@@ -2458,16 +3203,26 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
             "signals_or_symbols_or_tsx_skeleton_or_query_grep",
             "signals_or_symbols_or_swiftui_skeleton_or_query_grep",
         ];
-        cfg.body_snippet_mode = modes[rng.range_usize(0, modes.len().saturating_sub(1))].to_string();
+        cfg.body_snippet_mode =
+            modes[rng.range_usize(0, modes.len().saturating_sub(1))].to_string();
     }
     if rng.chance(0.45) {
-        cfg.body_snippet_context_lines = scale_usize(rng, cfg.body_snippet_context_lines.max(0), 0.5, 1.8, 0, 20);
+        cfg.body_snippet_context_lines =
+            scale_usize(rng, cfg.body_snippet_context_lines.max(0), 0.5, 1.8, 0, 20);
     }
     if rng.chance(0.45) {
-        cfg.body_snippet_max_lines = scale_usize(rng, cfg.body_snippet_max_lines.max(20), 0.6, 1.8, 40, 400);
+        cfg.body_snippet_max_lines =
+            scale_usize(rng, cfg.body_snippet_max_lines.max(20), 0.6, 1.8, 40, 400);
     }
     if rng.chance(0.35) {
-        cfg.body_snippet_min_savings_tokens = scale_usize(rng, cfg.body_snippet_min_savings_tokens.max(0), 0.5, 2.0, 0, 300);
+        cfg.body_snippet_min_savings_tokens = scale_usize(
+            rng,
+            cfg.body_snippet_min_savings_tokens.max(0),
+            0.5,
+            2.0,
+            0,
+            300,
+        );
     }
 
     // Diversity controls
@@ -2478,7 +3233,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.mmr_top_n = scale_usize(rng, cfg.mmr_top_n, 0.6, 1.8, 10, 300);
     }
     if rng.chance(0.45) {
-        cfg.per_file_cap_signatures = scale_usize(rng, cfg.per_file_cap_signatures, 0.6, 1.8, 2, 30);
+        cfg.per_file_cap_signatures =
+            scale_usize(rng, cfg.per_file_cap_signatures, 0.6, 1.8, 2, 30);
     }
     if rng.chance(0.30) {
         cfg.per_file_cap_bodies = rng.range_usize(1, 3);
@@ -2511,7 +3267,8 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
         cfg.recipes_enabled = !cfg.recipes_enabled;
     }
     if rng.chance(0.35) {
-        cfg.recipes_max_tokens = scale_usize(rng, cfg.recipes_max_tokens.max(32), 0.6, 1.8, 64, 800);
+        cfg.recipes_max_tokens =
+            scale_usize(rng, cfg.recipes_max_tokens.max(32), 0.6, 1.8, 64, 800);
     }
     if rng.chance(0.30) {
         cfg.recipes_min_similarity = jitter_f32(rng, cfg.recipes_min_similarity, 0.15, 0.0, 1.0);
@@ -2526,7 +3283,6 @@ fn mutate_strategy(base: &StrategyConfig, rng: &mut Rng64) -> StrategyConfig {
 }
 
 // HNSW building and hybrid retrieval utilities live in ce-store::query.
-
 
 fn cmd_bootstrap(
     repo: &str,
@@ -2553,7 +3309,15 @@ fn cmd_bootstrap(
     let hnsw_dir = ce_dir.join("hnsw");
 
     if !skip_index {
-        cmd_index(repo, db_path.to_string_lossy().as_ref(), hnsw_dir.to_string_lossy().as_ref(), full, prune, skip_edges, max_files)?;
+        cmd_index(
+            repo,
+            db_path.to_string_lossy().as_ref(),
+            hnsw_dir.to_string_lossy().as_ref(),
+            full,
+            prune,
+            skip_edges,
+            max_files,
+        )?;
     }
 
     let db = Db::open(db_path.to_string_lossy().as_ref())?;

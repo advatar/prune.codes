@@ -36,8 +36,8 @@ pub struct Span {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fragment {
-    pub id: FragId,              // content-addressed hash
-    pub ast_hash: String,        // structural hash (optional)
+    pub id: FragId,       // content-addressed hash
+    pub ast_hash: String, // structural hash (optional)
     pub file: PathBuf,
     pub kind: FragKind,
     pub symbol: Option<String>,
@@ -61,6 +61,47 @@ pub enum FragmentView {
     /// A compact excerpt of the body (line slice / grep slice).
     Slice,
     Summary,
+}
+
+/// Language-independent policy applied by every AST language adapter when a
+/// fragment body is compacted. Language packs decide how syntax nodes map to
+/// these concepts; selection behavior remains identical across languages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BodyIncludePolicy {
+    None,
+    ReferencedOnly,
+    TopKRelevant,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AstSlicePolicy {
+    pub body_policy: BodyIncludePolicy,
+    pub include_doc_comments: bool,
+    pub include_public_api: bool,
+    pub include_type_declarations: bool,
+    pub include_call_sites: bool,
+    pub include_relevant_branches: bool,
+    pub top_k_blocks: usize,
+    pub max_nodes: usize,
+    pub max_depth: usize,
+}
+
+impl Default for AstSlicePolicy {
+    fn default() -> Self {
+        Self {
+            body_policy: BodyIncludePolicy::ReferencedOnly,
+            include_doc_comments: true,
+            include_public_api: true,
+            include_type_declarations: true,
+            include_call_sites: true,
+            include_relevant_branches: true,
+            top_k_blocks: 8,
+            max_nodes: 64,
+            max_depth: 10,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,13 +200,33 @@ pub struct DeferredItem {
     pub reason: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnresolvedSymbol {
     pub symbol: String,
     #[serde(default)]
     pub candidates: Vec<DeferredItem>,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MissingLinksSummary {
+    /// True when the packer returned the strongest connected component because
+    /// all requested evidence could not be connected under the active budget.
+    pub degraded: bool,
+    pub selected_component_size: usize,
+    pub omitted_component_count: usize,
+    #[serde(default)]
+    pub omitted_fragment_ids: Vec<String>,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrategySelection {
+    pub task_class: String,
+    pub repository_archetype: String,
+    pub confidence: f32,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -211,9 +272,15 @@ pub struct ContextPack {
     pub metrics: PackMetrics,
     #[serde(default)]
     pub recipe_excerpt: Option<String>,
+    #[serde(default)]
+    pub repository_memory_excerpt: Option<String>,
+    #[serde(default)]
+    pub missing_links: MissingLinksSummary,
+    #[serde(default)]
+    pub strategy_selection: Option<StrategySelection>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StrategyConfig {
     /// How many lexical hits to retrieve (FTS)
@@ -361,6 +428,10 @@ pub struct StrategyConfig {
     /// Minimum Jaccard similarity required to include recipes.
     pub recipes_min_similarity: f32,
 
+    pub repository_memory_enabled: bool,
+    pub repository_memory_max_tokens: usize,
+    pub repository_memory_min_similarity: f32,
+
     /// Cap the candidate pool before loading fragment content and packing.
     pub candidate_pool_limit: usize,
 
@@ -429,6 +500,11 @@ pub struct StrategyConfig {
     /// When multiple are enabled, the system tries: signals → symbols → ast → skeleton → query_grep,
     /// selecting the first slice that saves enough tokens.
     pub body_snippet_mode: String,
+
+    /// Uniform AST slicing contract used by Rust, TypeScript/TSX, and
+    /// Swift/SwiftUI adapters. The legacy snippet fields remain as rendering
+    /// limits and for backwards-compatible strategy files.
+    pub ast_slice_policy: AstSlicePolicy,
 
     /// Context lines to include around a matched/signal line when producing a slice.
     pub body_snippet_context_lines: usize,
@@ -574,6 +650,9 @@ impl Default for StrategyConfig {
             recipes_enabled: false,
             recipes_max_tokens: 256,
             recipes_min_similarity: 0.35,
+            repository_memory_enabled: true,
+            repository_memory_max_tokens: 384,
+            repository_memory_min_similarity: 0.20,
             candidate_pool_limit: 250,
             include_api_summaries: false,
             api_summary_max: 24,
@@ -586,6 +665,7 @@ impl Default for StrategyConfig {
             budget_tokens: None,
             tokenizer: "o200k_base".to_string(),
             body_snippet_mode: "signals_or_query_grep".to_string(),
+            ast_slice_policy: AstSlicePolicy::default(),
             body_snippet_context_lines: 4,
             body_snippet_max_lines: 160,
             body_snippet_min_savings_tokens: 64,
@@ -606,7 +686,7 @@ impl Default for StrategyConfig {
             mmr_top_n: 80,
             per_file_cap_signatures: 8,
             per_file_cap_bodies: 1,
-            subgraph_enabled: false,
+            subgraph_enabled: true,
             beam_width: 6,
             max_hops: 3,
             connectivity_penalty: 0.25,

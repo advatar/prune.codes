@@ -14,6 +14,10 @@ description: Use the Context Engine MCP tools to retrieve minimal, relevant code
 
 2) Use the returned pack as the only code context unless more is needed.
 
+The pack reports its automatic strategy selection and any `missing_links`. Treat missing links as explicit evidence gaps and fetch the listed deferred fragments when required.
+
+Relevant repository decisions and golden paths are included automatically. Use `memory.add` when a durable architectural decision or verified golden path should guide future work.
+
 ## If more detail is needed
 Prefer:
 - `fragment.get(view="slice")` for a deferred fragment

@@ -48,7 +48,14 @@ fn upsert_and_query_fragments() -> Result<()> {
     let (_dir, db) = temp_db()?;
     let file_id = db.upsert_file("src/foo.rs", "rust", 24, 123, "hash-foo")?;
 
-    let frag = sample_fragment("src/foo.rs", "frag-foo", Some("Foo"), "helper widget", 0, vec![]);
+    let frag = sample_fragment(
+        "src/foo.rs",
+        "frag-foo",
+        Some("Foo"),
+        "helper widget",
+        0,
+        vec![],
+    );
     let rowid = db.upsert_fragment(file_id, &frag)?;
 
     let got = db.get_fragment_by_id(&frag.id)?.expect("expected fragment");
@@ -72,7 +79,14 @@ fn symbols_and_refs_roundtrip() -> Result<()> {
     let (_dir, db) = temp_db()?;
 
     let def_file_id = db.upsert_file("src/foo.rs", "rust", 40, 456, "hash-def")?;
-    let def_frag = sample_fragment("src/foo.rs", "frag-def", Some("Widget"), "widget struct", 0, vec![]);
+    let def_frag = sample_fragment(
+        "src/foo.rs",
+        "frag-def",
+        Some("Widget"),
+        "widget struct",
+        0,
+        vec![],
+    );
     let def_rowid = db.upsert_fragment(def_file_id, &def_frag)?;
     db.replace_symbols_for_fragment(def_rowid, &def_frag)?;
 
@@ -96,7 +110,9 @@ fn symbols_and_refs_roundtrip() -> Result<()> {
 
     let _ = db.rebuild_ref_edges_all(5, 5)?;
     let edges = db.edges_outgoing(ref_rowid, 10)?;
-    assert!(edges.iter().any(|(to, edge_type, _)| *to == def_rowid && edge_type == "refers"));
+    assert!(edges
+        .iter()
+        .any(|(to, edge_type, _)| *to == def_rowid && edge_type == "refers"));
 
     let mut stmt = db
         .conn()
@@ -168,5 +184,30 @@ fn graph_report_summarizes_edges_and_hubs() -> Result<()> {
     assert!(markdown.contains("Service (src/service.rs)"));
     assert!(markdown.contains("## Suggested Questions"));
 
+    Ok(())
+}
+
+#[test]
+fn repository_memory_persists_and_retrieves_decisions_and_golden_paths() -> Result<()> {
+    let (_dir, db) = temp_db()?;
+    db.add_repository_memory(
+        "decision",
+        "Use actor isolation",
+        "All UI state stays on MainActor",
+        "actor isolation ui state mainactor",
+        Some("src/App.swift"),
+        Some("concurrency"),
+    )?;
+    db.add_repository_memory(
+        "golden_path",
+        "Authentication flow",
+        "Route login through AuthService",
+        "authentication login authservice",
+        Some("src/AuthService.swift"),
+        None,
+    )?;
+    assert_eq!(db.list_repository_memory(None, 10, 0)?.len(), 2);
+    let hits = db.search_repository_memory("Fix login in src/AuthService.swift", 0.1, 5)?;
+    assert_eq!(hits[0].1.kind, "golden_path");
     Ok(())
 }

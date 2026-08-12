@@ -1,6 +1,8 @@
 
 # Prioritized vNext roadmap for Prune (AST slicing + subgraph selection + eval-driven evolution)
 
+> Implementation status (2026-08): the roadmap below is implemented in the canonical `prune/` engine. Uniform AST policies cover Rust, TypeScript/TSX, and Swift/SwiftUI; connected prize-collecting selection is on by default with missing-link degradation reports; evolution uses crossover and Pareto fronts; Stage B orchestrates checkout through official harness evaluation; automatic profiles and repository decision/golden-path memory are available through CLI and MCP.
+
 This is a practical “do it in order” plan that maximizes impact per unit effort.
 
 ## Phase 1 — AST slicing that actually reduces tokens without losing meaning

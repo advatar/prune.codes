@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ce_core::model::{FragKind, Fragment, Span, StrategyConfig};
+use ce_core::slicing::{select_ast_nodes, AstNodeRole, AstNodeSpan, AstSlice, AstSliceRequest};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -7,6 +8,115 @@ use tree_sitter::{Node, Parser, Tree};
 
 pub struct RustAdapter {
     parser: Parser,
+}
+
+/// Apply the shared AST slicing policy using Rust grammar nodes.
+pub fn policy_ast_slice(request: AstSliceRequest<'_>) -> Result<Option<AstSlice>> {
+    let mut parser = Parser::new();
+    parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
+    let Some(tree) = parser.parse(request.source, None) else {
+        return Ok(None);
+    };
+    let nodes = collect_policy_nodes(
+        tree.root_node(),
+        request.source.as_bytes(),
+        0,
+        rust_node_role,
+    );
+    Ok(select_ast_nodes(&request, &nodes))
+}
+
+fn rust_node_role(kind: &str) -> Option<AstNodeRole> {
+    if kind.contains("comment") {
+        return Some(AstNodeRole::Documentation);
+    }
+    if matches!(
+        kind,
+        "struct_item" | "enum_item" | "trait_item" | "type_item"
+    ) {
+        return Some(AstNodeRole::TypeDeclaration);
+    }
+    if matches!(
+        kind,
+        "function_item" | "impl_item" | "mod_item" | "const_item" | "static_item"
+    ) {
+        return Some(AstNodeRole::Declaration);
+    }
+    if kind == "call_expression" || kind == "macro_invocation" {
+        return Some(AstNodeRole::CallSite);
+    }
+    if matches!(
+        kind,
+        "if_expression"
+            | "match_expression"
+            | "match_arm"
+            | "while_expression"
+            | "for_expression"
+            | "loop_expression"
+    ) {
+        return Some(AstNodeRole::Branch);
+    }
+    if matches!(kind, "block" | "expression_statement" | "let_declaration") {
+        return Some(AstNodeRole::Body);
+    }
+    None
+}
+
+fn collect_policy_nodes(
+    node: Node<'_>,
+    bytes: &[u8],
+    depth: usize,
+    classify: fn(&str) -> Option<AstNodeRole>,
+) -> Vec<AstNodeSpan> {
+    let mut out = Vec::new();
+    if let Some(role) = classify(node.kind()) {
+        let end_line = if matches!(
+            role,
+            AstNodeRole::Declaration | AstNodeRole::TypeDeclaration
+        ) {
+            node.start_position().row
+        } else {
+            node.end_position().row
+        };
+        out.push(AstNodeSpan {
+            start_line: node.start_position().row,
+            end_line,
+            depth,
+            role,
+            relevance_text: node.utf8_text(bytes).unwrap_or_default().to_string(),
+        });
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        out.extend(collect_policy_nodes(child, bytes, depth + 1, classify));
+    }
+    out
+}
+
+#[cfg(test)]
+mod policy_slice_tests {
+    use super::*;
+    use ce_core::model::AstSlicePolicy;
+
+    #[test]
+    fn shared_policy_keeps_rust_signature_and_referenced_branch() {
+        let source =
+            "fn run() {\n    if needle() {\n        selected();\n    }\n    ignored();\n}\n";
+        let focus = vec!["needle".to_string()];
+        let policy = AstSlicePolicy::default();
+        let slice = policy_ast_slice(AstSliceRequest {
+            source,
+            fragment_start_line: 0,
+            target_lines: &[],
+            focus_symbols: &focus,
+            policy: &policy,
+        })
+        .unwrap()
+        .unwrap();
+        assert!(slice.text.contains("fn run"));
+        assert!(slice.text.contains("if needle"));
+        assert!(!slice.text.contains("ignored"));
+    }
 }
 
 /// Collect some file-level identifier references from `use`/`pub use` and
@@ -77,7 +187,8 @@ fn parse_use_like_line(line: &str, out: &mut HashSet<String>) {
     s = rest.trim();
 
     // Remove common roots.
-    while let Some(rest) = s.strip_prefix("crate::")
+    while let Some(rest) = s
+        .strip_prefix("crate::")
         .or_else(|| s.strip_prefix("self::"))
         .or_else(|| s.strip_prefix("super::"))
     {
@@ -105,8 +216,18 @@ fn parse_use_like_line(line: &str, out: &mut HashSet<String>) {
             }
 
             if let Some((lhs, rhs)) = part.split_once(" as ") {
-                let lhs_last = lhs.trim().split("::").filter(|t| !t.is_empty()).last().unwrap_or("");
-                let rhs_last = rhs.trim().split("::").filter(|t| !t.is_empty()).last().unwrap_or("");
+                let lhs_last = lhs
+                    .trim()
+                    .split("::")
+                    .filter(|t| !t.is_empty())
+                    .last()
+                    .unwrap_or("");
+                let rhs_last = rhs
+                    .trim()
+                    .split("::")
+                    .filter(|t| !t.is_empty())
+                    .last()
+                    .unwrap_or("");
                 if !lhs_last.is_empty() && lhs_last != "*" {
                     out.insert(lhs_last.to_string());
                 }
@@ -131,8 +252,18 @@ fn parse_use_like_line(line: &str, out: &mut HashSet<String>) {
 
     // Non-grouped import.
     if let Some((lhs, rhs)) = s.split_once(" as ") {
-        let lhs_last = lhs.trim().split("::").filter(|t| !t.is_empty()).last().unwrap_or("");
-        let rhs_last = rhs.trim().split("::").filter(|t| !t.is_empty()).last().unwrap_or("");
+        let lhs_last = lhs
+            .trim()
+            .split("::")
+            .filter(|t| !t.is_empty())
+            .last()
+            .unwrap_or("");
+        let rhs_last = rhs
+            .trim()
+            .split("::")
+            .filter(|t| !t.is_empty())
+            .last()
+            .unwrap_or("");
         if !lhs_last.is_empty() && lhs_last != "*" {
             out.insert(lhs_last.to_string());
         }
@@ -198,7 +329,9 @@ impl RustAdapter {
         if let Some(f) = self.fragment_from_node(path, bytes, node, None, None) {
             // If it's an impl, also extract methods inside
             if f.kind == FragKind::Impl {
-                let impl_type = self.impl_target_type(bytes, node).unwrap_or_else(|| "impl".to_string());
+                let impl_type = self
+                    .impl_target_type(bytes, node)
+                    .unwrap_or_else(|| "impl".to_string());
                 out.push(f.clone());
 
                 // Methods inside impl are usually function_item nodes under declaration_list
@@ -216,13 +349,26 @@ impl RustAdapter {
         None
     }
 
-    fn collect_impl_methods(&self, path: &Path, bytes: &[u8], node: Node, impl_type: &str, out: &mut Vec<Fragment>) {
+    fn collect_impl_methods(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        node: Node,
+        impl_type: &str,
+        out: &mut Vec<Fragment>,
+    ) {
         // Walk impl subtree and extract function_item nodes nested within.
         let mut cursor = node.walk();
         if node.kind() == "function_item" {
             // Heuristic: only treat direct declaration_list children as impl methods.
             if node.parent().map(|p| p.kind()) == Some("declaration_list") {
-                if let Some(f) = self.fragment_from_node(path, bytes, node, Some(FragKind::Method), Some(impl_type)) {
+                if let Some(f) = self.fragment_from_node(
+                    path,
+                    bytes,
+                    node,
+                    Some(FragKind::Method),
+                    Some(impl_type),
+                ) {
                     out.push(f);
                 }
             }
@@ -282,7 +428,9 @@ impl RustAdapter {
             end_col: node.end_position().column as u32,
         };
 
-        let body = self.slice_utf8(bytes, span.start_byte, span.end_byte).to_string();
+        let body = self
+            .slice_utf8(bytes, span.start_byte, span.end_byte)
+            .to_string();
 
         // Preamble lines (doc + attributes) immediately above the node.
         // We include these in the signature to preserve important context like `#[test]`.
@@ -312,7 +460,11 @@ impl RustAdapter {
             path.display(),
             kind,
             symbol.clone().unwrap_or_default(),
-            if doc.is_empty() { preamble.clone() } else { doc.clone() },
+            if doc.is_empty() {
+                preamble.clone()
+            } else {
+                doc.clone()
+            },
             signature
         );
 
@@ -438,11 +590,20 @@ fn collect_identifiers(bytes: &[u8], node: Node) -> Vec<String> {
     v
 }
 
-fn collect_identifiers_rec(bytes: &[u8], node: Node, cursor: &mut tree_sitter::TreeCursor, out: &mut HashSet<String>) {
+fn collect_identifiers_rec(
+    bytes: &[u8],
+    node: Node,
+    cursor: &mut tree_sitter::TreeCursor,
+    out: &mut HashSet<String>,
+) {
     let kind = node.kind();
     if matches!(
         kind,
-        "identifier" | "type_identifier" | "scoped_identifier" | "scoped_type_identifier" | "field_identifier"
+        "identifier"
+            | "type_identifier"
+            | "scoped_identifier"
+            | "scoped_type_identifier"
+            | "field_identifier"
     ) {
         if let Ok(t) = node.utf8_text(bytes) {
             let t = t.trim();
@@ -535,7 +696,9 @@ pub fn ast_prune_slice(
     }
 
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).ok()?;
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .ok()?;
     let tree = parser.parse(body, None)?;
     let root = tree.root_node();
     let bytes = body.as_bytes();
@@ -570,7 +733,16 @@ pub fn ast_prune_slice(
     if !focus.is_empty() {
         let mut added = 0usize;
         let mut cursor = root.walk();
-        collect_token_windows(bytes, &focus, root, &mut cursor, &mut wins, ctx_lines, lines.len(), &mut added);
+        collect_token_windows(
+            bytes,
+            &focus,
+            root,
+            &mut cursor,
+            &mut wins,
+            ctx_lines,
+            lines.len(),
+            &mut added,
+        );
     }
 
     if wins.is_empty() {
@@ -608,7 +780,11 @@ pub fn ast_prune_slice(
             s.push_str(&" ".repeat(indent_size));
             return s;
         }
-        if inext.len() > ip.len() { inext } else { ip }
+        if inext.len() > ip.len() {
+            inext
+        } else {
+            ip
+        }
     };
 
     for w in merged {
@@ -651,7 +827,6 @@ pub fn ast_prune_slice(
     }
 }
 
-
 /// Produce a compact "skeleton" slice of `body` by keeping only structural lines.
 ///
 /// Compared to `ast_prune_slice`, this is intentionally *more aggressive*:
@@ -684,12 +859,19 @@ pub fn ast_skeleton_slice(
 
     // Only worth doing on larger bodies or for kinds where skeletonization is especially useful.
     let big_enough = lines.len() >= cfg.ast_skeleton_large_literal_line_threshold.max(12);
-    if !big_enough && !matches!(frag_kind, FragKind::Impl | FragKind::Const | FragKind::Static) {
+    if !big_enough
+        && !matches!(
+            frag_kind,
+            FragKind::Impl | FragKind::Const | FragKind::Static
+        )
+    {
         return None;
     }
 
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::LANGUAGE.into()).ok()?;
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .ok()?;
     let tree = parser.parse(body, None)?;
     let root = tree.root_node();
     let bytes = body.as_bytes();
@@ -772,7 +954,12 @@ pub fn ast_skeleton_slice(
         let mut n = 0usize;
         let mut cursor = root.walk();
         for ch in root.named_children(&mut cursor) {
-            collect_impl_method_skeleton_lines_rec(ch, &mut add_line, cfg.ast_skeleton_impl_method_limit, &mut n);
+            collect_impl_method_skeleton_lines_rec(
+                ch,
+                &mut add_line,
+                cfg.ast_skeleton_impl_method_limit,
+                &mut n,
+            );
             if n >= cfg.ast_skeleton_impl_method_limit {
                 break;
             }
@@ -796,7 +983,9 @@ pub fn ast_skeleton_slice(
     picks.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
     // Keep some slack for `...` lines inserted between groups.
-    let keep_n = (max_lines.saturating_mul(2)).max(max_lines).min(picks.len());
+    let keep_n = (max_lines.saturating_mul(2))
+        .max(max_lines)
+        .min(picks.len());
     picks.truncate(keep_n);
 
     let mut idxs: Vec<usize> = picks.into_iter().map(|(i, _)| i).collect();
@@ -844,7 +1033,11 @@ fn render_line_set(
             s.push_str(&" ".repeat(indent_size));
             return s;
         }
-        if inext.len() > ip.len() { inext } else { ip }
+        if inext.len() > ip.len() {
+            inext
+        } else {
+            ip
+        }
     };
 
     let closing_suffix = |line: &str| -> Option<String> {
@@ -887,7 +1080,11 @@ fn render_line_set(
         }
 
         let i = idxs[pos];
-        let next = if pos + 1 < idxs.len() { Some(idxs[pos + 1]) } else { None };
+        let next = if pos + 1 < idxs.len() {
+            Some(idxs[pos + 1])
+        } else {
+            None
+        };
 
         // Block-aware collapsing: if we have `{` ... `}` with a large omitted region, compress to `{ ... }`.
         if collapse_enabled {
@@ -983,7 +1180,14 @@ fn collect_skeleton_token_picks(
     }
 
     let kind = node.kind();
-    if matches!(kind, "identifier" | "type_identifier" | "field_identifier" | "scoped_identifier" | "scoped_type_identifier") {
+    if matches!(
+        kind,
+        "identifier"
+            | "type_identifier"
+            | "field_identifier"
+            | "scoped_identifier"
+            | "scoped_type_identifier"
+    ) {
         if let Ok(t) = node.utf8_text(bytes) {
             let key = t.trim().to_ascii_lowercase();
             if !key.is_empty() && focus.contains(&key) {
@@ -1021,7 +1225,8 @@ fn collect_impl_method_skeleton_lines_rec(
     if *n >= limit {
         return;
     }
-    if node.kind() == "function_item" && node.parent().map(|p| p.kind()) == Some("declaration_list") {
+    if node.kind() == "function_item" && node.parent().map(|p| p.kind()) == Some("declaration_list")
+    {
         let start = node.start_position().row as usize;
         add_line(start, 150);
         *n += 1;
@@ -1144,10 +1349,12 @@ fn collect_control_flow_skeleton_lines(
     }
 }
 
-
 fn statement_for_line<'a>(root: &Node<'a>, line0: usize) -> Option<Node<'a>> {
     use tree_sitter::Point;
-    let p = Point { row: line0, column: 0 };
+    let p = Point {
+        row: line0,
+        column: 0,
+    };
     let n = root.named_descendant_for_point_range(p, p)?;
     Some(statement_container(n))
 }
@@ -1178,11 +1385,20 @@ fn node_line_span(n: &Node, max_lines: usize) -> (usize, usize) {
     (s, e)
 }
 
-fn push_windows_for_match(wins: &mut Vec<Win>, stmt: &Node, match_line: usize, ctx: usize, max_lines: usize) {
+fn push_windows_for_match(
+    wins: &mut Vec<Win>,
+    stmt: &Node,
+    match_line: usize,
+    ctx: usize,
+    max_lines: usize,
+) {
     let (s, e) = node_line_span(stmt, max_lines);
     // Header window: statement start + 1 line (helps for `if`/`match` headers).
     let header_end = (s.saturating_add(1)).min(e);
-    wins.push(Win { start: s, end: header_end });
+    wins.push(Win {
+        start: s,
+        end: header_end,
+    });
 
     // Focus window around the match line, clamped to the statement span.
     let m = match_line.min(e).max(s);
@@ -1207,7 +1423,14 @@ fn collect_token_windows(
     }
 
     let kind = node.kind();
-    if matches!(kind, "identifier" | "type_identifier" | "field_identifier" | "scoped_identifier" | "scoped_type_identifier") {
+    if matches!(
+        kind,
+        "identifier"
+            | "type_identifier"
+            | "field_identifier"
+            | "scoped_identifier"
+            | "scoped_type_identifier"
+    ) {
         if let Ok(t) = node.utf8_text(bytes) {
             let tl = t.trim();
             if !tl.is_empty() {

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ce_core::model::{FragKind, Fragment, Span};
+use ce_core::slicing::{select_ast_nodes, AstNodeRole, AstNodeSpan, AstSlice, AstSliceRequest};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,121 @@ pub enum TsMode {
 pub struct TsReactAdapter {
     parser: Parser,
     mode: TsMode,
+}
+
+pub fn policy_ast_slice(request: AstSliceRequest<'_>, tsx: bool) -> Result<Option<AstSlice>> {
+    let mut parser = Parser::new();
+    let language = if tsx {
+        tree_sitter_typescript::LANGUAGE_TSX
+    } else {
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT
+    };
+    parser.set_language(&language.into())?;
+    let Some(tree) = parser.parse(request.source, None) else {
+        return Ok(None);
+    };
+    let nodes = collect_policy_nodes(tree.root_node(), request.source.as_bytes(), 0);
+    Ok(select_ast_nodes(&request, &nodes))
+}
+
+fn ts_node_role(kind: &str) -> Option<AstNodeRole> {
+    if kind.contains("comment") {
+        return Some(AstNodeRole::Documentation);
+    }
+    if matches!(
+        kind,
+        "interface_declaration"
+            | "type_alias_declaration"
+            | "enum_declaration"
+            | "class_declaration"
+    ) {
+        return Some(AstNodeRole::TypeDeclaration);
+    }
+    if matches!(
+        kind,
+        "function_declaration" | "method_definition" | "lexical_declaration" | "export_statement"
+    ) {
+        return Some(AstNodeRole::Declaration);
+    }
+    if matches!(
+        kind,
+        "call_expression" | "new_expression" | "jsx_element" | "jsx_self_closing_element"
+    ) {
+        return Some(AstNodeRole::CallSite);
+    }
+    if matches!(
+        kind,
+        "if_statement"
+            | "switch_statement"
+            | "switch_case"
+            | "for_statement"
+            | "for_in_statement"
+            | "while_statement"
+            | "ternary_expression"
+    ) {
+        return Some(AstNodeRole::Branch);
+    }
+    if matches!(
+        kind,
+        "statement_block" | "expression_statement" | "return_statement"
+    ) {
+        return Some(AstNodeRole::Body);
+    }
+    None
+}
+
+fn collect_policy_nodes(node: Node<'_>, bytes: &[u8], depth: usize) -> Vec<AstNodeSpan> {
+    let mut out = Vec::new();
+    if let Some(role) = ts_node_role(node.kind()) {
+        let end_line = if matches!(
+            role,
+            AstNodeRole::Declaration | AstNodeRole::TypeDeclaration
+        ) {
+            node.start_position().row
+        } else {
+            node.end_position().row
+        };
+        out.push(AstNodeSpan {
+            start_line: node.start_position().row,
+            end_line,
+            depth,
+            role,
+            relevance_text: node.utf8_text(bytes).unwrap_or_default().to_string(),
+        });
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        out.extend(collect_policy_nodes(child, bytes, depth + 1));
+    }
+    out
+}
+
+#[cfg(test)]
+mod policy_slice_tests {
+    use super::*;
+    use ce_core::model::AstSlicePolicy;
+
+    #[test]
+    fn shared_policy_keeps_tsx_signature_and_referenced_branch() {
+        let source = "export function View() {\n  if (needle) {\n    return <Selected />;\n  }\n  return <Ignored />;\n}\n";
+        let focus = vec!["needle".to_string()];
+        let policy = AstSlicePolicy::default();
+        let slice = policy_ast_slice(
+            AstSliceRequest {
+                source,
+                fragment_start_line: 0,
+                target_lines: &[],
+                focus_symbols: &focus,
+                policy: &policy,
+            },
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(slice.text.contains("export function"));
+        assert!(slice.text.contains("if (needle)"));
+        assert!(!slice.text.contains("Ignored"));
+    }
 }
 
 /// Collect file-level refs (imports/exports) from TS/TSX source.
@@ -63,8 +179,11 @@ pub fn collect_file_level_refs(source: &str) -> Vec<String> {
             continue;
         }
 
-        let is_import = line.starts_with("import ") || line.starts_with("import\t") || line.starts_with("import{");
-        let is_export_from = (line.starts_with("export ") || line.starts_with("export\t")) && line.contains(" from ");
+        let is_import = line.starts_with("import ")
+            || line.starts_with("import\t")
+            || line.starts_with("import{");
+        let is_export_from = (line.starts_with("export ") || line.starts_with("export\t"))
+            && line.contains(" from ");
         let is_require = line.contains("require(");
 
         if is_import || is_export_from {
@@ -201,8 +320,14 @@ fn extract_imported_identifiers(line: &str, out: &mut HashSet<String>) {
                     if let Some((a, b)) = p.split_once(" as ") {
                         let a = a.trim();
                         let b = b.trim();
-                        let a = a.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
-                        let b = b.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
+                        let a = a
+                            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                            .next()
+                            .unwrap_or("");
+                        let b = b
+                            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                            .next()
+                            .unwrap_or("");
                         if !a.is_empty() {
                             out.insert(a.to_string());
                         }
@@ -210,7 +335,10 @@ fn extract_imported_identifiers(line: &str, out: &mut HashSet<String>) {
                             out.insert(b.to_string());
                         }
                     } else {
-                        let a = p.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).next().unwrap_or("");
+                        let a = p
+                            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                            .next()
+                            .unwrap_or("");
                         if !a.is_empty() {
                             out.insert(a.to_string());
                         }
@@ -228,7 +356,9 @@ fn extract_imported_identifiers(line: &str, out: &mut HashSet<String>) {
             .next()
             .unwrap_or("")
             .trim();
-        if !tok.is_empty() && (tok.chars().next().unwrap_or('_').is_ascii_alphabetic() || tok.starts_with('_')) {
+        if !tok.is_empty()
+            && (tok.chars().next().unwrap_or('_').is_ascii_alphabetic() || tok.starts_with('_'))
+        {
             // avoid capturing `type` etc
             if tok != "type" {
                 out.insert(tok.to_string());
@@ -304,7 +434,13 @@ impl TsReactAdapter {
         out
     }
 
-    fn extract_from_top_level_node(&self, path: &Path, bytes: &[u8], node: Node, out: &mut Vec<Fragment>) {
+    fn extract_from_top_level_node(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        node: Node,
+        out: &mut Vec<Fragment>,
+    ) {
         let k = node.kind();
 
         // Handle `export ...` wrappers.
@@ -379,7 +515,13 @@ impl TsReactAdapter {
         }
     }
 
-    fn extract_from_variable_statement(&self, path: &Path, bytes: &[u8], node: Node, out: &mut Vec<Fragment>) {
+    fn extract_from_variable_statement(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        node: Node,
+        out: &mut Vec<Fragment>,
+    ) {
         // Find all variable_declarator nodes.
         let mut cursor = node.walk();
         for ch in node.named_children(&mut cursor) {
@@ -387,7 +529,13 @@ impl TsReactAdapter {
         }
     }
 
-    fn collect_var_declarators(&self, path: &Path, bytes: &[u8], node: Node, out: &mut Vec<Fragment>) {
+    fn collect_var_declarators(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        node: Node,
+        out: &mut Vec<Fragment>,
+    ) {
         let k = node.kind();
         if k == "variable_declarator" {
             let name = node
@@ -422,12 +570,23 @@ impl TsReactAdapter {
         }
     }
 
-    fn collect_class_methods(&self, path: &Path, bytes: &[u8], class_node: Node, class_name: &str, out: &mut Vec<Fragment>) {
+    fn collect_class_methods(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        class_node: Node,
+        class_name: &str,
+        out: &mut Vec<Fragment>,
+    ) {
         // class body can be found via field `body`.
-        let Some(body) = class_node.child_by_field_name("body") else { return; };
+        let Some(body) = class_node.child_by_field_name("body") else {
+            return;
+        };
         let mut cursor = body.walk();
         for ch in body.named_children(&mut cursor) {
-            self.collect_class_methods_rec(path, bytes, ch, class_name, /*inside_fn*/ false, out);
+            self.collect_class_methods_rec(
+                path, bytes, ch, class_name, /*inside_fn*/ false, out,
+            );
         }
     }
 
@@ -442,7 +601,10 @@ impl TsReactAdapter {
     ) {
         let k = node.kind();
 
-        let entering_fn = matches!(k, "function" | "arrow_function" | "function_declaration" | "method_definition");
+        let entering_fn = matches!(
+            k,
+            "function" | "arrow_function" | "function_declaration" | "method_definition"
+        );
         let now_inside = inside_fn || entering_fn;
 
         if !inside_fn {
@@ -474,7 +636,15 @@ fn is_large_body_container(kind: &str) -> bool {
     // Avoid diving into heavy body containers when doing top-level extraction.
     matches!(
         kind,
-        "statement_block" | "statement_block" | "object" | "object_pattern" | "array" | "array_pattern" | "template_string" | "jsx_element" | "jsx_fragment"
+        "statement_block"
+            | "statement_block"
+            | "object"
+            | "object_pattern"
+            | "array"
+            | "array_pattern"
+            | "template_string"
+            | "jsx_element"
+            | "jsx_fragment"
     )
 }
 
@@ -482,7 +652,13 @@ fn is_large_body_container(kind: &str) -> bool {
 // Fragment construction
 // -----------------------------------------------------------------------------
 
-fn build_fragment(path: &Path, bytes: &[u8], node: Node, kind: FragKind, symbol: Option<String>) -> Option<Fragment> {
+fn build_fragment(
+    path: &Path,
+    bytes: &[u8],
+    node: Node,
+    kind: FragKind,
+    symbol: Option<String>,
+) -> Option<Fragment> {
     let span = Span {
         start_byte: node.start_byte(),
         end_byte: node.end_byte(),
@@ -507,7 +683,10 @@ fn build_fragment(path: &Path, bytes: &[u8], node: Node, kind: FragKind, symbol:
         .lines()
         .filter(|l| {
             let t = l.trim_start();
-            t.starts_with("/**") || t.starts_with('*') || t.starts_with("///") || t.starts_with("//")
+            t.starts_with("/**")
+                || t.starts_with('*')
+                || t.starts_with("///")
+                || t.starts_with("//")
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -532,7 +711,11 @@ fn build_fragment(path: &Path, bytes: &[u8], node: Node, kind: FragKind, symbol:
         path.display(),
         kind,
         symbol.clone().unwrap_or_default(),
-        if doc.is_empty() { preamble.clone() } else { doc.clone() },
+        if doc.is_empty() {
+            preamble.clone()
+        } else {
+            doc.clone()
+        },
         signature
     );
 
@@ -630,7 +813,9 @@ fn classify_ts_decl(bytes: &[u8], node: Node, path: &Path) -> Option<(FragKind, 
         "interface_declaration" => Some((FragKind::Trait, ts_decl_name(bytes, node))),
         "type_alias_declaration" => Some((FragKind::TypeAlias, ts_decl_name(bytes, node))),
         "enum_declaration" => Some((FragKind::Enum, ts_decl_name(bytes, node))),
-        "namespace_declaration" | "internal_module" | "module_declaration" => Some((FragKind::Mod, ts_decl_name(bytes, node))),
+        "namespace_declaration" | "internal_module" | "module_declaration" => {
+            Some((FragKind::Mod, ts_decl_name(bytes, node)))
+        }
         "export_default_declaration" => {
             // Default exports often omit a name (`export default () => ...`).
             // Use the file stem as a fallback symbol.
@@ -642,7 +827,9 @@ fn classify_ts_decl(bytes: &[u8], node: Node, path: &Path) -> Option<(FragKind, 
 }
 
 fn file_stem_symbol(path: &Path) -> Option<String> {
-    path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
 }
 
 fn ts_decl_name(bytes: &[u8], node: Node) -> Option<String> {

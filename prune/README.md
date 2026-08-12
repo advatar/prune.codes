@@ -247,6 +247,8 @@ The MCP server (`ce-mcp`) currently exposes tools:
 - `fragment.get`
 - `strategy.list`
 - `strategy.get`
+- `memory.add`
+- `memory.list`
 
 ---
 
@@ -284,8 +286,7 @@ During indexing we also rebuild a lightweight `edges` table:
 Edges have a heuristic `weight` (not just 1.0) that biases toward likely resolutions
 (same file / same directory / kind match) to reduce ambiguity for common names.
 
-At pack time, the retrieval layer can do **multi-hop BFS** over these edges to fetch a small repo subgraph around high-scoring seeds
-(with strict caps to prevent explosion).
+At pack time, the budget-aware prize-collecting subgraph solver uses weighted connections to retain the strongest connected evidence set. It is enabled by default. When every relevant component cannot fit, packs include a structured `missing_links` summary rather than silently returning disconnected fragments.
 
 ### Token budgeting
 
@@ -301,10 +302,9 @@ Current behavior:
 If the tokenizer spec can't be resolved, the packer falls back to a conservative heuristic and
 adds a note in the produced pack.
 
-### Body compaction (Slices)
+### Uniform policy-driven AST slicing
 
-For many tasks, full function bodies are overkill. This repo supports **body compaction** during
-packing via a third view type: `Slice`.
+Rust, TypeScript/TSX, and Swift/SwiftUI implement the same `AstSlicePolicy`: public declarations, docs and types are structural evidence; bodies follow `none`, `referenced_only`, or `top_k_relevant`; call sites and branches are selected from symbol/error-span relevance. The older string modes remain compatibility fallbacks.
 
 When a candidate is selected for a “body upgrade”, the engine can swap the signature for:
 
@@ -393,10 +393,9 @@ Run:
   --out ./eval/results.jsonl
 ```
 
-### Simple strategy evolution (no LLM)
+### Population strategy evolution (no LLM)
 
-`ce strategy evolve` mutates the strategy config and keeps the best per generation (a small, local, DGM-ish hillclimber).
-Each generation's best is stored back into the `strategies` table with its score.
+`ce strategy evolve` uses mutation plus deterministic crossover. Each generation keeps and stores its Pareto front across resolved rate, tokens, latency, redundancy, and missing-definition risk.
 
 ```bash
 ./target/release/ce strategy evolve --db .ce/index.sqlite \
@@ -406,14 +405,31 @@ Each generation's best is stored back into the `strategies` table with its score
   --name-prefix "evolved"
 ```
 
+### SWE-bench Stage B
+
+The Stage-B runner performs dataset loading, base-commit checkout, indexing, context packing, an optional patch-agent command, predictions JSONL generation, and official SWE-bench harness evaluation:
+
+```bash
+ce tasks run-swe-bench --input ./swebench.jsonl \
+  --workspace .ce/stage-b-work --out .ce/stage-b-results \
+  --agent-command 'my-agent --context "$PRUNE_CONTEXT_PATH" --patch "$PRUNE_PATCH_PATH"'
+```
+
+Use `--dry-run` to validate the complete command plan. The default harness command invokes `python -m swebench.harness.run_evaluation`; override `--harness-command` when the installed harness requires additional dataset/split arguments.
+
+### Automatic profiles and repository memory
+
+When no explicit strategy is supplied, CLI and MCP classify the task as bugfix, feature, refactor, or integration and combine it with the indexed repository archetype. Every pack records the selection, confidence, and fallback reason.
+
+Store durable context with `ce memory add --kind decision ...` or `--kind golden_path ...`. Relevant records are retrieved and included in subsequent packs. MCP clients can use `memory.add` and `memory.list`.
+
 ---
 
 ## Next steps
 
 - Improve edges (imports/calls/defs) via deeper AST traversal.
 - Add LSP-powered edges (rust-analyzer) for higher precision.
-- Improve DGM-style evolution loop over `StrategyConfig` (current: random mutation hillclimber).
-- Add Python/TS adapters.
+- Add additional language packs beyond Rust, TypeScript/TSX, and Swift/SwiftUI.
 
 ---
 

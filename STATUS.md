@@ -1,11 +1,17 @@
 # Status
 
 ## Current Task
+- Complete the remaining vNext roadmap gaps: uniform policy-driven AST slicing, prize-collecting connected-subgraph selection with explicit degradation summaries, crossover/Pareto strategy evolution, end-to-end SWE-bench Stage B orchestration, automatic strategy selection, repository decision/golden-path memory, and comprehensive tests/docs.
 - Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- Completed the eight vNext implementation gaps tracked in issue #29: shared policy-driven AST slicing across Rust/TSX/Swift, default weighted prize-collecting connected-subgraph packing with structured missing-link degradation, mutation+crossover population evolution, five-objective Pareto selection, Stage-B SWE-bench orchestration through official harness invocation, explainable automatic task/repository strategy selection, and persistent decision/golden-path memory exposed through CLI/MCP and pack retrieval.
+- Added unit/integration coverage for slicing-policy conformance in all three language packs, Pareto dominance and crossover, connected packing and degradation, strategy auto-selection fallback, repository-memory migration/retrieval, MCP memory exposure, and Stage-B dry-run orchestration.
+- Verification for vNext completion: `cargo test` passes across the Rust workspace, `cd prune/A2UIRuntime && swift test` passes, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build` passes. The local Python environment does not have the external `swebench` package installed, so official harness execution is implemented and dry-run tested but was not exercised against a live dataset locally.
+- Created the implementation tracker with detailed requirements, plan, and acceptance criteria: https://github.com/advatar/prune.codes/issues/29.
+- Assessed the attached vNext completion specification against the canonical nested engine. Existing foundations include Rust/TSX/SwiftUI slicing, heuristic connected-subgraph packing, Stage-A evaluation and SWE-bench task import, mutation-only strategy evolution, recipe memory, and fragment provenance; the current implementation does not yet satisfy the eight requested production gaps listed in the new current task.
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
 - Created tracking issue for consolidation and production readiness: https://github.com/advatar/prune.codes/issues/21.
 - Compared tracked engine files: 60 shared paths between `prune/` and `prune.codes/prune/`, 49 byte-identical shared files, 11 drifted shared files, 8 files only in standalone `prune/`, and 35 engine files only in the nested `prune.codes/prune/` copy.

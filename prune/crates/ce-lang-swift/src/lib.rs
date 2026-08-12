@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ce_core::model::{FragKind, Fragment, Span};
+use ce_core::slicing::{select_ast_nodes, AstNodeRole, AstNodeSpan, AstSlice, AstSliceRequest};
 use ce_core::util::{hash_text_hex, normalize_whitespace};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,116 @@ use tree_sitter::{Node, Parser, Tree};
 /// NOTE: SwiftUI is Swift; we do not need a separate grammar.
 pub struct SwiftAdapter {
     parser: Parser,
+}
+
+pub fn policy_ast_slice(request: AstSliceRequest<'_>) -> Result<Option<AstSlice>> {
+    let mut parser = Parser::new();
+    parser.set_language(&tree_sitter_swift::LANGUAGE.into())?;
+    let Some(tree) = parser.parse(request.source, None) else {
+        return Ok(None);
+    };
+    let nodes = collect_policy_nodes(tree.root_node(), request.source.as_bytes(), 0);
+    Ok(select_ast_nodes(&request, &nodes))
+}
+
+fn swift_node_role(kind: &str) -> Option<AstNodeRole> {
+    if kind.contains("comment") {
+        return Some(AstNodeRole::Documentation);
+    }
+    if matches!(
+        kind,
+        "class_declaration"
+            | "struct_declaration"
+            | "enum_declaration"
+            | "protocol_declaration"
+            | "typealias_declaration"
+    ) {
+        return Some(AstNodeRole::TypeDeclaration);
+    }
+    if matches!(
+        kind,
+        "function_declaration"
+            | "property_declaration"
+            | "initializer_declaration"
+            | "extension_declaration"
+    ) {
+        return Some(AstNodeRole::Declaration);
+    }
+    if matches!(
+        kind,
+        "call_expression" | "navigation_expression" | "value_argument"
+    ) {
+        return Some(AstNodeRole::CallSite);
+    }
+    if matches!(
+        kind,
+        "if_statement"
+            | "switch_statement"
+            | "switch_entry"
+            | "for_statement"
+            | "while_statement"
+            | "guard_statement"
+    ) {
+        return Some(AstNodeRole::Branch);
+    }
+    if matches!(
+        kind,
+        "statements" | "control_transfer_statement" | "assignment"
+    ) {
+        return Some(AstNodeRole::Body);
+    }
+    None
+}
+
+fn collect_policy_nodes(node: Node<'_>, bytes: &[u8], depth: usize) -> Vec<AstNodeSpan> {
+    let mut out = Vec::new();
+    if let Some(role) = swift_node_role(node.kind()) {
+        let end_line = if matches!(
+            role,
+            AstNodeRole::Declaration | AstNodeRole::TypeDeclaration
+        ) {
+            node.start_position().row
+        } else {
+            node.end_position().row
+        };
+        out.push(AstNodeSpan {
+            start_line: node.start_position().row,
+            end_line,
+            depth,
+            role,
+            relevance_text: node.utf8_text(bytes).unwrap_or_default().to_string(),
+        });
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        out.extend(collect_policy_nodes(child, bytes, depth + 1));
+    }
+    out
+}
+
+#[cfg(test)]
+mod policy_slice_tests {
+    use super::*;
+    use ce_core::model::AstSlicePolicy;
+
+    #[test]
+    fn shared_policy_keeps_swift_signature_and_referenced_branch() {
+        let source = "func run() {\n    if needle {\n        selected()\n    }\n    ignored()\n}\n";
+        let focus = vec!["needle".to_string()];
+        let policy = AstSlicePolicy::default();
+        let slice = policy_ast_slice(AstSliceRequest {
+            source,
+            fragment_start_line: 0,
+            target_lines: &[],
+            focus_symbols: &focus,
+            policy: &policy,
+        })
+        .unwrap()
+        .unwrap();
+        assert!(slice.text.contains("func run"));
+        assert!(slice.text.contains("if needle"));
+        assert!(!slice.text.contains("ignored"));
+    }
 }
 
 /// Collect file-level refs from `import` lines.
@@ -44,7 +155,9 @@ pub fn collect_file_level_refs(source: &str) -> Vec<String> {
             // normalize: remove attributes like @_exported
             let line = line.replace("@_exported", "");
             let line = line.trim();
-            let Some(idx) = line.find("import") else { continue; };
+            let Some(idx) = line.find("import") else {
+                continue;
+            };
             let rest = line[idx + "import".len()..].trim();
             let name = rest
                 .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
@@ -109,14 +222,23 @@ impl SwiftAdapter {
         out
     }
 
-    fn extract_from_top_level_node(&self, path: &Path, bytes: &[u8], node: Node, out: &mut Vec<Fragment>) {
+    fn extract_from_top_level_node(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        node: Node,
+        out: &mut Vec<Fragment>,
+    ) {
         if let Some((kind, sym)) = classify_swift_decl(bytes, node) {
             // Create a fragment for the declaration itself.
             if let Some(f) = build_fragment(path, bytes, node, kind, sym.clone(), None) {
                 out.push(f.clone());
 
                 // If it's a type-like declaration, extract member methods (including SwiftUI `body`).
-                if matches!(kind, FragKind::Struct | FragKind::Enum | FragKind::Trait | FragKind::Impl) {
+                if matches!(
+                    kind,
+                    FragKind::Struct | FragKind::Enum | FragKind::Trait | FragKind::Impl
+                ) {
                     let type_name = sym.as_deref().unwrap_or("Type");
                     self.collect_member_fragments(path, bytes, node, type_name, out);
                 }
@@ -132,11 +254,20 @@ impl SwiftAdapter {
         }
     }
 
-    fn collect_member_fragments(&self, path: &Path, bytes: &[u8], type_node: Node, type_name: &str, out: &mut Vec<Fragment>) {
+    fn collect_member_fragments(
+        &self,
+        path: &Path,
+        bytes: &[u8],
+        type_node: Node,
+        type_name: &str,
+        out: &mut Vec<Fragment>,
+    ) {
         // Walk descendants; extract methods/properties, but avoid nested function bodies.
         let mut cursor = type_node.walk();
         for ch in type_node.named_children(&mut cursor) {
-            self.collect_member_fragments_rec(path, bytes, ch, type_name, /*inside_fn*/ false, out);
+            self.collect_member_fragments_rec(
+                path, bytes, ch, type_name, /*inside_fn*/ false, out,
+            );
         }
     }
 
@@ -152,17 +283,32 @@ impl SwiftAdapter {
         let k = node.kind();
 
         // Entering a function/closure should suppress member extraction below it.
-        let entering_fn = matches!(k, "function_declaration" | "initializer_declaration" | "deinitializer_declaration" | "closure_expression" | "lambda_literal");
+        let entering_fn = matches!(
+            k,
+            "function_declaration"
+                | "initializer_declaration"
+                | "deinitializer_declaration"
+                | "closure_expression"
+                | "lambda_literal"
+        );
         let now_inside = inside_fn || entering_fn;
 
         if !inside_fn {
             // Method-like nodes
-            if matches!(k, "function_declaration" | "initializer_declaration" | "deinitializer_declaration" | "subscript_declaration") {
+            if matches!(
+                k,
+                "function_declaration"
+                    | "initializer_declaration"
+                    | "deinitializer_declaration"
+                    | "subscript_declaration"
+            ) {
                 let name = swift_member_name(bytes, node)
                     .map(|n| format!("{}::{}", type_name, n))
                     .or_else(|| Some(format!("{}::method", type_name)));
 
-                if let Some(f) = build_fragment(path, bytes, node, FragKind::Method, name, Some(type_name)) {
+                if let Some(f) =
+                    build_fragment(path, bytes, node, FragKind::Method, name, Some(type_name))
+                {
                     out.push(f);
                     // Do not recurse into body; we already captured this member.
                     return;
@@ -173,7 +319,9 @@ impl SwiftAdapter {
             // We treat it as a Method fragment because it behaves like a render function.
             if looks_like_swiftui_body_property(bytes, node) {
                 let name = Some(format!("{}::body", type_name));
-                if let Some(f) = build_fragment(path, bytes, node, FragKind::Method, name, Some(type_name)) {
+                if let Some(f) =
+                    build_fragment(path, bytes, node, FragKind::Method, name, Some(type_name))
+                {
                     out.push(f);
                     return;
                 }
@@ -183,7 +331,9 @@ impl SwiftAdapter {
             if let Some((kind, sym)) = classify_swift_decl(bytes, node) {
                 // Only capture nested type decls if they have a name.
                 if sym.is_some() {
-                    if let Some(f) = build_fragment(path, bytes, node, kind, sym.clone(), Some(type_name)) {
+                    if let Some(f) =
+                        build_fragment(path, bytes, node, kind, sym.clone(), Some(type_name))
+                    {
                         out.push(f);
                     }
                 }
@@ -258,7 +408,11 @@ fn build_fragment(
         path.display(),
         kind,
         symbol.clone().unwrap_or_default(),
-        if doc.is_empty() { preamble.clone() } else { doc.clone() },
+        if doc.is_empty() {
+            preamble.clone()
+        } else {
+            doc.clone()
+        },
         signature
     );
 
@@ -438,7 +592,14 @@ fn looks_like_swiftui_body_property(bytes: &[u8], node: Node) -> bool {
     // - Contains identifier `body`
     // - Contains a code block `{ ... }` (computed property)
     let k = node.kind();
-    let var_like = matches!(k, "variable_declaration" | "property_declaration" | "property_declaration_list" | "pattern_binding" | "pattern_binding_list");
+    let var_like = matches!(
+        k,
+        "variable_declaration"
+            | "property_declaration"
+            | "property_declaration_list"
+            | "pattern_binding"
+            | "pattern_binding_list"
+    );
     if !var_like {
         // Also handle grammars that use a generic `declaration` node.
         if !k.contains("variable") && !k.contains("property") {
@@ -472,7 +633,8 @@ fn looks_like_swiftui_body_property(bytes: &[u8], node: Node) -> bool {
     }
 
     // Fallback: lexical.
-    text.lines().any(|l| l.trim_start().starts_with("var body") || l.trim_start().starts_with("let body"))
+    text.lines()
+        .any(|l| l.trim_start().starts_with("var body") || l.trim_start().starts_with("let body"))
 }
 
 fn looks_like_identifier_kind(kind: &str) -> bool {
@@ -513,7 +675,8 @@ fn collect_swift_identifiers_rec(
             let s = t.trim();
             if !s.is_empty()
                 && s.len() <= 80
-                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
                 && !is_swift_keyword(s)
             {
                 // Normalize dotted names to internal `::` (helps edge tailing / aliasing).
@@ -571,7 +734,15 @@ fn lexical_fallback_fragments(path: &Path, source: &str) -> Vec<Fragment> {
     let mut offset = 0usize;
     for (i, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
-        let decl = ["struct ", "class ", "enum ", "protocol ", "extension ", "actor ", "func "];
+        let decl = [
+            "struct ",
+            "class ",
+            "enum ",
+            "protocol ",
+            "extension ",
+            "actor ",
+            "func ",
+        ];
         let mut found = None;
         for kw in decl {
             if trimmed.starts_with(kw)
@@ -649,7 +820,11 @@ fn lexical_fallback_fragments(path: &Path, source: &str) -> Vec<Fragment> {
                 ast_hash,
                 file: PathBuf::from(path),
                 kind,
-                symbol: if name.is_empty() { None } else { Some(name.to_string()) },
+                symbol: if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                },
                 span,
                 signature,
                 body,

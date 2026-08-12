@@ -97,6 +97,7 @@ fn mcp_initialize_and_pack() -> Result<()> {
     )?;
     let tools = list_resp["result"]["tools"].as_array().expect("tools list");
     assert!(tools.iter().any(|tool| tool["name"] == "context.pack"));
+    assert!(tools.iter().any(|tool| tool["name"] == "memory.add"));
 
     let pack_resp = send_json(
         &mut stdin,
@@ -129,6 +130,17 @@ fn mcp_initialize_and_pack() -> Result<()> {
     let items = pack["items"].as_array().expect("pack items");
     assert!(!items.is_empty());
     assert_eq!(items[0]["path"], "src/foo.rs");
+    assert_eq!(pack["strategy_selection"]["repository_archetype"], "rust");
+
+    let memory_resp = send_json(
+        &mut stdin,
+        &mut stdout,
+        &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory.add","arguments":{"kind":"decision","title":"Widget ownership","content":"Widget belongs in src/foo.rs","path":"src/foo.rs"}}}),
+    )?;
+    assert!(memory_resp["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("memory_id"));
 
     let _ = child.kill();
     let _ = child.wait();

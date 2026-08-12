@@ -6,6 +6,9 @@ commands:
   - name: graph-report
     command: cargo run -p ce-cli -- graph-report --db .ce/index.sqlite --out .ce/GRAPH_REPORT.md
     description: Generate a Markdown graph explainability report from an existing index.
+  - name: swebench-stage-b-dry-run
+    command: cargo run -p ce-cli -- tasks run-swe-bench --input eval/swebench_tasks.jsonl --workspace .ce/stage-b-work --out .ce/stage-b-results --dry-run
+    description: Validate the complete Stage-B checkout/index/pack/agent/harness command plan without executing external commands.
   - name: coverage
     command: ./scripts/codex/coverage.sh
     description: Generate an llvm-cov summary for the workspace (requires cargo-llvm-cov).

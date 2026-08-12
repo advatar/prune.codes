@@ -466,6 +466,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "serde",
+ "serde_json",
  "tiktoken-rs",
 ]
 
@@ -507,6 +508,8 @@ dependencies = [
  "bytemuck",
  "ce-core",
  "ce-lang-rust",
+ "ce-lang-swift",
+ "ce-lang-tsreact",
  "ce-store",
  "clap",
  "rusqlite",
