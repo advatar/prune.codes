@@ -767,6 +767,7 @@ fn build_pack(
             reason,
             signature,
             body: body_text,
+            required_symbols: db.refs_for_fragment(rid, 128).unwrap_or_default(),
             neighbors: Vec::new(),
             body_view,
         });

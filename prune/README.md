@@ -288,6 +288,8 @@ Edges have a heuristic `weight` (not just 1.0) that biases toward likely resolut
 
 At pack time, the budget-aware prize-collecting subgraph solver uses weighted connections to retain the strongest connected evidence set. It is enabled by default. When every relevant component cannot fit, packs include a structured `missing_links` summary rather than silently returning disconnected fragments.
 
+Cross-file support closure is also enabled by default. It follows identifiers extracted by the language adapters, includes matching definitions as signature-only evidence, and reports `unresolved_symbols` with candidate provenance when a definition is unavailable or cannot fit. Strategy evaluation penalizes that missing-definition risk through `unbound_penalty_weight`; set `support_enabled = false` only as an explicit low-budget opt-out.
+
 ### Token budgeting
 
 `budget_tokens` enforces a token budget during packing.

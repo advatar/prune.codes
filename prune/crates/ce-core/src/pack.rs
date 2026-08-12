@@ -479,17 +479,22 @@ pub fn pack_with_strategy(
         let mut covered_tokens: HashSet<String> = HashSet::new();
         for it in &items {
             if let Some(sym) = &it.symbol {
-                covered_tokens.insert(sym.clone());
+                covered_tokens.insert(sym.to_ascii_lowercase());
                 let tail = symbol_tail(sym);
                 if tail != sym {
-                    covered_tokens.insert(tail.to_string());
+                    covered_tokens.insert(tail.to_ascii_lowercase());
                 }
             }
         }
 
         let mut token_counts: HashMap<String, usize> = HashMap::new();
-        for it in &items {
-            for t in extract_ident_tokens(&it.content) {
+        for item in &items {
+            let Some(candidate) = candidates.iter().find(|candidate| candidate.id == item.id)
+            else {
+                continue;
+            };
+            for t in &candidate.required_symbols {
+                let t = t.to_ascii_lowercase();
                 if is_stop_token(&t) {
                     continue;
                 }
@@ -723,6 +728,11 @@ pub struct Candidate {
     /// Most commonly this is the full body, but for context compaction it may
     /// be a slice/excerpt.
     pub body: String,
+
+    /// Indexed identifier references used for cross-file support closure.
+    /// Unlike rendered-content token scanning, these come from language AST
+    /// extraction and therefore avoid treating local variables as missing defs.
+    pub required_symbols: Vec<String>,
 
     /// Neighbor edges for connected-subgraph selection.
     pub neighbors: Vec<CandidateNeighbor>,
@@ -1037,6 +1047,7 @@ mod tests {
             },
             signature: format!("fn {id}();"),
             body: format!("fn {id}() {{}}"),
+            required_symbols: Vec::new(),
             neighbors: neighbors
                 .iter()
                 .map(|(neighbor, weight)| CandidateNeighbor {
@@ -1051,6 +1062,8 @@ mod tests {
     #[test]
     fn connected_subgraph_is_enabled_by_default() {
         assert!(StrategyConfig::default().subgraph_enabled);
+        assert!(StrategyConfig::default().support_enabled);
+        assert!(StrategyConfig::default().unbound_penalty_weight > 0.0);
     }
 
     #[test]
@@ -1088,5 +1101,54 @@ mod tests {
         );
         assert!(pack.items.iter().any(|item| item.id == "seed"));
         assert!(!pack.items.iter().any(|item| item.id == "target"));
+    }
+
+    #[test]
+    fn support_closure_adds_referenced_cross_file_definition() {
+        let mut strategy = StrategyConfig::default();
+        strategy.subgraph_enabled = true;
+        strategy.max_bodies = 0;
+        strategy.budget_tokens = Some(1_000);
+        let mut caller = candidate("caller", 10.0, &[]);
+        caller.required_symbols = vec!["SharedType".to_string()];
+        caller.signature = "fn caller(value: SharedType);".to_string();
+        let mut definition = candidate("definition", 0.1, &[]);
+        definition.symbol = Some("SharedType".to_string());
+        definition.signature = "pub struct SharedType;".to_string();
+
+        let pack = pack_with_strategy(&strategy, vec![caller, definition]);
+        let support = pack
+            .items
+            .iter()
+            .find(|item| item.id == "definition")
+            .expect("support definition");
+        assert!(support.reason.contains("support:sharedtype"));
+        assert_eq!(pack.metrics.support_defs_added, 1);
+        assert!(pack.unresolved_symbols.is_empty());
+    }
+
+    #[test]
+    fn support_closure_reports_definition_blocked_by_budget() {
+        let mut strategy = StrategyConfig::default();
+        strategy.subgraph_enabled = false;
+        strategy.max_bodies = 0;
+        strategy.budget_chars = 190;
+        strategy.budget_tokens = None;
+        let mut caller = candidate("caller", 10.0, &[]);
+        caller.required_symbols = vec!["SharedType".to_string()];
+        caller.signature = "fn caller(value: SharedType);".to_string();
+        let mut definition = candidate("definition", 0.1, &[]);
+        definition.symbol = Some("SharedType".to_string());
+        definition.signature =
+            "pub struct SharedTypeWithEnoughTextToExceedTheRemainingBudget;".to_string();
+
+        let pack = pack_with_strategy(&strategy, vec![caller, definition]);
+        let unresolved = pack
+            .unresolved_symbols
+            .iter()
+            .find(|item| item.symbol == "sharedtype")
+            .expect("unresolved support");
+        assert_eq!(unresolved.reason.as_deref(), Some("budget"));
+        assert!(!unresolved.candidates.is_empty());
     }
 }

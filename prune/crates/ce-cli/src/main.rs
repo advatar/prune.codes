@@ -1887,7 +1887,6 @@ fn eval_strategy(
     };
 
     // Fitness: prioritize retrieval correctness, lightly penalize token usage.
-    let score = (0.6 * path_hr + 0.4 * sym_hr) - (avg_used_tokens / 200_000.0);
     let redundancy_pct = if packed_items == 0 {
         0.0
     } else {
@@ -1898,6 +1897,13 @@ fn eval_strategy(
     } else {
         missing_definitions as f64 / total as f64
     };
+    let score = evolution_fitness(
+        path_hr,
+        sym_hr,
+        avg_used_tokens,
+        missing_definition_risk,
+        strategy.unbound_penalty_weight,
+    );
 
     Ok(EvalSummary {
         total,
@@ -1916,6 +1922,31 @@ fn eval_strategy(
         missing_definition_risk,
         score,
     })
+}
+
+fn evolution_fitness(
+    path_hit_rate: f64,
+    symbol_hit_rate: f64,
+    average_tokens: f64,
+    missing_definition_risk: f64,
+    unbound_penalty_weight: f32,
+) -> f64 {
+    (0.6 * path_hit_rate + 0.4 * symbol_hit_rate)
+        - (average_tokens / 200_000.0)
+        - unbound_penalty_weight as f64 * missing_definition_risk
+}
+
+#[cfg(test)]
+mod evolution_fitness_tests {
+    use super::evolution_fitness;
+
+    #[test]
+    fn unresolved_definition_risk_lowers_fitness() {
+        let resolved = evolution_fitness(1.0, 1.0, 1_000.0, 0.0, 0.15);
+        let unresolved = evolution_fitness(1.0, 1.0, 1_000.0, 2.0, 0.15);
+        assert!(unresolved < resolved);
+        assert!((resolved - unresolved - 0.3).abs() < 1e-6);
+    }
 }
 
 fn cmd_strategy_evolve(
@@ -2305,6 +2336,7 @@ fn build_pack(
             reason,
             signature,
             body: body_text,
+            required_symbols: db.refs_for_fragment(rid, 128).unwrap_or_default(),
             neighbors: Vec::new(),
             body_view,
         });
