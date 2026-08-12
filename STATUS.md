@@ -1,12 +1,14 @@
 # Status
 
 ## Current Task
+- Separate fine-grained retrieval from coherent rendering: add a durable evidence-node graph with typed edges and graph provenance, ingest canonical LPM IR/trace causal labels, and let packing select evidence nodes while rendering their owning declaration slices. Evaluate LPM-derived and source-derived graphs in separate strata; keep strategy evolution scoped to thresholds and budgets.
 - Complete the remaining vNext roadmap gaps: uniform policy-driven AST slicing, prize-collecting connected-subgraph selection with explicit degradation summaries, crossover/Pareto strategy evolution, end-to-end SWE-bench Stage B orchestration, automatic strategy selection, repository decision/golden-path memory, and comprehensive tests/docs.
 - Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- Added the first retrieval/rendering separation vertical slice under issue #30: typed `EvidenceNode`/`EvidenceEdge` graphs with explicit exact-LPM versus approximate-source strata, canonical LPM JSONL ingestion of trace-derived causal truth, and evidence-budgeted selection that deduplicates and renders owning declaration slices while reporting retrieval and rendering IDs separately. Pareto evolution documentation now explicitly limits it to operating-parameter tuning.
 - Fixed the support-closure follow-up: support is enabled by default for every profile/omitted config, closure consumes language-adapter indexed references instead of noisy rendered-content tokens, unresolved-definition risk has a non-zero default and lowers evolution fitness, and tests prove both cross-file definition inclusion and budget-constrained unresolved candidate reporting. Full `cargo test` and the PruneApp macOS build pass.
 - Completed the eight vNext implementation gaps tracked in issue #29: shared policy-driven AST slicing across Rust/TSX/Swift, default weighted prize-collecting connected-subgraph packing with structured missing-link degradation, mutation+crossover population evolution, five-objective Pareto selection, Stage-B SWE-bench orchestration through official harness invocation, explainable automatic task/repository strategy selection, and persistent decision/golden-path memory exposed through CLI/MCP and pack retrieval.
 - Added unit/integration coverage for slicing-policy conformance in all three language packs, Pareto dominance and crossover, connected packing and degradation, strategy auto-selection fallback, repository-memory migration/retrieval, MCP memory exposure, and Stage-B dry-run orchestration.

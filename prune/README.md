@@ -397,7 +397,13 @@ Run:
 
 ### Population strategy evolution (no LLM)
 
-`ce strategy evolve` uses mutation plus deterministic crossover. Each generation keeps and stores its Pareto front across resolved rate, tokens, latency, redundancy, and missing-definition risk.
+`ce strategy evolve` uses mutation plus deterministic crossover to tune operating thresholds, budgets, and heuristic weights. It is not a learned relevance model. Each generation keeps and stores its Pareto front across resolved rate, tokens, latency, redundancy, and missing-definition risk.
+
+### Evidence retrieval versus declaration rendering
+
+`ce-core::evidence` separates fine-grained retrieval units from coherent rendering units. An `EvidenceGraph` contains region nodes (`compute`, `call`, `projection`, branches, expressions, and related kinds), typed dependency edges, and an explicit provenance stratum. Every evidence node names an owning declaration fragment. `pack_evidence_with_strategy` ranks and selects region nodes under the evidence token budget, then renders each selected owner at most once through the existing declaration packer. Its result exposes both `selected_evidence_node_ids` and `rendered_owner_fragment_ids`.
+
+Canonical LPM JSONL ingestion marks graphs as `lpm_exact` and accepts trace-derived `trace_touched` and `causally_required` facts directly; these are structural oracle labels, not execution-accuracy deltas. Source adapters must use the separate `source_approximate` stratum so evaluation cannot silently confound exact IR dependencies with conservative source resolution.
 
 ```bash
 ./target/release/ce strategy evolve --db .ce/index.sqlite \
