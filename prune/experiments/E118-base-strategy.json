@@ -1,0 +1,15 @@
+{
+  "lexical_k": 40,
+  "semantic_k": 40,
+  "hybrid_alpha": 0.5,
+  "graph_seed_k": 20,
+  "edge_radius": 2,
+  "neighbors_k": 4,
+  "refs_per_seed": 8,
+  "candidate_pool_limit": 250,
+  "graph_expand": true,
+  "support_enabled": false,
+  "budget_tokens": 12000,
+  "max_bodies": 2,
+  "body_snippet_mode": "signals_or_query_grep"
+}
