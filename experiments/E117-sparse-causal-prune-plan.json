@@ -1,0 +1,69 @@
+{
+  "schema": "prune.e117-plan.v1",
+  "experiment_id": "E117-sparse-causal-prune",
+  "status": "frozen_before_confirmation_run",
+  "model_calls": 0,
+  "scope": "Real Prune Context Engine packing over a fixed JSONL task set; no LLM patch generation and no SWE-bench test execution.",
+  "question": "Does the E115-style sparse rotating causal sensor improve closed-loop selection of real Prune strategy mutations over an outcome-history-only policy at equal deployment generations?",
+  "substrate": {
+    "engine": "ce pack --format json",
+    "task_format": "Prune eval JSONL with task/prompt plus expect_paths and optional expect_symbols",
+    "strategy_type": "ce_core::model::StrategyConfig",
+    "task_partition": "deterministic hash partition into train/probe/evaluation; probe and evaluation are disjoint",
+    "base_strategy": "caller-supplied JSON/TOML StrategyConfig or Prune defaults",
+    "mutable_genes": [
+      "lexical_k",
+      "semantic_k",
+      "hybrid_alpha",
+      "graph_seed_k",
+      "edge_radius",
+      "neighbors_k",
+      "refs_per_seed",
+      "support_max_defs",
+      "candidate_pool_limit"
+    ]
+  },
+  "utility": {
+    "path_recall_weight": 0.55,
+    "symbol_recall_weight": 0.20,
+    "connectivity_weight": 0.10,
+    "unbound_penalty_weight": 0.10,
+    "token_efficiency_weight": 0.05,
+    "token_efficiency_reference": "budget_tokens if supplied, otherwise max observed pack tokens within the evaluated candidate pool",
+    "note": "Utility is used only for this methodology experiment. Raw component metrics are always reported separately."
+  },
+  "closed_loop": {
+    "generations": 12,
+    "siblings_per_generation": 12,
+    "history_bootstrap_candidates": 24,
+    "raw_policy": "ridge pairwise ranker over [x, delta, x*delta], trained only on train-task outcomes from previously evaluated strategies",
+    "sparse_causal_policy": "same raw ranker; when raw top1-top2 margin is below a calibration threshold, evaluate the raw top-4 siblings on one rotating probe shard and rerank using measured directional response",
+    "probe_rotation": "one of 8 deterministic probe shards per generation",
+    "candidate_schedule_shared": true
+  },
+  "primary_metric": "evaluation-task utility gain of final strategy versus common starting strategy after 12 generations",
+  "secondary_metrics": [
+    "path recall",
+    "symbol recall",
+    "mean pack tokens",
+    "mean unbound symbols",
+    "connectivity score",
+    "probe task-pack evaluations"
+  ],
+  "decision_rule": {
+    "SPARSE_CAUSAL_PRUNE_PROMISING": "causal final evaluation utility >= raw + 0.01 and causal probe pack evaluations <= 0.35 * full-top4-all-probe-shards equivalent",
+    "SPARSE_CAUSAL_PRUNE_WEAK_SIGNAL": "causal final evaluation utility > raw and causal probe pack evaluations <= 0.35 * full-top4-all-probe-shards equivalent",
+    "SPARSE_CAUSAL_PRUNE_NOT_SUPPORTED": "causal final evaluation utility < raw - 0.01",
+    "SPARSE_CAUSAL_PRUNE_INCONCLUSIVE": "otherwise"
+  },
+  "anti_leakage": [
+    "evaluation tasks are never used for candidate selection, ranker fitting, gate calibration or causal probes",
+    "probe tasks are never used as raw-ranker labels",
+    "task partitions are fixed before strategy search",
+    "candidate mutation schedules are identical between raw and causal policies",
+    "the final evaluation compares policies from the same starting StrategyConfig"
+  ],
+  "confirmation_seed": 1172036,
+  "claim_boundary": "A positive result would establish only that sparse causal sensing improves Prune strategy search on the selected task set. It would not establish LLM recursive self-improvement or end-to-end SWE-bench resolution gains.",
+  "next_if_positive": "Run the winning search policy on SWE-bench Multilingual Stage A across Rust and TypeScript repositories, then promote only frozen finalists to Stage B harness evaluation."
+}
