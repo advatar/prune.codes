@@ -1,0 +1,51 @@
+{
+  "schema": "prune.e118-plan.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "status": "frozen_before_dataset_outcomes",
+  "model_calls": 0,
+  "dataset": "SWE-bench/SWE-bench_Multilingual",
+  "split": "test",
+  "dataset_scope": "Rust and TypeScript instances inferred from gold-patch source extensions (.rs, .ts, .tsx); gold patches are used only to derive Stage-A expected paths, never exposed to the search policy.",
+  "prune_scope": "Real ce index + ce pack at each instance's exact repo/base_commit. One index per SWE-bench instance; no shared-index shortcut.",
+  "question": "Does uncertainty-gated sparse causal probing improve closed-loop Prune ContextPolicyArtifact search on exact SWE-bench repository states, with repository-level train/probe/evaluation separation?",
+  "independence": {
+    "split_unit": "repository",
+    "rule": "Repositories are deterministically hash-partitioned before any strategy outcomes are evaluated; no repository appears in more than one of train/probe/evaluation.",
+    "instance_cap_per_repo": 6,
+    "minimum_repositories": 9,
+    "minimum_instances": 30
+  },
+  "search": {
+    "generations": 10,
+    "siblings_per_generation": 12,
+    "bootstrap_mutations": 24,
+    "probe_finalists": 4,
+    "probe_shards": 8,
+    "candidate_schedule_shared_between_raw_and_causal": true,
+    "mutable_genes": ["lexical_k","semantic_k","hybrid_alpha","graph_seed_k","edge_radius","neighbors_k","refs_per_seed","candidate_pool_limit"]
+  },
+  "policies": {
+    "raw": "ridge predictor over normalized parent state, mutation delta, and state×delta interaction",
+    "sparse_causal": "same raw predictor; only when raw top1-top2 margin is below a calibration threshold, evaluate the raw top-4 children on one rotating probe shard and select by measured probe gain"
+  },
+  "stage_a_utility": "0.70*gold_changed_path_recall + 0.10*connectivity + 0.10*token_efficiency - 0.10*unbound_penalty",
+  "anti_leakage": [
+    "gold patch is parsed only into expected changed paths for scoring",
+    "patch content is never passed to ce pack or the mutation policy",
+    "training outcomes fit the raw predictor only on train repositories",
+    "probe outcomes are used only by the sparse causal intervention and never by raw",
+    "evaluation repositories are untouched until both closed-loop trajectories terminate",
+    "each SWE-bench instance is indexed at its exact base_commit"
+  ],
+  "primary_metric": "mean Stage-A utility gain over the common base strategy on held-out evaluation repositories",
+  "secondary_metrics": ["path recall", "token count", "connectivity", "unbound symbols", "probe pack evaluations", "per-repository utility gain"],
+  "decision_rule": {
+    "SWE_BENCH_SPARSE_CAUSAL_PROMISING": "causal_minus_raw >= 0.01 AND causal beats raw on a strict majority of held-out evaluation repositories AND probe_cost_ratio <= 0.35",
+    "SWE_BENCH_SPARSE_CAUSAL_WEAK_SIGNAL": "causal_minus_raw > 0 AND causal beats raw on at least half of held-out repositories AND probe_cost_ratio <= 0.35",
+    "SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED": "causal_minus_raw <= -0.01",
+    "SWE_BENCH_SPARSE_CAUSAL_INCONCLUSIVE": "otherwise"
+  },
+  "claim_boundary": "Stage-A context-selection methodology result only. Even a positive result is not an SWE-bench issue-resolution result, an LLM improvement result, or evidence of RSI.",
+  "next_if_positive": "Run Stage B with a fixed coding agent on frozen raw-vs-causal-selected Prune strategies across fresh held-out SWE-bench repositories.",
+  "next_if_negative": "Do not tune on the held-out evaluation repositories. Revisit the causal sensor or strategy genotype using train/probe repositories only."
+}
