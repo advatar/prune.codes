@@ -1,11 +1,13 @@
 # Status
 
 ## Current Task
+- Execute and independently verify the frozen E118 sparse-causal Prune strategy-search experiment on exact SWE-bench repository states; preserve full provenance/cost evidence and, if promoted, continue prospectively to E119.
 - Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- Started E118 proof execution from fetched source commit `ca58d51b76f3f4fb09fe124d1a043b171791e4c2` in isolated worktree `/Users/johansellstrom/dev/advatar/Prune/prune.codes-e118-proof` on branch `experiment/e118-swebench-sparse-causal-prune-proof`; the primary checkout's unrelated `PruneApp/PruneApp.xcodeproj/project.pbxproj` modification remains untouched.
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
 - Created tracking issue for consolidation and production readiness: https://github.com/advatar/prune.codes/issues/21.
 - Compared tracked engine files: 60 shared paths between `prune/` and `prune.codes/prune/`, 49 byte-identical shared files, 11 drifted shared files, 8 files only in standalone `prune/`, and 35 engine files only in the nested `prune.codes/prune/` copy.
@@ -77,6 +79,8 @@
 - Verification for stale-status cleanup: `git diff --check`, parent stale-file check, stale status grep, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' test -only-testing:PruneAppTests` all pass. Rust warnings remain pre-existing.
 
 ## Next Steps
+- Audit the frozen E118 plan, base strategy, and runner before confirmation; fix only prospective scientific defects and commit any amendment before spending the result.
+- Build the pinned local environment and `ce-cli`, run E118 confirmation, independently verify immutable evidence with corruption tests, publish the bounded scientific report, and follow the frozen promotion branch to E119 or negative/inconclusive diagnostics.
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Integrate ce-lang-tsreact and TS/TSX indexing + ApiSummary refs in CLI.
 - Port tsconfig alias resolution + JSX tag edges into `ce-store`.
