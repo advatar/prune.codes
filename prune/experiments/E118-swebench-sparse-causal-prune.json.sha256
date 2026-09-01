@@ -1,0 +1,7 @@
+{
+  "result_file": "E118-swebench-sparse-causal-prune.json",
+  "result_sha256": "5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+  "schema": "prune.e118-result-receipt.v1",
+  "scope_sha256": "9a58e75d1e642528e73e7c9992653d26a98355854b38fbabced82d330907c1e1",
+  "source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f"
+}
