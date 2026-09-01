@@ -85,6 +85,10 @@ use or rescue the E118 evaluation repositories.
   SHA-256 `92abca7cb527b41a9f66d03a26ce441ff7319e3a49f985998fd56be4bb9b08b2`.
 - Selected-manifest SHA-256:
   `ccfbe787573dd51c688a92945d923f8d95c73e4811a78f35f9a8c6b1710075ce`.
+- Execution environment: arm64 macOS, Python 3.14.7 with the exact
+  `E118-requirements.txt` lock, `rustc 1.98.0`, `cargo 1.98.0`, and release
+  `ce` SHA-256
+  `c75dd2d140d6a89f1f7d3740816c8f3fa57c06f245c413ee3b0f26df3fb07ac7`.
 - Every selected instance has an exact clean `repo + base_commit` checkout and
   a final validated HNSW plus logical SQLite binding. Gold content never enters
   packing, ranking, mutation, probing, or selection.
