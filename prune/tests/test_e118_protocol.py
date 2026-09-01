@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -138,6 +139,67 @@ diff --git a/web/a.tsx b/web/a.tsx
             runner.repository_means(per_instance, manifest),
             {"owner/one": 0.30000000000000004, "owner/two": 0.9},
         )
+
+    def test_semantic_sqlite_binding_excludes_only_pack_refresh_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "index.sqlite"
+            connection = sqlite3.connect(database)
+            connection.executescript("""
+                CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE files (id INTEGER PRIMARY KEY, path TEXT NOT NULL);
+                CREATE TABLE fragments (id INTEGER PRIMARY KEY, file_id INTEGER);
+                CREATE TABLE embeddings (
+                    id INTEGER PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    dim INTEGER NOT NULL,
+                    created_at_ms INTEGER NOT NULL
+                );
+                CREATE TABLE edges (id INTEGER PRIMARY KEY);
+                CREATE TABLE refs (id INTEGER PRIMARY KEY);
+                CREATE TABLE symbols (id INTEGER PRIMARY KEY);
+                CREATE TABLE strategies (id INTEGER PRIMARY KEY);
+                CREATE TABLE recipes (id INTEGER PRIMARY KEY);
+            """)
+            metadata = {
+                "repo.state_hash": "repo-state",
+                "hnsw.repo_state_hash": "repo-state",
+                "embeddings.state_hash": "embedding-state",
+                "hnsw.embeddings_state_hash": "embedding-state",
+                "embeddings.count": "1",
+                "hnsw.nb_points": "1",
+                "embeddings.model": "model",
+                "hnsw.model": "model",
+                "embeddings.dim": "3",
+                "hnsw.dim": "3",
+                "embeddings.max_created_at_ms": "7",
+                "embeddings.updated_at_ms": "10",
+            }
+            connection.executemany(
+                "INSERT INTO meta (key, value) VALUES (?, ?)", metadata.items()
+            )
+            connection.execute("INSERT INTO files (id, path) VALUES (1, 'src/a.rs')")
+            connection.execute(
+                "INSERT INTO embeddings (id, model, dim, created_at_ms) "
+                "VALUES (1, 'model', 3, 7)"
+            )
+            connection.commit()
+            initial, snapshot = runner.database_semantic_binding(database)
+            self.assertEqual(snapshot["integrity_check"], "ok")
+            self.assertTrue(all(snapshot["checks"].values()))
+
+            connection.execute(
+                "UPDATE meta SET value = '11' "
+                "WHERE key = 'embeddings.updated_at_ms'"
+            )
+            connection.commit()
+            timestamp_only, _ = runner.database_semantic_binding(database)
+            self.assertEqual(initial, timestamp_only)
+
+            connection.execute("UPDATE files SET path = 'src/b.rs' WHERE id = 1")
+            connection.commit()
+            content_changed, _ = runner.database_semantic_binding(database)
+            self.assertNotEqual(initial, content_changed)
+            connection.close()
 
     def test_result_write_mode_is_exclusive(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

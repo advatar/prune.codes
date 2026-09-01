@@ -52,6 +52,13 @@ cd prune
 
 The first run is expensive in wall-clock/I/O because exact historical repository states must be fetched and indexed. The `.e118-cache` directory makes subsequent pack evaluations reuse those indexes.
 
+Index reuse is fail-closed on the exact repository remote, checkout HEAD,
+cleanliness, HNSW tree digest, SQLite integrity, and a digest of every logical
+application-table value. `ce pack` refreshes `meta.embeddings.updated_at_ms`, so
+that single volatile timestamp is explicitly excluded from the logical digest;
+the original post-index SQLite byte digest remains recorded. Every binding is
+validated again after the final pack access.
+
 If successful it exclusively creates an immutable result and digest receipt:
 
 `experiments/E118-swebench-sparse-causal-prune.json`

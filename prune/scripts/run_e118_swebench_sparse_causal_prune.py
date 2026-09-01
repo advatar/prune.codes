@@ -15,6 +15,7 @@ import math
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -90,6 +91,128 @@ def tree_digest(path: Path) -> str:
             "sha256": digest_file(item),
         })
     return digest_json(entries)
+
+
+def _hash_sql_value(hasher: Any, value: Any) -> None:
+    if value is None:
+        payload = b""
+        tag = b"N"
+    elif isinstance(value, bytes):
+        payload = value
+        tag = b"B"
+    elif isinstance(value, int):
+        payload = str(value).encode()
+        tag = b"I"
+    elif isinstance(value, float):
+        payload = value.hex().encode()
+        tag = b"F"
+    else:
+        payload = str(value).encode()
+        tag = b"S"
+    hasher.update(tag)
+    hasher.update(len(payload).to_bytes(8, "big"))
+    hasher.update(payload)
+
+
+def database_semantic_binding(path: Path) -> tuple[str, dict[str, Any]]:
+    """Hash logical SQLite content, excluding one documented pack-time timestamp."""
+    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        integrity = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        if integrity != "ok":
+            raise QualificationError(f"SQLite integrity check failed for {path}: {integrity}")
+        application_tables = (
+            "meta", "files", "fragments", "embeddings", "edges", "refs",
+            "symbols", "strategies", "recipes",
+        )
+        available = {
+            str(row[0]) for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        hasher = hashlib.sha256()
+        table_counts: dict[str, int] = {}
+        for table in application_tables:
+            if table not in available:
+                raise QualificationError(f"required SQLite table missing: {table}")
+            schema = str(connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()[0])
+            hasher.update(table.encode() + b"\0" + schema.encode() + b"\n")
+            if table == "meta":
+                query = (
+                    "SELECT key, value FROM meta "
+                    "WHERE key != 'embeddings.updated_at_ms' ORDER BY key"
+                )
+            else:
+                columns = list(connection.execute(f"PRAGMA table_info('{table}')"))
+                names = [str(column[1]) for column in columns]
+                primary = [str(column[1]) for column in sorted(columns, key=lambda c: c[5]) if int(column[5]) > 0]
+                order = ", ".join(f'"{name}"' for name in primary) if primary else "rowid"
+                selection = ", ".join(f'"{name}"' for name in names)
+                query = f'SELECT {selection} FROM "{table}" ORDER BY {order}'
+            count = 0
+            cursor = connection.execute(query)
+            while True:
+                rows = cursor.fetchmany(512)
+                if not rows:
+                    break
+                for row in rows:
+                    hasher.update(b"R")
+                    for value in row:
+                        _hash_sql_value(hasher, value)
+                    count += 1
+            table_counts[table] = count
+        meta = {
+            str(key): str(value)
+            for key, value in connection.execute("SELECT key, value FROM meta")
+        }
+        embedding_row = connection.execute(
+            "SELECT model, dim, COUNT(*), MAX(created_at_ms) FROM embeddings "
+            "GROUP BY model, dim ORDER BY COUNT(*) DESC LIMIT 1"
+        ).fetchone()
+        if embedding_row is None:
+            raise QualificationError(f"no embeddings in {path}")
+        model, dimension, group_count, max_created_at = embedding_row
+        checks = {
+            "repo_state_matches_hnsw": meta.get("repo.state_hash")
+            == meta.get("hnsw.repo_state_hash"),
+            "embedding_state_matches_hnsw": meta.get("embeddings.state_hash")
+            == meta.get("hnsw.embeddings_state_hash"),
+            "embedding_count_matches_rows": int(meta.get("embeddings.count", "-1"))
+            == table_counts["embeddings"],
+            "hnsw_count_matches_rows": int(meta.get("hnsw.nb_points", "-1"))
+            == table_counts["embeddings"],
+            "embedding_model_matches": meta.get("embeddings.model") == str(model)
+            and meta.get("hnsw.model") == str(model),
+            "embedding_dimension_matches": int(meta.get("embeddings.dim", "-1"))
+            == int(dimension)
+            and int(meta.get("hnsw.dim", "-1")) == int(dimension),
+            "embedding_group_count_matches": int(group_count)
+            == table_counts["embeddings"],
+            "embedding_max_timestamp_matches": int(
+                meta.get("embeddings.max_created_at_ms", "-1")
+            ) == int(max_created_at),
+        }
+        if not all(checks.values()):
+            raise QualificationError(f"SQLite/HNSW semantic binding failed for {path}: {checks}")
+        snapshot = {
+            "schema": "prune.e118-sqlite-semantic-binding.v1",
+            "integrity_check": integrity,
+            "included_application_tables": list(application_tables),
+            "table_counts": table_counts,
+            "repo_state_hash": meta["repo.state_hash"],
+            "embedding_state_hash": meta["embeddings.state_hash"],
+            "model": str(model),
+            "dimension": int(dimension),
+            "embedding_count": table_counts["embeddings"],
+            "max_created_at_ms": int(max_created_at),
+            "checks": checks,
+            "excluded_volatile_fields": ["meta.embeddings.updated_at_ms"],
+        }
+        return hasher.hexdigest(), snapshot
+    finally:
+        connection.close()
 
 
 def write_json_atomic(path: Path, value: Any) -> None:
@@ -470,11 +593,31 @@ class Evaluator:
                 )
             if git_output(repo_dir, ["status", "--porcelain"]):
                 raise QualificationError(f"cached checkout is dirty for {instance_id}")
-            if (
-                digest_file(database) != stored.get("database_sha256")
-                or tree_digest(hnsw) != stored.get("hnsw_sha256")
-            ):
-                raise QualificationError(f"cached index digest mismatch for {instance_id}")
+            current_database_sha256 = digest_file(database)
+            current_hnsw_sha256 = tree_digest(hnsw)
+            if current_hnsw_sha256 != stored.get("hnsw_sha256"):
+                raise QualificationError(f"cached HNSW digest mismatch for {instance_id}")
+            semantic_sha256, semantic_snapshot = database_semantic_binding(database)
+            stored_semantic_sha256 = stored.get("database_semantic_sha256")
+            if stored_semantic_sha256 is None:
+                # v1 markers captured SQLite before `ce pack` refreshed only
+                # meta.embeddings.updated_at_ms. Preserve that original byte
+                # digest and add a stable logical binding after full validation.
+                stored["pre_semantic_migration_ready_sha256"] = digest_file(marker)
+                stored["database_current_sha256_at_semantic_migration"] = (
+                    current_database_sha256
+                )
+                stored["database_semantic_sha256"] = semantic_sha256
+                stored["database_semantic_snapshot"] = semantic_snapshot
+                stored["semantic_binding_migrated_at_utc"] = utc_now()
+                write_json_atomic(marker, stored)
+            elif semantic_sha256 != stored_semantic_sha256:
+                raise QualificationError(
+                    f"cached SQLite semantic digest mismatch for {instance_id}"
+                )
+            database_byte_drift = (
+                current_database_sha256 != stored.get("database_sha256")
+            )
             mode = "reused"
             self.index_reuses += 1
             duration = float(stored["index_duration_seconds"])
@@ -542,20 +685,90 @@ class Evaluator:
                 "database_sha256": digest_file(database), "hnsw_sha256": tree_digest(hnsw),
                 "index_duration_seconds": duration, "created_at_utc": utc_now(),
             }
+            semantic_sha256, semantic_snapshot = database_semantic_binding(database)
+            stored["database_semantic_sha256"] = semantic_sha256
+            stored["database_semantic_snapshot"] = semantic_snapshot
             write_json_atomic(marker, stored)
             mode = "created"
             self.index_creations += 1
+            current_database_sha256 = stored["database_sha256"]
+            current_hnsw_sha256 = stored["hnsw_sha256"]
+            database_byte_drift = False
         binding = {
             "instance_id": instance_id, "repo": row["repo"],
             "base_commit": row["base_commit"], "checkout_head": row["base_commit"],
             "remote_url": expected_remote, "cache_key": cache_key,
             "cache_path": str(root.relative_to(self.cache_dir)),
             "ce_sha256": self.ce_sha256, "database_sha256": stored["database_sha256"],
+            "database_current_sha256": current_database_sha256,
+            "database_semantic_sha256": semantic_sha256,
+            "database_semantic_snapshot": semantic_snapshot,
+            "database_byte_drift_after_pack_metadata_refresh": database_byte_drift,
+            "database_byte_drift_reason": (
+                "the included SQLite application content and HNSW tree are unchanged; "
+                "ce pack refreshes the sole excluded logical field, "
+                "meta.embeddings.updated_at_ms"
+                if database_byte_drift else None
+            ),
             "hnsw_sha256": stored["hnsw_sha256"],
             "index_duration_seconds": duration, "execution_mode": mode,
         }
         self.index_bindings[instance_id] = binding
         return binding
+
+    def finalize_index_bindings(self, rows: list[dict[str, Any]]) -> None:
+        """Revalidate every exact-state index after the final pack access."""
+        for row in rows:
+            instance_id = row["instance_id"]
+            binding = self.index_bindings[instance_id]
+            root = self.cache_dir / binding["cache_path"]
+            repo_dir = root / "repo"
+            database = root / "index" / "index.sqlite"
+            hnsw = root / "index" / "hnsw"
+            head = git_output(repo_dir, ["rev-parse", "HEAD"])
+            remote = git_output(repo_dir, ["remote", "get-url", "origin"])
+            if head != row["base_commit"] or remote != binding["remote_url"]:
+                raise QualificationError(
+                    f"final checkout binding mismatch for {instance_id}: {remote}@{head}"
+                )
+            if git_output(repo_dir, ["status", "--porcelain"]):
+                raise QualificationError(f"final cached checkout is dirty for {instance_id}")
+            current_hnsw_sha256 = tree_digest(hnsw)
+            if current_hnsw_sha256 != binding["hnsw_sha256"]:
+                raise QualificationError(
+                    f"final cached HNSW digest mismatch for {instance_id}"
+                )
+            semantic_sha256, semantic_snapshot = database_semantic_binding(database)
+            if semantic_sha256 != binding["database_semantic_sha256"]:
+                raise QualificationError(
+                    f"final cached SQLite semantic digest mismatch for {instance_id}"
+                )
+            current_database_sha256 = digest_file(database)
+            database_byte_drift = (
+                current_database_sha256 != binding["database_sha256"]
+            )
+            binding.update({
+                "checkout_head": head,
+                "database_current_sha256": current_database_sha256,
+                "database_semantic_snapshot": semantic_snapshot,
+                "database_byte_drift_after_pack_metadata_refresh": (
+                    database_byte_drift
+                ),
+                "database_byte_drift_reason": (
+                    "the included SQLite application content and HNSW tree are unchanged; "
+                    "ce pack refreshes the sole excluded logical field, "
+                    "meta.embeddings.updated_at_ms"
+                    if database_byte_drift else None
+                ),
+                "final_validation": {
+                    "checkout_head_matches_base_commit": True,
+                    "checkout_clean": True,
+                    "remote_matches_repository": True,
+                    "hnsw_digest_matches_ready_marker": True,
+                    "sqlite_semantic_digest_matches_ready_marker": True,
+                    "validated_at_utc": utc_now(),
+                },
+            })
 
     def one(
         self, config: dict[str, Any], row: dict[str, Any], *,
@@ -658,6 +871,7 @@ class Evaluator:
             "split": row["_split"], "pack_key": pack_key, "source": source,
             "incremental_pack_required": incremental,
             "pack_task_sha256": row["_problem_statement_sha256"],
+            "database_semantic_sha256": binding["database_semantic_sha256"],
         })
         return dict(record["score"]), pack_key
 
@@ -913,6 +1127,10 @@ def main() -> None:
         "--interruption", type=Path,
         default=Path("experiments/E118-confirmation-interruption-1.json"),
     )
+    parser.add_argument(
+        "--second-interruption", type=Path,
+        default=Path("experiments/E118-confirmation-interruption-2.json"),
+    )
     parser.add_argument("--budget-tokens", type=int, default=12000)
     parser.add_argument(
         "--out", type=Path,
@@ -926,6 +1144,7 @@ def main() -> None:
     plan_path, base_path = args.plan.resolve(), args.base.resolve()
     amendment_path, requirements_path = args.amendment.resolve(), args.requirements.resolve()
     interruption_path = args.interruption.resolve()
+    second_interruption_path = args.second_interruption.resolve()
     ce_path = Path(shutil.which(args.ce) or args.ce).resolve()
     if not ce_path.is_file():
         raise QualificationError(f"ce binary not found: {ce_path}")
@@ -969,6 +1188,7 @@ def main() -> None:
         "protocol_tests": runner_path.parents[1] / "tests" / "test_e118_protocol.py",
         "runbook": runner_path.parents[1] / "experiments" / "E118-RUNBOOK.md",
         "confirmation_interruption": interruption_path,
+        "confirmation_interruption_2": second_interruption_path,
     })
     scope = {
         "experiment_id": "E118-swebench-sparse-causal-prune",
@@ -977,6 +1197,7 @@ def main() -> None:
         "dataset_revision": DATASET_REVISION, "manifest_sha256": manifest_digest,
         "ce_sha256": digest_file(ce_path), "budget_tokens": args.budget_tokens,
         "interruption_sha256": digest_file(interruption_path),
+        "second_interruption_sha256": digest_file(second_interruption_path),
     }
     scope_digest = digest_json(scope)
     failure_ledger = args.cache.resolve() / "failure-ledger.jsonl"
@@ -1010,6 +1231,7 @@ def main() -> None:
     causal_evaluation, causal_per_instance = evaluate_final_arm(
         causal_strategy, evaluator, groups["evaluation"], "causal",
     )
+    evaluator.finalize_index_bindings(selected)
     raw_gain = raw_evaluation["utility"] - base_evaluation["utility"]
     causal_gain = causal_evaluation["utility"] - base_evaluation["utility"]
     delta = causal_gain - raw_gain
@@ -1081,7 +1303,12 @@ def main() -> None:
             )
             duplicate_candidates += len(child_digests) - len(set(child_digests))
     interruption = json.loads(interruption_path.read_text())
-    failures = [interruption, *load_failures(failure_ledger, scope_digest)]
+    second_interruption = json.loads(second_interruption_path.read_text())
+    failures = [
+        interruption,
+        second_interruption,
+        *load_failures(failure_ledger, scope_digest),
+    ]
     cost = {
         "logical_pack_accesses": len(evaluator.access_log),
         "unique_pack_evaluations": len(evaluator.logical_seen),

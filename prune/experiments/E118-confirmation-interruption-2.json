@@ -1,0 +1,45 @@
+{
+  "schema": "prune.e118-confirmation-interruption.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "recorded_at_utc": "2026-09-01T17:30:49Z",
+  "source_commit": "d1afb58e3c63e2ac409fc1bd8a8d85bf7b815ee9",
+  "result_artifact_written": false,
+  "receipt_written": false,
+  "decision_observed": false,
+  "utility_outcomes_inspected": false,
+  "failure_stage": "resume cache validation before the first replayed pack access",
+  "exception_type": "QualificationError",
+  "exception": "cached index digest mismatch for tokio-rs__tokio-6724",
+  "durable_work_at_interruption": {
+    "ready_exact_state_indexes": 56,
+    "unique_pack_records": 829,
+    "failed_git_or_prune_commands": 0
+  },
+  "root_cause": "The v1 READY marker recorded the SQLite byte digest immediately after ce index, but every ce pack opens the index through load_or_build_hnsw and refreshes meta.embeddings.updated_at_ms. That documented metadata-only write changes SQLite bytes while HNSW bytes and all logical index content remain stable.",
+  "mechanical_evidence": {
+    "hnsw_digest_unchanged": true,
+    "checkout_head_matches_base_commit": true,
+    "checkout_clean": true,
+    "remote_matches_repo": true,
+    "sqlite_integrity_check": "ok",
+    "repo_state_matches_hnsw": true,
+    "embedding_state_matches_hnsw": true,
+    "embedding_count_model_dimension_and_max_timestamp_match": true,
+    "ce_source_write_path": "ce pack -> load_or_build_hnsw -> update_embeddings_meta -> set meta.embeddings.updated_at_ms"
+  },
+  "prospective_repair_before_resume": "Preserve the original post-index SQLite byte digest, continue requiring the original HNSW digest, and add a stable logical SQLite digest over every application-table row while excluding only meta.embeddings.updated_at_ms. Require SQLite integrity plus repo/HNSW/embedding state consistency on every reuse and revalidate every exact-state checkout and index after the final pack access.",
+  "scientific_elements_changed": [],
+  "explicitly_unchanged": [
+    "dataset revision and selected manifest",
+    "repository split",
+    "gold-patch handling",
+    "seed and mutation opportunities",
+    "ridge fit and gate calibration",
+    "raw and sparse-causal selection policies",
+    "all cached pack measurements",
+    "Stage-A utility",
+    "probe-cost denominator",
+    "decision thresholds and labels",
+    "claim boundary"
+  ]
+}

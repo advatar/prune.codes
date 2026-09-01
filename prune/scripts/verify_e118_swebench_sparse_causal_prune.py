@@ -285,6 +285,11 @@ def verify_result(
         == scope["interruption_sha256"],
         "interruption evidence digest mismatch",
     )
+    require(
+        provenance["source_files"]["confirmation_interruption_2"]["sha256"]
+        == scope["second_interruption_sha256"],
+        "second interruption evidence digest mismatch",
+    )
 
     dataset = result["dataset"]
     require(dataset["name"] == DATASET, "dataset name mismatch")
@@ -358,7 +363,62 @@ def verify_result(
         }
         require(digest_json(index_identity) == binding["cache_key"], f"index cache key mismatch: {instance_id}")
         require(re.fullmatch(r"[0-9a-f]{64}", binding["database_sha256"]) is not None, "invalid DB digest")
+        require(re.fullmatch(r"[0-9a-f]{64}", binding["database_current_sha256"]) is not None, "invalid current DB digest")
+        require(re.fullmatch(r"[0-9a-f]{64}", binding["database_semantic_sha256"]) is not None, "invalid semantic DB digest")
         require(re.fullmatch(r"[0-9a-f]{64}", binding["hnsw_sha256"]) is not None, "invalid HNSW digest")
+        snapshot = binding["database_semantic_snapshot"]
+        require(
+            snapshot["schema"] == "prune.e118-sqlite-semantic-binding.v1",
+            "SQLite semantic-binding schema mismatch",
+        )
+        require(snapshot["integrity_check"] == "ok", "SQLite integrity binding failed")
+        require(
+            snapshot["included_application_tables"]
+            == [
+                "meta", "files", "fragments", "embeddings", "edges", "refs",
+                "symbols", "strategies", "recipes",
+            ],
+            "SQLite application-table binding mismatch",
+        )
+        require(
+            snapshot["excluded_volatile_fields"]
+            == ["meta.embeddings.updated_at_ms"],
+            "unexpected semantic-digest exclusion",
+        )
+        require(
+            set(snapshot["checks"])
+            == {
+                "repo_state_matches_hnsw",
+                "embedding_state_matches_hnsw",
+                "embedding_count_matches_rows",
+                "hnsw_count_matches_rows",
+                "embedding_model_matches",
+                "embedding_dimension_matches",
+                "embedding_group_count_matches",
+                "embedding_max_timestamp_matches",
+            },
+            "SQLite semantic-check set mismatch",
+        )
+        require(all(snapshot["checks"].values()), "SQLite/HNSW semantic checks failed")
+        if binding["database_byte_drift_after_pack_metadata_refresh"]:
+            require(binding["database_current_sha256"] != binding["database_sha256"], "claimed DB drift is absent")
+            require(binding["database_byte_drift_reason"] is not None, "DB drift reason missing")
+        else:
+            require(binding["database_current_sha256"] == binding["database_sha256"], "unreported DB byte drift")
+            require(binding["database_byte_drift_reason"] is None, "spurious DB drift reason")
+        require(
+            binding["final_validation"]
+            | {"validated_at_utc": None}
+            == {
+                "checkout_head_matches_base_commit": True,
+                "checkout_clean": True,
+                "remote_matches_repository": True,
+                "hnsw_digest_matches_ready_marker": True,
+                "sqlite_semantic_digest_matches_ready_marker": True,
+                "validated_at_utc": None,
+            },
+            "final exact-state index validation failed",
+        )
 
     packs = {record["pack_key"]: record for record in result["pack_records"]}
     require(len(packs) == len(result["pack_records"]), "duplicate pack record")
@@ -392,6 +452,11 @@ def verify_result(
         row = manifest_by_id[event["instance_id"]]
         require(event["split"] == row["split"], f"access split mismatch: {ordinal}")
         require(event["pack_task_sha256"] == row["problem_statement_sha256"], f"access task mismatch: {ordinal}")
+        require(
+            event["database_semantic_sha256"]
+            == bindings[event["instance_id"]]["database_semantic_sha256"],
+            f"access/index semantic binding mismatch: {ordinal}",
+        )
         required = pack_key not in first_seen
         require(event["incremental_pack_required"] is required, f"incremental-cost mismatch: {ordinal}")
         first_seen.add(pack_key)
@@ -611,14 +676,17 @@ def verify_result(
     require(cost["causal_trajectory_predicted_candidates"] == 120, "causal candidate cost mismatch")
     require(cost["invalid_candidates"] == 0, "invalid candidates were hidden")
     require(cost["recorded_failures"] == len(result["failures"]), "failure count mismatch")
+    interruption_commits = {
+        failure.get("source_commit")
+        for failure in result["failures"]
+        if failure.get("schema") == "prune.e118-confirmation-interruption.v1"
+    }
     require(
-        any(
-            failure.get("schema") == "prune.e118-confirmation-interruption.v1"
-            and failure.get("source_commit")
-            == "ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a"
-            for failure in result["failures"]
-        ),
-        "first confirmation interruption is not preserved",
+        {
+            "ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a",
+            "d1afb58e3c63e2ac409fc1bd8a8d85bf7b815ee9",
+        }.issubset(interruption_commits),
+        "confirmation interruptions are not both preserved",
     )
     close(cost["pack_wall_seconds"], sum(float(pack["pack_duration_seconds"]) for pack in packs.values()), "pack wall time")
     close(cost["index_wall_seconds"], sum(float(binding["index_duration_seconds"]) for binding in bindings.values()), "index wall time")

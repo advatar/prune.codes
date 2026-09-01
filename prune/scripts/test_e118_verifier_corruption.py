@@ -28,6 +28,13 @@ def mutate_index_binding(result: dict[str, Any]) -> None:
     result["index_bindings"][0]["checkout_head"] = "f" * 40
 
 
+def mutate_index_semantic_binding(result: dict[str, Any]) -> None:
+    digest = result["index_bindings"][0]["database_semantic_sha256"]
+    result["index_bindings"][0]["database_semantic_sha256"] = (
+        ("0" if digest[0] != "0" else "1") + digest[1:]
+    )
+
+
 def mutate_gold_task_binding(result: dict[str, Any]) -> None:
     row = result["manifest"]["selected_instances"][0]
     row["pack_task_sha256"] = row["gold_patch_sha256"]
@@ -93,6 +100,7 @@ def main() -> None:
     mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("manifest_base_commit", mutate_manifest_base),
         ("index_checkout_head", mutate_index_binding),
+        ("index_semantic_digest", mutate_index_semantic_binding),
         ("gold_task_binding", mutate_gold_task_binding),
         ("candidate_schedule", mutate_candidate_schedule),
         ("pack_utility", mutate_pack_score),
