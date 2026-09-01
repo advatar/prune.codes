@@ -123,6 +123,22 @@ diff --git a/web/a.tsx b/web/a.tsx
             "SWE_BENCH_SPARSE_CAUSAL_INCONCLUSIVE",
         )
 
+    def test_repository_means_groups_by_repo_string(self) -> None:
+        per_instance = {
+            "a": {"score": {"utility": 0.2}},
+            "b": {"score": {"utility": 0.4}},
+            "c": {"score": {"utility": 0.9}},
+        }
+        manifest = {
+            "a": {"repo": "owner/one"},
+            "b": {"repo": "owner/one"},
+            "c": {"repo": "owner/two"},
+        }
+        self.assertEqual(
+            runner.repository_means(per_instance, manifest),
+            {"owner/one": 0.30000000000000004, "owner/two": 0.9},
+        )
+
     def test_result_write_mode_is_exclusive(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "result.json"

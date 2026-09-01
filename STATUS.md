@@ -7,6 +7,7 @@
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- First E118 confirmation attempt at source `ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a` completed all cached strategy measurements but stopped before writing a result because `repository_means` used the manifest dictionary as a dictionary key. Preserved the exact interruption in `E118-confirmation-interruption-1.json`; no decision or utility was inspected. The resume repair changes only that lookup, materializes the one selected-but-untriggered probe index required by the frozen plan, and includes the interruption in final cost/failure evidence.
 - E118 tracking issue: https://github.com/advatar/prune.codes/issues/33.
 - Completed the prospective E118 qualification audit before any Prune pack outcome. The original runner was not scientifically qualified because ready-cache contents and checkout HEAD were not revalidated, the dataset revision was mutable, and the result schema lacked the schedules, bindings, per-instance measurements, provenance, and cost/failure evidence required for independent recomputation.
 - Froze `E118-qualification-amendment-v1.json` without changing the original seed, selector, mutation/search policy, Stage-A utility, probe-cost denominator, thresholds, labels, or claim boundary. Pinned SWE-bench Multilingual revision `846e647b9f33c0b51b739d005d13d85493c9af09`, parquet SHA-256 `92abca7cb527b41a9f66d03a26ce441ff7319e3a49f985998fd56be4bb9b08b2`, and Python dependencies.

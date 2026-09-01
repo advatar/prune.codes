@@ -280,6 +280,11 @@ def verify_result(
         require(digest_bytes(blob) == source_file["sha256"], f"source digest mismatch: {name}")
     require(provenance["source_files"]["plan"]["sha256"] == PLAN_SHA256, "source plan mismatch")
     require(provenance["source_files"]["base_strategy"]["sha256"] == BASE_SHA256, "source base mismatch")
+    require(
+        provenance["source_files"]["confirmation_interruption"]["sha256"]
+        == scope["interruption_sha256"],
+        "interruption evidence digest mismatch",
+    )
 
     dataset = result["dataset"]
     require(dataset["name"] == DATASET, "dataset name mismatch")
@@ -606,6 +611,15 @@ def verify_result(
     require(cost["causal_trajectory_predicted_candidates"] == 120, "causal candidate cost mismatch")
     require(cost["invalid_candidates"] == 0, "invalid candidates were hidden")
     require(cost["recorded_failures"] == len(result["failures"]), "failure count mismatch")
+    require(
+        any(
+            failure.get("schema") == "prune.e118-confirmation-interruption.v1"
+            and failure.get("source_commit")
+            == "ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a"
+            for failure in result["failures"]
+        ),
+        "first confirmation interruption is not preserved",
+    )
     close(cost["pack_wall_seconds"], sum(float(pack["pack_duration_seconds"]) for pack in packs.values()), "pack wall time")
     close(cost["index_wall_seconds"], sum(float(binding["index_duration_seconds"]) for binding in bindings.values()), "index wall time")
     decision = classify(delta, wins, repository_count, probe_ratio)

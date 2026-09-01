@@ -839,7 +839,7 @@ def repository_means(
 ) -> dict[str, float]:
     by_repo: dict[str, list[float]] = defaultdict(list)
     for instance_id, record in per_instance.items():
-        by_repo[manifest_by_id[instance_id]]["repo"].append(
+        by_repo[manifest_by_id[instance_id]["repo"]].append(
             float(record["score"]["utility"])
         )
     return {repo: float(np.mean(values)) for repo, values in sorted(by_repo.items())}
@@ -909,6 +909,10 @@ def main() -> None:
         "--requirements", type=Path,
         default=Path("experiments/E118-requirements.txt"),
     )
+    parser.add_argument(
+        "--interruption", type=Path,
+        default=Path("experiments/E118-confirmation-interruption-1.json"),
+    )
     parser.add_argument("--budget-tokens", type=int, default=12000)
     parser.add_argument(
         "--out", type=Path,
@@ -921,6 +925,7 @@ def main() -> None:
     runner_path = Path(__file__).resolve()
     plan_path, base_path = args.plan.resolve(), args.base.resolve()
     amendment_path, requirements_path = args.amendment.resolve(), args.requirements.resolve()
+    interruption_path = args.interruption.resolve()
     ce_path = Path(shutil.which(args.ce) or args.ce).resolve()
     if not ce_path.is_file():
         raise QualificationError(f"ce binary not found: {ce_path}")
@@ -963,6 +968,7 @@ def main() -> None:
         "corruption_tests": runner_path.with_name("test_e118_verifier_corruption.py"),
         "protocol_tests": runner_path.parents[1] / "tests" / "test_e118_protocol.py",
         "runbook": runner_path.parents[1] / "experiments" / "E118-RUNBOOK.md",
+        "confirmation_interruption": interruption_path,
     })
     scope = {
         "experiment_id": "E118-swebench-sparse-causal-prune",
@@ -970,6 +976,7 @@ def main() -> None:
         "base_sha256": BASE_SHA256, "amendment_sha256": digest_file(amendment_path),
         "dataset_revision": DATASET_REVISION, "manifest_sha256": manifest_digest,
         "ce_sha256": digest_file(ce_path), "budget_tokens": args.budget_tokens,
+        "interruption_sha256": digest_file(interruption_path),
     }
     scope_digest = digest_json(scope)
     failure_ledger = args.cache.resolve() / "failure-ledger.jsonl"
@@ -989,6 +996,10 @@ def main() -> None:
     causal_strategy, causal_trajectory = trajectory(
         "causal", base, evaluator, model, gate, groups["probe"], schedule,
     )
+    # The frozen plan requires an exact-state index for every selected task,
+    # including a probe shard that an uncertainty gate may never activate.
+    for row in [*groups["train"], *groups["probe"]]:
+        evaluator.ensure_index(row)
     trajectory_complete_ordinal = len(evaluator.access_log)
     base_evaluation, base_per_instance = evaluate_final_arm(
         base, evaluator, groups["evaluation"], "base",
@@ -1069,7 +1080,8 @@ def main() -> None:
                 child_digest == parent_digest for child_digest in child_digests
             )
             duplicate_candidates += len(child_digests) - len(set(child_digests))
-    failures = load_failures(failure_ledger, scope_digest)
+    interruption = json.loads(interruption_path.read_text())
+    failures = [interruption, *load_failures(failure_ledger, scope_digest)]
     cost = {
         "logical_pack_accesses": len(evaluator.access_log),
         "unique_pack_evaluations": len(evaluator.logical_seen),

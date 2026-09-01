@@ -1,0 +1,41 @@
+{
+  "schema": "prune.e118-confirmation-interruption.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "recorded_at_utc": "2026-09-01T17:25:08Z",
+  "source_commit": "ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a",
+  "result_artifact_written": false,
+  "receipt_written": false,
+  "decision_observed": false,
+  "utility_outcomes_inspected": false,
+  "failure_stage": "post-evaluation evidence aggregation before result construction",
+  "exception_type": "TypeError",
+  "exception": "cannot use 'dict' as a dict key (unhashable type: 'dict')",
+  "traceback_location": "scripts/run_e118_swebench_sparse_causal_prune.py repository_means",
+  "durable_work_at_interruption": {
+    "ready_exact_state_indexes": 56,
+    "unique_pack_records": 829,
+    "cache_size_observed": "5.4G",
+    "failed_git_or_prune_commands": 0
+  },
+  "root_cause": "repository_means indexed by the selected-instance manifest dictionary instead of its repo string",
+  "prospective_repairs_before_resume": [
+    "Change only the repository_means lookup from manifest_by_id[instance_id] to manifest_by_id[instance_id][repo].",
+    "After both trajectories and before evaluation, materialize and validate any selected train or probe index not demanded by a pack call so every selected task has the exact-state index required by the frozen plan.",
+    "Include this interruption in final failure and cost accounting."
+  ],
+  "scientific_elements_changed": [],
+  "explicitly_unchanged": [
+    "dataset revision and selected manifest",
+    "repository split",
+    "gold-patch handling",
+    "seed and mutation opportunities",
+    "ridge fit and gate calibration",
+    "raw and sparse-causal selection policies",
+    "all cached pack measurements",
+    "Stage-A utility",
+    "probe-cost denominator",
+    "decision thresholds and labels",
+    "claim boundary"
+  ],
+  "resume_rule": "Commit the mechanical repairs before resuming. Reuse the digest-validated immutable index and pack cache. Do not inspect cached score values or modify the scientific protocol."
+}
