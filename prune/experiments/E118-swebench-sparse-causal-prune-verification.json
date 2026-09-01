@@ -1,0 +1,35 @@
+{
+  "schema": "prune.e118-independent-verification.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "result_sha256": "5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+  "source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+  "verifier_command": ".venv-e118/bin/python scripts/verify_e118_swebench_sparse_causal_prune.py --result experiments/E118-swebench-sparse-causal-prune.json --repo-root ..",
+  "verification": {
+    "status": "VERIFIED",
+    "decision": "SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED",
+    "selected_instances": 57,
+    "repositories": 13,
+    "raw_gain": -0.00866087748333344,
+    "causal_gain": -0.0428504144800001,
+    "causal_minus_raw": -0.03418953699666666,
+    "causal_repository_wins": 1,
+    "evaluation_repository_count": 4,
+    "probe_cost_ratio": 0.11,
+    "unique_pack_evaluations": 829
+  },
+  "corruption_command": ".venv-e118/bin/python scripts/test_e118_verifier_corruption.py --result experiments/E118-swebench-sparse-causal-prune.json --repo-root ..",
+  "corruption_tests": {
+    "status": "PASSED",
+    "mutations": 8,
+    "rejected": {
+      "manifest_base_commit": "manifest digest mismatch",
+      "index_checkout_head": "checkout HEAD mismatch",
+      "index_semantic_digest": "access/index semantic binding mismatch",
+      "gold_task_binding": "pack task is not problem statement",
+      "candidate_schedule": "candidate opportunity schedule mismatch",
+      "pack_utility": "pack score mismatch",
+      "aggregate_gain": "raw gain mismatch",
+      "decision_label": "decision-rule classification mismatch"
+    }
+  }
+}

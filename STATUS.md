@@ -1,12 +1,12 @@
 # Status
 
 ## Current Task
-- Execute and independently verify the frozen E118 sparse-causal Prune strategy-search experiment on exact SWE-bench repository states; preserve full provenance/cost evidence and, if promoted, continue prospectively to E119.
 - Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- Completed and independently verified E118. The immutable result SHA-256 is `5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9`; the frozen decision is `SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED` (raw gain -0.0086608775, causal gain -0.0428504145, causal-minus-raw -0.0341895370, 1/4 causal repository wins, probe-cost ratio 0.11). All 57 exact-state index bindings and 829 unique packs verify independently, and eight representative corruptions are rejected. The negative report preserves the four-repository uncertainty, completes zero-call failure-mode analysis, and specifies but does not execute a prospective E118a sensor-transfer diagnostic. E119 was not authorized because the promotion gate failed.
 - The second E118 resume stopped fail-closed before replaying a pack because `ce pack` refreshes `meta.embeddings.updated_at_ms`, changing SQLite bytes despite an unchanged HNSW tree, exact clean checkout, valid SQLite, and matching repository/embedding state. Preserved the interruption in `E118-confirmation-interruption-2.json`. The prospective repair retains the original byte digest, hashes all application-table content while excluding only that timestamp, mechanically checks SQLite/HNSW state, and revalidates all exact-state bindings after the final pack access; no result, decision, or utility was inspected and no scientific policy changed.
 - First E118 confirmation attempt at source `ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a` completed all cached strategy measurements but stopped before writing a result because `repository_means` used the manifest dictionary as a dictionary key. Preserved the exact interruption in `E118-confirmation-interruption-1.json`; no decision or utility was inspected. The resume repair changes only that lookup, materializes the one selected-but-untriggered probe index required by the frozen plan, and includes the interruption in final cost/failure evidence.
 - E118 tracking issue: https://github.com/advatar/prune.codes/issues/33.
@@ -86,8 +86,7 @@
 - Verification for stale-status cleanup: `git diff --check`, parent stale-file check, stale status grep, `cd prune && cargo test`, `cd prune/A2UIRuntime && swift test`, `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' build`, and `xcodebuild -project PruneApp/PruneApp.xcodeproj -scheme PruneApp -configuration Debug -destination 'platform=macOS' test -only-testing:PruneAppTests` all pass. Rust warnings remain pre-existing.
 
 ## Next Steps
-- Audit the frozen E118 plan, base strategy, and runner before confirmation; fix only prospective scientific defects and commit any amendment before spending the result.
-- Build the pinned local environment and `ce-cli`, run E118 confirmation, independently verify immutable evidence with corruption tests, publish the bounded scientific report, and follow the frozen promotion branch to E119 or negative/inconclusive diagnostics.
+- If sparse causal probing is revisited, first freeze the specified E118a train/probe-only sensor-transfer diagnostic on a new experiment branch; do not tune against or reuse the E118 evaluation repositories.
 - Continue release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Integrate ce-lang-tsreact and TS/TSX indexing + ApiSummary refs in CLI.
 - Port tsconfig alias resolution + JSX tag edges into `ce-store`.

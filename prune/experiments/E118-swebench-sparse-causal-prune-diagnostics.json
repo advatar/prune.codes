@@ -1,0 +1,120 @@
+{
+  "schema": "prune.e118-negative-diagnostics.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "post_hoc_scope": "Frozen-evidence analysis only. No search, packing, indexing, threshold change, candidate selection, or new scientific result.",
+  "result_sha256": "5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+  "source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+  "decision": "SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED",
+  "primary": {
+    "raw_gain": -0.00866087748333344,
+    "causal_gain": -0.0428504144800001,
+    "causal_minus_raw": -0.03418953699666666,
+    "causal_repository_wins": 1,
+    "evaluation_repository_count": 4,
+    "probe_cost_ratio": 0.11
+  },
+  "repository_cluster_sensitivity": {
+    "repository_deltas_causal_minus_raw": {
+      "astral-sh/ruff": -0.0039996075277777265,
+      "facebook/docusaurus": -0.12824190799999996,
+      "nushell/nushell": -0.007960454753333346,
+      "preactjs/preact": 0.005304679750000041
+    },
+    "unweighted_repository_mean_delta": -0.03372432263277775,
+    "exact_nonparametric_bootstrap_draws": 256,
+    "bootstrap_mean_delta_quantiles": {
+      "p025": -0.0971813328819444,
+      "p500": -0.03372432263277775,
+      "p975": 0.001988396124166694
+    },
+    "bootstrap_probability_mean_delta_gt_zero": 0.05859375,
+    "leave_one_repository_out_mean_deltas": {
+      "astral-sh/ruff": -0.04363256100111109,
+      "facebook/docusaurus": -0.002218460843703677,
+      "nushell/nushell": -0.042312278592592546,
+      "preactjs/preact": -0.04673399009370368
+    },
+    "all_leave_one_repository_out_deltas_negative": true,
+    "one_sided_sign_probability_at_most_one_win_under_equal_odds": 0.3125,
+    "two_sided_sign_probability": 0.625
+  },
+  "instance_sensitivity": {
+    "wins": 10,
+    "losses": 10,
+    "ties": 0,
+    "largest_negative_instance": "facebook__docusaurus-9897",
+    "largest_negative_delta": -0.7004414993333333,
+    "mean_delta_without_largest_negative_instance": 0.0008763557578947518,
+    "warning": "This deletion is a sensitivity diagnostic, not a revised result or permitted exclusion."
+  },
+  "metric_deltas_causal_minus_raw": {
+    "connectivity": 0.012071296700000067,
+    "path_recall": -0.050000000000000044,
+    "tokens": 47.600000000000364,
+    "unbound": 0.0,
+    "utility": -0.03418953699666666
+  },
+  "probe_diagnostics": {
+    "triggered_generations": [0, 1, 2, 3, 5, 7],
+    "trigger_count": 6,
+    "selected_candidate_raw_ranks": [1, 4, 1, 4, 3, 3],
+    "probe_changed_raw_top_choice_count": 4,
+    "finalist_observations": 24,
+    "pooled_raw_prediction_probe_gain_pearson": 0.1262589304764202,
+    "pairwise_rank_concordant": 11,
+    "pairwise_rank_discordant": 23,
+    "pairwise_rank_tied": 2,
+    "probe_gain_min": -0.015134415000000012,
+    "probe_gain_max": 0.004750000000000032,
+    "probe_gain_median_absolute": 0.0003211933333333028
+  },
+  "stage_a_dynamic_range": {
+    "bootstrap_candidate_gain_min": -0.007448584560919513,
+    "bootstrap_candidate_gain_max": 0.020692514867816036,
+    "bootstrap_candidate_gain_range": 0.02814109942873555,
+    "bootstrap_candidate_gain_standard_deviation": 0.0055331846668332735
+  },
+  "final_strategy_differences": {
+    "candidate_pool_limit": {"raw": 250, "causal": 186},
+    "graph_seed_k": {"raw": 8, "causal": 13},
+    "hybrid_alpha": {"raw": 0.5, "causal": 0.3},
+    "neighbors_k": {"raw": 2, "causal": 0},
+    "semantic_k": {"raw": 56, "causal": 52}
+  },
+  "cost": {
+    "bootstrap_measured_candidates": 24,
+    "causal_trajectory_predicted_candidates": 120,
+    "disk_pack_cache_reuses": 829,
+    "duplicate_sibling_candidates": 28,
+    "gate_calibration_predicted_candidates": 192,
+    "index_bindings": 57,
+    "index_creations_this_process": 1,
+    "index_partial_recoveries": 0,
+    "index_reuses_this_process": 56,
+    "index_wall_seconds": 7982.056668379228,
+    "invalid_candidates": 0,
+    "logical_pack_accesses": 830,
+    "memory_pack_cache_reuses": 1,
+    "naive_probe_pack_evaluations": 400,
+    "no_op_candidates": 3,
+    "pack_executions_this_process": 0,
+    "pack_wall_seconds": 325.33254999190103,
+    "probe_cost_ratio": 0.11,
+    "probe_pack_evaluations": 44,
+    "raw_trajectory_predicted_candidates": 120,
+    "recorded_failures": 2,
+    "successful_process_wall_seconds": 243.74535066698445,
+    "unique_pack_evaluations": 829
+  },
+  "failure_mode_findings": {
+    "raw_predictor_already_sufficient": "Not supported: the raw-selected strategy also lost to the common base on held-out evaluation.",
+    "causal_probes_too_noisy": "Plausible but not identified separately: finalist probe gains were usually small and ranks were unstable across small shards.",
+    "probe_family_or_task_unrepresentative": "Plausible: probe-selected choices transferred poorly to evaluation; the frozen evidence cannot separate representation from noise.",
+    "causal_information_exists_but_gate_is_poor": "Unresolved: the gate triggered in six generations and changed the raw top choice in four, but there is no independent gate comparison.",
+    "strategy_mutations_have_too_little_effect": "Not supported as a sole explanation: measured mutations had nonzero train and evaluation effects, including a large path-recall change.",
+    "stage_a_utility_has_insufficient_dynamic_range": "Mixed: bootstrap mutations span a measurable range, while most sparse probe gains are close to zero.",
+    "repository_heterogeneity_dominates": "Supported for effect magnitude: one Docusaurus instance dominates the instance-weighted loss, although three of four repository means remain negative and every leave-one-repository-out mean is negative.",
+    "probe_cost_exceeds_value": "Supported for E118: 44 incremental probe packs consumed 0.11 of the naive probe budget and produced a worse selected strategy."
+  },
+  "claim_boundary": "Stage-A context-selection methodology result only; no SWE-bench issue-resolution, coding-agent capability, recursive self-improvement, or multi-generation compounding claim."
+}

@@ -83,6 +83,41 @@ cd prune
 
 Do not rerun with changed thresholds or inspect evaluation-repository outcomes and then alter the preregistered design. If the result is negative or inconclusive, preserve it and start a new experiment.
 
+## Frozen confirmation outcome
+
+The committed confirmation artifact has SHA-256
+`5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9`
+and the independently recomputed decision is
+`SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED`.
+
+Reproduce the zero-call post-hoc diagnostics from the immutable result:
+
+```bash
+cd prune
+.venv-e118/bin/python scripts/analyze_e118_negative_result.py \
+  --result experiments/E118-swebench-sparse-causal-prune.json \
+  --repo-root ..
+```
+
+The recorded analysis and scientific interpretation are in:
+
+- `experiments/E118-swebench-sparse-causal-prune-diagnostics.json`
+- `experiments/E118-swebench-sparse-causal-prune-report.md`
+- `experiments/E118a-prospective-sensor-transfer-spec.md`
+
+E118a is a prospective diagnostic specification only. It has not been frozen
+as a new experiment or executed.
+
+## Reproduction from clean checkouts
+
+To verify the committed evidence, check out the final evidence branch, create
+the pinned environment, build `ce`, then run the verifier and corruption test
+commands above. To rerun the scientific confirmation rather than verify the
+committed result, use a separate clean checkout at source commit
+`998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f`, where the exclusive result path is
+absent, and run the confirmation command exactly as shown. Do not delete or
+overwrite the committed result in an evidence checkout.
+
 ## Scientific boundary
 
 A positive E118 result means only that sparse causal probing improved Stage-A Prune context-strategy search on held-out SWE-bench repositories. It does **not** establish SWE-bench issue resolution, improved coding-agent capability, recursive self-improvement, or multi-generation compounding.
