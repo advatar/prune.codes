@@ -12,16 +12,37 @@ From `prune/`:
 
 ```bash
 cargo build --release -p ce-cli
-python3 -m pip install datasets numpy
+python3 -m venv .venv-e118
+.venv-e118/bin/python -m pip install --upgrade pip
+.venv-e118/bin/python -m pip install -r experiments/E118-requirements.txt
 ```
 
 The runner fetches public SWE-bench repositories from GitHub and the official dataset from Hugging Face. No GitHub Actions are used.
+
+## Qualification-only run
+
+This verifies the pinned dataset identity, selection manifest, split counts, plan
+digest, base-strategy digest, and binary availability while making zero Prune
+pack calls:
+
+```bash
+cd prune
+.venv-e118/bin/python scripts/run_e118_swebench_sparse_causal_prune.py \
+  --ce ./target/release/ce \
+  --cache .e118-cache \
+  --base experiments/E118-base-strategy.json \
+  --budget-tokens 12000
+```
+
+The expected frozen manifest digest is
+`ccfbe787573dd51c688a92945d923f8d95c73e4811a78f35f9a8c6b1710075ce`.
+The qualification-only path never evaluates a strategy.
 
 ## Confirmation run
 
 ```bash
 cd prune
-python3 scripts/run_e118_swebench_sparse_causal_prune.py \
+.venv-e118/bin/python scripts/run_e118_swebench_sparse_causal_prune.py \
   --ce ./target/release/ce \
   --cache .e118-cache \
   --base experiments/E118-base-strategy.json \
@@ -31,9 +52,27 @@ python3 scripts/run_e118_swebench_sparse_causal_prune.py \
 
 The first run is expensive in wall-clock/I/O because exact historical repository states must be fetched and indexed. The `.e118-cache` directory makes subsequent pack evaluations reuse those indexes.
 
-If successful it writes exactly one immutable result:
+If successful it exclusively creates an immutable result and digest receipt:
 
 `experiments/E118-swebench-sparse-causal-prune.json`
+
+`experiments/E118-swebench-sparse-causal-prune.json.sha256`
+
+## Independent verification
+
+The verifier reads frozen evidence and Git objects only. It does not rerun search,
+Prune indexing, or Prune packing:
+
+```bash
+cd prune
+.venv-e118/bin/python scripts/verify_e118_swebench_sparse_causal_prune.py \
+  --result experiments/E118-swebench-sparse-causal-prune.json \
+  --repo-root ..
+
+.venv-e118/bin/python scripts/test_e118_verifier_corruption.py \
+  --result experiments/E118-swebench-sparse-causal-prune.json \
+  --repo-root ..
+```
 
 Do not rerun with changed thresholds or inspect evaluation-repository outcomes and then alter the preregistered design. If the result is negative or inconclusive, preserve it and start a new experiment.
 

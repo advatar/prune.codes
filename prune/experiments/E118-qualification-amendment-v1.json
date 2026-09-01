@@ -1,0 +1,50 @@
+{
+  "schema": "prune.e118-qualification-amendment.v1",
+  "experiment_id": "E118-swebench-sparse-causal-prune",
+  "status": "frozen_prospectively_before_any_prune_pack_outcome",
+  "frozen_at_utc": "2026-09-01T13:48:42Z",
+  "parent_plan_sha256": "33ad24edd3245b190d7011389800ef24224349e591eb45893eb956243ca58c18",
+  "base_strategy_sha256": "fb9bc7bb162a6613beb5f56a96810efd819b42bae72bab04c4484221da13f571",
+  "dataset_binding": {
+    "dataset": "SWE-bench/SWE-bench_Multilingual",
+    "revision": "846e647b9f33c0b51b739d005d13d85493c9af09",
+    "split": "test",
+    "parquet_path": "data/test-00000-of-00001.parquet",
+    "parquet_sha256": "92abca7cb527b41a9f66d03a26ce441ff7319e3a49f985998fd56be4bb9b08b2",
+    "rows": 300,
+    "datasets_fingerprint": "b4c5db297e9bca0d"
+  },
+  "qualification_findings": [
+    "The original runner reused READY.json without validating its identity, checkout HEAD, database digest, or HNSW digest.",
+    "The original result omitted selected instance IDs and base commits, index bindings, candidate schedules, per-instance pack evidence, source and input digests, failure accounting, and enough detail for independent recomputation.",
+    "The original runner had no independent evidence verifier or deliberate-corruption rejection tests.",
+    "The original dataset load followed a mutable dataset branch instead of a recorded immutable revision."
+  ],
+  "prospective_repairs": [
+    "Bind each cache identity to instance_id, repo, base_commit, ce binary digest, and budget; verify repository HEAD and index artifact digests before reuse.",
+    "Pin the dataset revision and record its parquet digest, datasets fingerprint, selected manifest, and row-level truth/task digests.",
+    "Precompute and record one mutation-operation schedule shared by raw and sparse-causal trajectories; preserve the original seed and mutation semantics.",
+    "Record all logical and physical pack work, cache hits, index creation or reuse, failures, candidate validity, wall time, trajectories, and transition tuples.",
+    "Write the confirmation artifact and digest receipt exclusively, then independently recompute all frozen decisions from evidence without rerunning search.",
+    "Fail closed on any split overlap, checkout mismatch, cache corruption, input drift, invalid pack output, or existing result artifact."
+  ],
+  "unchanged_frozen_elements": [
+    "dataset scope and gold-path-only Stage-A truth",
+    "repository-level deterministic 50/25/25 split algorithm and per-repository cap",
+    "seed 1182036",
+    "24 bootstrap mutations",
+    "10 generations and 12 mutation opportunities per generation",
+    "raw ridge predictor and median-margin gate calibration",
+    "raw top-4 sparse causal probe policy on rotating shards",
+    "Stage-A utility equation",
+    "probe-cost denominator",
+    "all decision thresholds and labels",
+    "claim boundary"
+  ],
+  "outcome_access_at_freeze": {
+    "prune_index_calls": 0,
+    "prune_pack_calls": 0,
+    "strategy_outcomes_seen": false,
+    "confirmation_artifact_exists": false
+  }
+}

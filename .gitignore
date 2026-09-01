@@ -4,6 +4,8 @@
 target/
 prune/.e118-cache/
 prune/.venv-e118/
+__pycache__/
+*.py[cod]
 **/*.rs.bk
 *.pdb
 **/A2UIRuntime/.build/
