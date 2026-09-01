@@ -2,6 +2,8 @@
 .ce/
 .fastembed_cache/
 target/
+prune/.e118-cache/
+prune/.venv-e118/
 **/*.rs.bk
 *.pdb
 **/A2UIRuntime/.build/
