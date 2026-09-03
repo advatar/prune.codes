@@ -1,0 +1,3890 @@
+{
+  "candidate_generation": "exact E118 mutation_spec/apply_mutation, score-blind",
+  "candidate_generation_seed": 11802037,
+  "candidate_identity_sha256": "5e1d00fc516d081aef1227950bb8d159598b21b4d5187ce8876ce366f40ff7a5",
+  "panels": [
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 218,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0089e5b7224aaee9588b99e5c580611ecbc21210876a094569ac14929126ef6b",
+          "candidate_id": "panel_00_candidate_00",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -32.0
+          },
+          "mutation_id": "sha256:aff4d78fa833e9390df7674b2e912219308f573bcc50739f0fde8bcfa9d3a2f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bda2b7421a7b8368c98b50808fe4d328deff4c588036dc3670e6a9c365354ace",
+          "candidate_id": "panel_00_candidate_01",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.2
+          },
+          "mutation_id": "sha256:b38bfc9097b644a3699798bb147168863adf9b52ce1193b2bdc15e2e037ed7a8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.4,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "426b7f00627d18734e4f37c1b963b81524db4e037a1fcc455a2364f73c13e5d8",
+          "candidate_id": "panel_00_candidate_02",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.1
+          },
+          "mutation_id": "sha256:0946248f4e777bcf16bae93342f935d173123be6f0de85a1627ff18d1802f7fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0e9be77b2862c9625bc9fede29a035d598c9b0768a64ffcca0ba115e81dbd7a4",
+          "candidate_id": "panel_00_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:c9510893a0df560e21d1330b10184ed6743f79327ad29849df7fc09190f19491"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 22,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "45ba691e624aa1920c112794427fddc2794f69c9a55716862f2e3a30902e105c",
+          "candidate_id": "panel_00_candidate_04",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:93c1ff8d1eb1f9ab384eaaa0344819f4964d94f4a0ae5ebb29554451691e8630"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 44,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "123bbdf5e268c6c74d6dddea1795a5f7fd262044c06a360e626103c443dc3aae",
+          "candidate_id": "panel_00_candidate_05",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:98d8099a2d421e4d947eefaa6ff4d2941deb7897744245cc6c9e40a3840adf4c"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 3,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "89a77af03e3222f9dc25f2a4539c976b34eee274b70e9fbd771fe0a5d0f19b11",
+          "candidate_id": "panel_00_candidate_06",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:23a1b8c233229185751ce38f548e40766d2693492c00fd36790536ac7cb1a651"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 10,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "439485775be056da565adada902e7ab9c174f716b9a66799655b450a7af3b338",
+          "candidate_id": "panel_00_candidate_07",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:39b4e1600140957e340d635a9d95191514bc42e177c535ea98c61eb2bea5274f"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 16,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8740e219df70a795162c883a975210e4efdaad7f26ff6d67d4f995cf1a292e72",
+          "candidate_id": "panel_00_candidate_08",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:06b582077d0292565242e10f8e91b1e08214dc16c67092f19d7b9aef83b7a9d4"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 6,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bded85839831b058997ee8c291229417b83c9c9786fa9e6ad9b6bfc9638c60b7",
+          "candidate_id": "panel_00_candidate_09",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9a4d5d56e0f98c4b5ce6024e9a58bafe02333fabc73121005c40861e5a005be9",
+          "candidate_id": "panel_00_candidate_10",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 32,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "5a8bf53e12c8368e36c5940780d17844938519b0a35e35991819f30365c6b23b",
+          "candidate_id": "panel_00_candidate_11",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -8.0
+          },
+          "mutation_id": "sha256:bb01e8df5444f7c5fae76a51d7fe746219376cdab9df8319b46c064258dfa837"
+        }
+      ],
+      "panel_index": 0,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 20,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 4,
+        "refs_per_seed": 8,
+        "semantic_k": 40,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "44de6f363ea84a81ad76bacd1e6b43a118610482b36e54bd53ba2aee021c99df",
+      "parent_id": "panel_00_tokio-rs__tokio_base",
+      "parent_strategy": "base",
+      "repository": "tokio-rs/tokio",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6690"
+      ],
+      "sensor_shard_ordinal": 0,
+      "target_instance_ids": [
+        "tokio-rs__tokio-6724",
+        "tokio-rs__tokio-4867",
+        "tokio-rs__tokio-6551",
+        "tokio-rs__tokio-4898",
+        "tokio-rs__tokio-6838",
+        "tokio-rs__tokio-7139"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 2,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d35c37117fd7231e7c14418b30a227e937cafb19b2d46ea2c94274e25de8aa49",
+          "candidate_id": "panel_01_candidate_00",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.45,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "31a4ba17b0981a73732ff7bfd276bafe1649adf3800e83d694013d9f14666ac2",
+          "candidate_id": "panel_01_candidate_01",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.05
+          },
+          "mutation_id": "sha256:7d3b9279b8fdcea843af6a5895d4b2977ac44e04c06dc79582e31312385680ef"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.4,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "91c30249dc6e92c369cd084e5e9bb6494325655c167f3c84b08bc18320f496f7",
+          "candidate_id": "panel_01_candidate_02",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.1
+          },
+          "mutation_id": "sha256:0946248f4e777bcf16bae93342f935d173123be6f0de85a1627ff18d1802f7fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "870638cd7a6ecde47502645b8bd5cdce604979b30dff8733af7a8fd8ca969cc0",
+          "candidate_id": "panel_01_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:c9510893a0df560e21d1330b10184ed6743f79327ad29849df7fc09190f19491"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_01_candidate_04",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 3,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9c9ba7585f39c8ecadca4e3386e723b862112f7a102c188071515d4f2a621576",
+          "candidate_id": "panel_01_candidate_05",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 7,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c99d4955e2df8fbd1ad4f0ec2ba3fcadf7e85dd502b8493f628f83f0e7da6094",
+          "candidate_id": "panel_01_candidate_06",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:e1aff4b00d92e51ec5c5cbb86003cffd8c846a6a493ace5986136c062d88b131"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_01_candidate_07",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d16efce6c6c9a7b1f7b8c9ca9e7aad09e38ebaadb06d4bc9ddb3f81dad5eb873",
+          "candidate_id": "panel_01_candidate_08",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 1,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "2a983210a5a9f6c368e24540c2268ff3af926ee1f4411c5933a88970b440df8c",
+          "candidate_id": "panel_01_candidate_09",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:23a1b8c233229185751ce38f548e40766d2693492c00fd36790536ac7cb1a651"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 44,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c9e41af15b7a865882cdd8c30a1e38d28ce59b75d9e677ae9c9fb87d81926749",
+          "candidate_id": "panel_01_candidate_10",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:492d1a84fcdac7c09b6670f80419ad43aedc15f501b37c98c9549b8cd1eb8876"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_01_candidate_11",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        }
+      ],
+      "panel_index": 1,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 8,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 2,
+        "refs_per_seed": 4,
+        "semantic_k": 56,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "f0d71799d8574c97a6053535147d8bf61982a427722679f223ef7cd316130847",
+      "parent_id": "panel_01_sharkdp__bat_raw",
+      "parent_strategy": "raw",
+      "repository": "sharkdp/bat",
+      "sensor_instance_ids": [
+        "burntsushi__ripgrep-2576",
+        "axios__axios-5085"
+      ],
+      "sensor_shard_ordinal": 1,
+      "target_instance_ids": [
+        "sharkdp__bat-2835",
+        "sharkdp__bat-3108",
+        "sharkdp__bat-2650",
+        "sharkdp__bat-2201",
+        "sharkdp__bat-1892",
+        "sharkdp__bat-2393"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 202,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c8e950994200c1c6f453fec712773563c1352db778a688e8aacdaf74a2955705",
+          "candidate_id": "panel_02_candidate_00",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": 16.0
+          },
+          "mutation_id": "sha256:c66ec188c09b1d6c267aba8fc1038f942138acbf5a901fe693fbb1971f9878d1"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d05b7b0b6b1f84dfd39c958169b2631c59611f0a43e5092eb7e123644bcfdabc",
+          "candidate_id": "panel_02_candidate_01",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:98d8099a2d421e4d947eefaa6ff4d2941deb7897744245cc6c9e40a3840adf4c"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 36,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "29440e0fa177fb7991f0d71abd27a11dcea288b8f6580217be795611a60a567f",
+          "candidate_id": "panel_02_candidate_02",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:76e246cb455d07fa21dfcd858f191aa48ea6aed72d82c9acac08b75165ed3044"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 17,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "aba359ba2aef404bcdb788758650f4d53c289deb14d6c7de6e0d73541f0907da",
+          "candidate_id": "panel_02_candidate_03",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:1cf65f2eec75862155b38557c7029edc53ecc77c1b3061c9ac8e493e6b4abbf8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0808bff1df8d1f712e0f0b471e5e340bd323da4cc746d23997442c221759fa33",
+          "candidate_id": "panel_02_candidate_04",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 38,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "36543ce7b5aef5f532f225a238a0fa98574d1337c233ae76ec29681f4d3eb061",
+          "candidate_id": "panel_02_candidate_05",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:bda477c9228e7838bf8e611c12f67ecfeb1aa22647f84b3732ee84dff4d85aff"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 32,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "6280233ce7d31fcd2757bd95647b41a221a31273fbbd9bf44e5aaf9649b507e8",
+          "candidate_id": "panel_02_candidate_06",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -8.0
+          },
+          "mutation_id": "sha256:bb01e8df5444f7c5fae76a51d7fe746219376cdab9df8319b46c064258dfa837"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "688efbd0d9211f7bf17f8b0c541d87759dec4afa9f80f87453ddbc42dd1ca247",
+          "candidate_id": "panel_02_candidate_07",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:58ce35182847c56f12382a575b33377ba4b90c1e608908163ac80163e5f1a555"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 1,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "6c4833d100078ce2d97968c3172f2a043b4d0372dc548fab6c955cf603c223c6",
+          "candidate_id": "panel_02_candidate_08",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.19999999999999998,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "5d06737c5347bcba065d57b7d849381d8b016fab419c4ab5d3be7eb6a91c4b1b",
+          "candidate_id": "panel_02_candidate_09",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.1
+          },
+          "mutation_id": "sha256:0946248f4e777bcf16bae93342f935d173123be6f0de85a1627ff18d1802f7fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "381556522687536852defcb1102e90323b7b2661c2f3044fc51d56b7ddb744c4",
+          "candidate_id": "panel_02_candidate_10",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:f585d4a0ea0bbb83886faf2b9dabe7d770545b3610881331832a6212113331bf"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "93bda14289d7c893fa8a86a2b4ea5e1bf0a6af51a705dcea2eb896c8560e421e",
+          "candidate_id": "panel_02_candidate_11",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        }
+      ],
+      "panel_index": 2,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 186,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 13,
+        "hybrid_alpha": 0.3,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 0,
+        "refs_per_seed": 4,
+        "semantic_k": 52,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+      "parent_id": "panel_02_tokio-rs__axum_causal",
+      "parent_strategy": "causal",
+      "repository": "tokio-rs/axum",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6575"
+      ],
+      "sensor_shard_ordinal": 2,
+      "target_instance_ids": [
+        "tokio-rs__axum-2096",
+        "tokio-rs__axum-1934",
+        "tokio-rs__axum-691",
+        "tokio-rs__axum-1119",
+        "tokio-rs__axum-682",
+        "tokio-rs__axum-1730"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 314,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "187c91537ecbcc901d3ef5ae9d4c2d35d87aea9fb16f5055795ebb4f134727d7",
+          "candidate_id": "panel_03_candidate_00",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": 64.0
+          },
+          "mutation_id": "sha256:c9ee79c02b11c202ec760a76d0e390859e15a07d9b1506120434c45c220f1fff"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 234,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "dad6480ca0f1141951828fadb845bb9c24ba5416006ceec59ee9d718188d5761",
+          "candidate_id": "panel_03_candidate_01",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -16.0
+          },
+          "mutation_id": "sha256:978f7da32d55b0074625f2940644a5278f9e0acd441a3c51bb1ccef230d76dcd"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 9,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "81610ee9c810a7125d50664452633706bf9ed4c8d307a3f875cf9af96732102a",
+          "candidate_id": "panel_03_candidate_02",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d8fc570a613d5a46a8923f5babd39b0a3d86fcf94ddf9bd56d6e3df7d5fa4ca7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 42,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "187d834fd9f7c6beb270c34453bb41eaef264bdc57c64ea34d3a7a4e91ffb98f",
+          "candidate_id": "panel_03_candidate_03",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:dd873449582734873bb4bbdf8eced4fb3b276db13b45558dd982006a3ad68ae0"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 12,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "47a09c2c995e874f72f4becf29d86f414ee3ce380769a939c965aaa61e5ceee8",
+          "candidate_id": "panel_03_candidate_04",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:58ce35182847c56f12382a575b33377ba4b90c1e608908163ac80163e5f1a555"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 7,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "eed767dc612e590b82f7f2a26da19011bb933159ebda5ef1e73af169b4d668f9",
+          "candidate_id": "panel_03_candidate_05",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:28f12b8d7b15ab2ccbe99c01ddda82cae8e1e3c548a51f9dc3f87bd938beb0c9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bda2b7421a7b8368c98b50808fe4d328deff4c588036dc3670e6a9c365354ace",
+          "candidate_id": "panel_03_candidate_06",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.2
+          },
+          "mutation_id": "sha256:b38bfc9097b644a3699798bb147168863adf9b52ce1193b2bdc15e2e037ed7a8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 6,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "049bf3c7a360d938f277335021a3bd30d344dad3d8546c25c9d6d8bceab1fc99",
+          "candidate_id": "panel_03_candidate_07",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:2c8c424978c30434ec30cc20068d1945385b84277489c9c0f9d4c45706ce8720"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 9,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "81610ee9c810a7125d50664452633706bf9ed4c8d307a3f875cf9af96732102a",
+          "candidate_id": "panel_03_candidate_08",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d8fc570a613d5a46a8923f5babd39b0a3d86fcf94ddf9bd56d6e3df7d5fa4ca7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bda2b7421a7b8368c98b50808fe4d328deff4c588036dc3670e6a9c365354ace",
+          "candidate_id": "panel_03_candidate_09",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.2
+          },
+          "mutation_id": "sha256:b38bfc9097b644a3699798bb147168863adf9b52ce1193b2bdc15e2e037ed7a8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 218,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0089e5b7224aaee9588b99e5c580611ecbc21210876a094569ac14929126ef6b",
+          "candidate_id": "panel_03_candidate_10",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -32.0
+          },
+          "mutation_id": "sha256:aff4d78fa833e9390df7674b2e912219308f573bcc50739f0fde8bcfa9d3a2f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.45,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "000e53980c3130311d9fe64f447b5c0cd78cb9c0efb2fd39d9e5dcc4d4bdb55a",
+          "candidate_id": "panel_03_candidate_11",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.05
+          },
+          "mutation_id": "sha256:7d3b9279b8fdcea843af6a5895d4b2977ac44e04c06dc79582e31312385680ef"
+        }
+      ],
+      "panel_index": 3,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 20,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 4,
+        "refs_per_seed": 8,
+        "semantic_k": 40,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "44de6f363ea84a81ad76bacd1e6b43a118610482b36e54bd53ba2aee021c99df",
+      "parent_id": "panel_03_vuejs__core_base",
+      "parent_strategy": "base",
+      "repository": "vuejs/core",
+      "sensor_instance_ids": [
+        "burntsushi__ripgrep-2209",
+        "uutils__coreutils-6377"
+      ],
+      "sensor_shard_ordinal": 3,
+      "target_instance_ids": [
+        "vuejs__core-11739",
+        "vuejs__core-11870",
+        "vuejs__core-11899",
+        "vuejs__core-11589",
+        "vuejs__core-11915"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 36,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d0ce1fe2469145f6b4cc1116cfa7e60c89a44b2ce774b3905bf6b8926d14000a",
+          "candidate_id": "panel_04_candidate_00",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:76e246cb455d07fa21dfcd858f191aa48ea6aed72d82c9acac08b75165ed3044"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d16efce6c6c9a7b1f7b8c9ca9e7aad09e38ebaadb06d4bc9ddb3f81dad5eb873",
+          "candidate_id": "panel_04_candidate_01",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.55,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8ce5fe96319fdf60751803cc911f49586dd28e766e90fe8d112384e7edd550e2",
+          "candidate_id": "panel_04_candidate_02",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.05
+          },
+          "mutation_id": "sha256:0518cd86a624d191f0e2b025877fa58ab0b9d35e485bf2edb89f4f14c6d4b771"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_04_candidate_03",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_04_candidate_04",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 218,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "412ae051519de144d9b6de530f0403ae5c780736bbbdec11e6a1d18c993d28b9",
+          "candidate_id": "panel_04_candidate_05",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -32.0
+          },
+          "mutation_id": "sha256:aff4d78fa833e9390df7674b2e912219308f573bcc50739f0fde8bcfa9d3a2f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "41dbb6797bd34642723bd97d36c24cff07a3de589ada14fc70093e69009bfad7",
+          "candidate_id": "panel_04_candidate_06",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.2
+          },
+          "mutation_id": "sha256:b38bfc9097b644a3699798bb147168863adf9b52ce1193b2bdc15e2e037ed7a8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.45,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "31a4ba17b0981a73732ff7bfd276bafe1649adf3800e83d694013d9f14666ac2",
+          "candidate_id": "panel_04_candidate_07",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.05
+          },
+          "mutation_id": "sha256:7d3b9279b8fdcea843af6a5895d4b2977ac44e04c06dc79582e31312385680ef"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 3,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9c9ba7585f39c8ecadca4e3386e723b862112f7a102c188071515d4f2a621576",
+          "candidate_id": "panel_04_candidate_08",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 3,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "a553d136e76fc9556bbcc97fd2aea3536a9614081a3c0e7640f34ebbbf30c40f",
+          "candidate_id": "panel_04_candidate_09",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:28f12b8d7b15ab2ccbe99c01ddda82cae8e1e3c548a51f9dc3f87bd938beb0c9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "ae319d01e96ceb5a822ad6f015d3834028eb03d262091b86f3ac05cb7a2b7318",
+          "candidate_id": "panel_04_candidate_10",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -64.0
+          },
+          "mutation_id": "sha256:80d85ecc43ef8eac31d7a34e82e3416766532021bf11051caa830bf9c13d6486"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 44,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c9e41af15b7a865882cdd8c30a1e38d28ce59b75d9e677ae9c9fb87d81926749",
+          "candidate_id": "panel_04_candidate_11",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:492d1a84fcdac7c09b6670f80419ad43aedc15f501b37c98c9549b8cd1eb8876"
+        }
+      ],
+      "panel_index": 4,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 8,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 2,
+        "refs_per_seed": 4,
+        "semantic_k": 56,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "f0d71799d8574c97a6053535147d8bf61982a427722679f223ef7cd316130847",
+      "parent_id": "panel_04_prometheus__prometheus_raw",
+      "parent_strategy": "raw",
+      "repository": "prometheus/prometheus",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6682"
+      ],
+      "sensor_shard_ordinal": 4,
+      "target_instance_ids": [
+        "prometheus__prometheus-10720",
+        "prometheus__prometheus-9248"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "583affd0562f57c4504c37e99fa8755be0ad80a9f37e88c9841385ddb3db043f",
+          "candidate_id": "panel_05_candidate_00",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 122,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "4d53cf091d63448eda10a082e1d27de524880e6cc74d7280e0c030903b9fcecf",
+          "candidate_id": "panel_05_candidate_01",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -64.0
+          },
+          "mutation_id": "sha256:80d85ecc43ef8eac31d7a34e82e3416766532021bf11051caa830bf9c13d6486"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "583affd0562f57c4504c37e99fa8755be0ad80a9f37e88c9841385ddb3db043f",
+          "candidate_id": "panel_05_candidate_02",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+          "candidate_id": "panel_05_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:c9510893a0df560e21d1330b10184ed6743f79327ad29849df7fc09190f19491"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0808bff1df8d1f712e0f0b471e5e340bd323da4cc746d23997442c221759fa33",
+          "candidate_id": "panel_05_candidate_04",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "93bda14289d7c893fa8a86a2b4ea5e1bf0a6af51a705dcea2eb896c8560e421e",
+          "candidate_id": "panel_05_candidate_05",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 17,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "aba359ba2aef404bcdb788758650f4d53c289deb14d6c7de6e0d73541f0907da",
+          "candidate_id": "panel_05_candidate_06",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:1cf65f2eec75862155b38557c7029edc53ecc77c1b3061c9ac8e493e6b4abbf8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 5,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c3e73c163a7a5c576e9fed593d9293bd47ccad323a2c0245768c2ebaaaedfebc",
+          "candidate_id": "panel_05_candidate_07",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d8fc570a613d5a46a8923f5babd39b0a3d86fcf94ddf9bd56d6e3df7d5fa4ca7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 154,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c03a08792cbcc345b4bbcc33deec9ba3835e2a9d0a63df244c51eea57bda10f1",
+          "candidate_id": "panel_05_candidate_08",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -32.0
+          },
+          "mutation_id": "sha256:aff4d78fa833e9390df7674b2e912219308f573bcc50739f0fde8bcfa9d3a2f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 12,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "f2ac4ef9270ef2db61821617b6385a209518354eca0d6a4a649c0a5f1226abbb",
+          "candidate_id": "panel_05_candidate_09",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:e1aff4b00d92e51ec5c5cbb86003cffd8c846a6a493ace5986136c062d88b131"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "688efbd0d9211f7bf17f8b0c541d87759dec4afa9f80f87453ddbc42dd1ca247",
+          "candidate_id": "panel_05_candidate_10",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:58ce35182847c56f12382a575b33377ba4b90c1e608908163ac80163e5f1a555"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 17,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "aba359ba2aef404bcdb788758650f4d53c289deb14d6c7de6e0d73541f0907da",
+          "candidate_id": "panel_05_candidate_11",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:1cf65f2eec75862155b38557c7029edc53ecc77c1b3061c9ac8e493e6b4abbf8"
+        }
+      ],
+      "panel_index": 5,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 186,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 13,
+        "hybrid_alpha": 0.3,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 0,
+        "refs_per_seed": 4,
+        "semantic_k": 52,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+      "parent_id": "panel_05_babel__babel_causal",
+      "parent_strategy": "causal",
+      "repository": "babel/babel",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6731"
+      ],
+      "sensor_shard_ordinal": 5,
+      "target_instance_ids": [
+        "babel__babel-16130",
+        "babel__babel-15445",
+        "babel__babel-14532",
+        "babel__babel-15649"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.55,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8ce5fe96319fdf60751803cc911f49586dd28e766e90fe8d112384e7edd550e2",
+          "candidate_id": "panel_06_candidate_00",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.05
+          },
+          "mutation_id": "sha256:0518cd86a624d191f0e2b025877fa58ab0b9d35e485bf2edb89f4f14c6d4b771"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 1,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "2a983210a5a9f6c368e24540c2268ff3af926ee1f4411c5933a88970b440df8c",
+          "candidate_id": "panel_06_candidate_01",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:23a1b8c233229185751ce38f548e40766d2693492c00fd36790536ac7cb1a651"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 2,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d35c37117fd7231e7c14418b30a227e937cafb19b2d46ea2c94274e25de8aa49",
+          "candidate_id": "panel_06_candidate_02",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 3,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9c9ba7585f39c8ecadca4e3386e723b862112f7a102c188071515d4f2a621576",
+          "candidate_id": "panel_06_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d16efce6c6c9a7b1f7b8c9ca9e7aad09e38ebaadb06d4bc9ddb3f81dad5eb873",
+          "candidate_id": "panel_06_candidate_04",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 6,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "f708d24ed263c86bcfb319abf3f66adecc04ca9cf3b4fe9967a97a6b3537c35d",
+          "candidate_id": "panel_06_candidate_05",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:39b4e1600140957e340d635a9d95191514bc42e177c535ea98c61eb2bea5274f"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.7,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "e9f4814bdc74bfcda9fbbb145b0cf5b149e90a1d791730a03c28d55a5c103e02",
+          "candidate_id": "panel_06_candidate_06",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.2
+          },
+          "mutation_id": "sha256:6828e8b949c1e0395c64cdd01301a72606f9889238be82f598c941e09821d723"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 2,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d35c37117fd7231e7c14418b30a227e937cafb19b2d46ea2c94274e25de8aa49",
+          "candidate_id": "panel_06_candidate_07",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 1,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "2a983210a5a9f6c368e24540c2268ff3af926ee1f4411c5933a88970b440df8c",
+          "candidate_id": "panel_06_candidate_08",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:23a1b8c233229185751ce38f548e40766d2693492c00fd36790536ac7cb1a651"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.55,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8ce5fe96319fdf60751803cc911f49586dd28e766e90fe8d112384e7edd550e2",
+          "candidate_id": "panel_06_candidate_09",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.05
+          },
+          "mutation_id": "sha256:0518cd86a624d191f0e2b025877fa58ab0b9d35e485bf2edb89f4f14c6d4b771"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "f749af9c13595788f0dab167ecc209db36e4dacc432f562a35407fc1ce63b821",
+          "candidate_id": "panel_06_candidate_10",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 2,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d35c37117fd7231e7c14418b30a227e937cafb19b2d46ea2c94274e25de8aa49",
+          "candidate_id": "panel_06_candidate_11",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        }
+      ],
+      "panel_index": 6,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 8,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 2,
+        "refs_per_seed": 4,
+        "semantic_k": 56,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "f0d71799d8574c97a6053535147d8bf61982a427722679f223ef7cd316130847",
+      "parent_id": "panel_06_tokio-rs__tokio_raw",
+      "parent_strategy": "raw",
+      "repository": "tokio-rs/tokio",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6690"
+      ],
+      "sensor_shard_ordinal": 0,
+      "target_instance_ids": [
+        "tokio-rs__tokio-6724",
+        "tokio-rs__tokio-4867",
+        "tokio-rs__tokio-6551",
+        "tokio-rs__tokio-4898",
+        "tokio-rs__tokio-6838",
+        "tokio-rs__tokio-7139"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 50,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c209a2c2948a644e711d26c83defd3609771b8b8f4aee731bb88b8842159ec5d",
+          "candidate_id": "panel_07_candidate_00",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:55548f2b003a817365a2897bcdc004e83e4b51322e5dee878c5882a131a6c54b"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "688efbd0d9211f7bf17f8b0c541d87759dec4afa9f80f87453ddbc42dd1ca247",
+          "candidate_id": "panel_07_candidate_01",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:58ce35182847c56f12382a575b33377ba4b90c1e608908163ac80163e5f1a555"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 15,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "e7b3523f8deb53cc2ff2ab35e44946268775a84155bc4422dbf5af8151654ec9",
+          "candidate_id": "panel_07_candidate_02",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:93c1ff8d1eb1f9ab384eaaa0344819f4964d94f4a0ae5ebb29554451691e8630"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "93bda14289d7c893fa8a86a2b4ea5e1bf0a6af51a705dcea2eb896c8560e421e",
+          "candidate_id": "panel_07_candidate_03",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 42,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c70b6a7ed88d98dd8cdb17131b3bb134b7fd63f82f5252a7d923ec42e5ec220f",
+          "candidate_id": "panel_07_candidate_04",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:dd873449582734873bb4bbdf8eced4fb3b276db13b45558dd982006a3ad68ae0"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+          "candidate_id": "panel_07_candidate_05",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:23a1b8c233229185751ce38f548e40766d2693492c00fd36790536ac7cb1a651"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0808bff1df8d1f712e0f0b471e5e340bd323da4cc746d23997442c221759fa33",
+          "candidate_id": "panel_07_candidate_06",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.09999999999999998,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "31940a0fccb1c5b6a6bbee371fa946675eac61192c5c48db8e5c05bf694ec475",
+          "candidate_id": "panel_07_candidate_07",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.2
+          },
+          "mutation_id": "sha256:b38bfc9097b644a3699798bb147168863adf9b52ce1193b2bdc15e2e037ed7a8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "93bda14289d7c893fa8a86a2b4ea5e1bf0a6af51a705dcea2eb896c8560e421e",
+          "candidate_id": "panel_07_candidate_08",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "583affd0562f57c4504c37e99fa8755be0ad80a9f37e88c9841385ddb3db043f",
+          "candidate_id": "panel_07_candidate_09",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0808bff1df8d1f712e0f0b471e5e340bd323da4cc746d23997442c221759fa33",
+          "candidate_id": "panel_07_candidate_10",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 218,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "4ee93361c4b818565e81a5e87e1ed2e98cf7898e7bfa2e34fd791b2d1056dd6d",
+          "candidate_id": "panel_07_candidate_11",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": 32.0
+          },
+          "mutation_id": "sha256:588f23aee927db097af641ec532b295aeab9259b270ee68b912339a01eee630c"
+        }
+      ],
+      "panel_index": 7,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 186,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 13,
+        "hybrid_alpha": 0.3,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 0,
+        "refs_per_seed": 4,
+        "semantic_k": 52,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+      "parent_id": "panel_07_sharkdp__bat_causal",
+      "parent_strategy": "causal",
+      "repository": "sharkdp/bat",
+      "sensor_instance_ids": [
+        "burntsushi__ripgrep-2576",
+        "axios__axios-5085"
+      ],
+      "sensor_shard_ordinal": 1,
+      "target_instance_ids": [
+        "sharkdp__bat-2835",
+        "sharkdp__bat-3108",
+        "sharkdp__bat-2650",
+        "sharkdp__bat-2201",
+        "sharkdp__bat-1892",
+        "sharkdp__bat-2393"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 42,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "b4a8be4a2b433524cef2a88b5e1dd3379dd3633642191bb75867cc4a13c332b5",
+          "candidate_id": "panel_08_candidate_00",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:b744595fe0b12e4013ba56f904e9c668eaf4c07c52974333ced74cf749d934f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.4,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "426b7f00627d18734e4f37c1b963b81524db4e037a1fcc455a2364f73c13e5d8",
+          "candidate_id": "panel_08_candidate_01",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": -0.1
+          },
+          "mutation_id": "sha256:0946248f4e777bcf16bae93342f935d173123be6f0de85a1627ff18d1802f7fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 5,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bc72d54c1de0202f14cb11f953afc492f5dd58fcb7b5d55225424354cef6b63d",
+          "candidate_id": "panel_08_candidate_02",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 5,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bc72d54c1de0202f14cb11f953afc492f5dd58fcb7b5d55225424354cef6b63d",
+          "candidate_id": "panel_08_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.7,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "db983c7142733a702377068b273c798d9b9876d86e79991f642b9764e98c487f",
+          "candidate_id": "panel_08_candidate_04",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.2
+          },
+          "mutation_id": "sha256:6828e8b949c1e0395c64cdd01301a72606f9889238be82f598c941e09821d723"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0e9be77b2862c9625bc9fede29a035d598c9b0768a64ffcca0ba115e81dbd7a4",
+          "candidate_id": "panel_08_candidate_05",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:c9510893a0df560e21d1330b10184ed6743f79327ad29849df7fc09190f19491"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 234,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "dad6480ca0f1141951828fadb845bb9c24ba5416006ceec59ee9d718188d5761",
+          "candidate_id": "panel_08_candidate_06",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -16.0
+          },
+          "mutation_id": "sha256:978f7da32d55b0074625f2940644a5278f9e0acd441a3c51bb1ccef230d76dcd"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 36,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "b826e584853ecb044d0605e342cb3e0fac1e03ec43aa73d6ed0a2559059db909",
+          "candidate_id": "panel_08_candidate_07",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:e10396092c85d08e578db4fbd5e4d7c850751dd5eb7618eeef63bfd13801cde6"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 12,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "47a09c2c995e874f72f4becf29d86f414ee3ce380769a939c965aaa61e5ceee8",
+          "candidate_id": "panel_08_candidate_08",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:58ce35182847c56f12382a575b33377ba4b90c1e608908163ac80163e5f1a555"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 314,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "187c91537ecbcc901d3ef5ae9d4c2d35d87aea9fb16f5055795ebb4f134727d7",
+          "candidate_id": "panel_08_candidate_09",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": 64.0
+          },
+          "mutation_id": "sha256:c9ee79c02b11c202ec760a76d0e390859e15a07d9b1506120434c45c220f1fff"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 38,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "777b81a5083954e32d600aeb2fa1c78e943d7a982bc9973e4da3b1ddc4b8455e",
+          "candidate_id": "panel_08_candidate_10",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:55548f2b003a817365a2897bcdc004e83e4b51322e5dee878c5882a131a6c54b"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 19,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9d233944f69e45a27334c811468440819a8c72e66cb19673a6568ef5347ae6db",
+          "candidate_id": "panel_08_candidate_11",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:e1aff4b00d92e51ec5c5cbb86003cffd8c846a6a493ace5986136c062d88b131"
+        }
+      ],
+      "panel_index": 8,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 20,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 4,
+        "refs_per_seed": 8,
+        "semantic_k": 40,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "44de6f363ea84a81ad76bacd1e6b43a118610482b36e54bd53ba2aee021c99df",
+      "parent_id": "panel_08_tokio-rs__axum_base",
+      "parent_strategy": "base",
+      "repository": "tokio-rs/axum",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6575"
+      ],
+      "sensor_shard_ordinal": 2,
+      "target_instance_ids": [
+        "tokio-rs__axum-2096",
+        "tokio-rs__axum-1934",
+        "tokio-rs__axum-691",
+        "tokio-rs__axum-1119",
+        "tokio-rs__axum-682",
+        "tokio-rs__axum-1730"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 9,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d017e7182f4b5a016631ba4e3907a8e02cd38a29a248220eef6471f930b00006",
+          "candidate_id": "panel_09_candidate_00",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:af16e06afef4aaf5eaa2ccb1334dc9583fc850aa4e57e5c0dc1f582281ced783"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 2,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d35c37117fd7231e7c14418b30a227e937cafb19b2d46ea2c94274e25de8aa49",
+          "candidate_id": "panel_09_candidate_01",
+          "mutation": {
+            "gene": "refs_per_seed",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:d4904176334281b5f128185739abe3ad58832acdb3fca2b630098c64095a69fe"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 6,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "f92d27dd793c9dd000b919be16e107df9fc2251d9fa48146a52463e85256e234",
+          "candidate_id": "panel_09_candidate_02",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:f585d4a0ea0bbb83886faf2b9dabe7d770545b3610881331832a6212113331bf"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_09_candidate_03",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.55,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8ce5fe96319fdf60751803cc911f49586dd28e766e90fe8d112384e7edd550e2",
+          "candidate_id": "panel_09_candidate_04",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.05
+          },
+          "mutation_id": "sha256:0518cd86a624d191f0e2b025877fa58ab0b9d35e485bf2edb89f4f14c6d4b771"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 64,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9ad1e1906b739fcf3142e7cf78a9e41e5a5a8f74f0c0fdb219952e7124c625c5",
+          "candidate_id": "panel_09_candidate_05",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:f68837d89fd7b7d2ca52af177052289344a41f786b6891f8c9c1943d6e5edba8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 3,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "9c9ba7585f39c8ecadca4e3386e723b862112f7a102c188071515d4f2a621576",
+          "candidate_id": "panel_09_candidate_06",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 60,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "5452b3be0e99a1acec9772240a94d91f94665567922f77b67cf17be3776a000e",
+          "candidate_id": "panel_09_candidate_07",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:98d8099a2d421e4d947eefaa6ff4d2941deb7897744245cc6c9e40a3840adf4c"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "554f5a81ec7f7f12c20d51f93f940e9f2bdbca5157ffd2162c7f2a2719361b42",
+          "candidate_id": "panel_09_candidate_08",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 32,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 56,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "88cc38aaba6776e5a878ab69db97e1b7f00ad124c812ce0702e8db7151a5ddae",
+          "candidate_id": "panel_09_candidate_09",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -8.0
+          },
+          "mutation_id": "sha256:bb01e8df5444f7c5fae76a51d7fe746219376cdab9df8319b46c064258dfa837"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "fd22c814942caf1c8ced46021c11b291cc20f1998dcac3744eb122a5ce0c32e9",
+          "candidate_id": "panel_09_candidate_10",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:e10396092c85d08e578db4fbd5e4d7c850751dd5eb7618eeef63bfd13801cde6"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 8,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "fd22c814942caf1c8ced46021c11b291cc20f1998dcac3744eb122a5ce0c32e9",
+          "candidate_id": "panel_09_candidate_11",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:e10396092c85d08e578db4fbd5e4d7c850751dd5eb7618eeef63bfd13801cde6"
+        }
+      ],
+      "panel_index": 9,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 8,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 2,
+        "refs_per_seed": 4,
+        "semantic_k": 56,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "f0d71799d8574c97a6053535147d8bf61982a427722679f223ef7cd316130847",
+      "parent_id": "panel_09_vuejs__core_raw",
+      "parent_strategy": "raw",
+      "repository": "vuejs/core",
+      "sensor_instance_ids": [
+        "burntsushi__ripgrep-2209",
+        "uutils__coreutils-6377"
+      ],
+      "sensor_shard_ordinal": 3,
+      "target_instance_ids": [
+        "vuejs__core-11739",
+        "vuejs__core-11870",
+        "vuejs__core-11899",
+        "vuejs__core-11589",
+        "vuejs__core-11915"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 2,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "72a5c83d0445c9a62a95ff531e75993c2cf3270dbffe2fb155d4ce2f7e7138bc",
+          "candidate_id": "panel_10_candidate_00",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:2c8c424978c30434ec30cc20068d1945385b84277489c9c0f9d4c45706ce8720"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 54,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "6ff0b6e62e78c001b52e9f516b4c4b81a6eb961d6ecf6ecb81b9b0030dbd597d",
+          "candidate_id": "panel_10_candidate_01",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:b744595fe0b12e4013ba56f904e9c668eaf4c07c52974333ced74cf749d934f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 1,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "583affd0562f57c4504c37e99fa8755be0ad80a9f37e88c9841385ddb3db043f",
+          "candidate_id": "panel_10_candidate_02",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": -1.0
+          },
+          "mutation_id": "sha256:ebe26414d9fc90a417a64aabdfea80cc2b929398b15278cbc4a31dff0376ce6d"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 14,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "d602e2dc78eba89d13caa6d6a6dbf740af7737cee4ea7db6dd94193d7c3ad148",
+          "candidate_id": "panel_10_candidate_03",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:af16e06afef4aaf5eaa2ccb1334dc9583fc850aa4e57e5c0dc1f582281ced783"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+          "candidate_id": "panel_10_candidate_04",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:b5e878d48da202d8ee4b1888277e159703e037102bd3fcf04039f2831b2b3a81"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "381556522687536852defcb1102e90323b7b2661c2f3044fc51d56b7ddb744c4",
+          "candidate_id": "panel_10_candidate_05",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 4.0
+          },
+          "mutation_id": "sha256:f585d4a0ea0bbb83886faf2b9dabe7d770545b3610881331832a6212113331bf"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 1,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "6c4833d100078ce2d97968c3172f2a043b4d0372dc548fab6c955cf603c223c6",
+          "candidate_id": "panel_10_candidate_06",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:d6211676b04f8d104f1006335bb0778fd21ae97f0e99d7a3d26344c985aead61"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 48,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "93bda14289d7c893fa8a86a2b4ea5e1bf0a6af51a705dcea2eb896c8560e421e",
+          "candidate_id": "panel_10_candidate_07",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:499c7c7eb4c81d56b06088f2b66c7db80a2d0432ab410987402134eab3872ff9"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 154,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "c03a08792cbcc345b4bbcc33deec9ba3835e2a9d0a63df244c51eea57bda10f1",
+          "candidate_id": "panel_10_candidate_08",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -32.0
+          },
+          "mutation_id": "sha256:aff4d78fa833e9390df7674b2e912219308f573bcc50739f0fde8bcfa9d3a2f7"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 60,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "bcb5b8eec39b8f3fd8fb7002726fa9bc9befaff245365c931a43425d339da250",
+          "candidate_id": "panel_10_candidate_09",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": 8.0
+          },
+          "mutation_id": "sha256:f68837d89fd7b7d2ca52af177052289344a41f786b6891f8c9c1943d6e5edba8"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 3,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "0808bff1df8d1f712e0f0b471e5e340bd323da4cc746d23997442c221759fa33",
+          "candidate_id": "panel_10_candidate_10",
+          "mutation": {
+            "gene": "edge_radius",
+            "signed_step": 1.0
+          },
+          "mutation_id": "sha256:347457df6f3287c809a4c0556b2f4af2c9aed27639416d7c26cf6ec19f45ba32"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 13,
+            "hybrid_alpha": 0.3,
+            "lexical_k": 38,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 4,
+            "semantic_k": 52,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "36543ce7b5aef5f532f225a238a0fa98574d1337c233ae76ec29681f4d3eb061",
+          "candidate_id": "panel_10_candidate_11",
+          "mutation": {
+            "gene": "lexical_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:bda477c9228e7838bf8e611c12f67ecfeb1aa22647f84b3732ee84dff4d85aff"
+        }
+      ],
+      "panel_index": 10,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 186,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 13,
+        "hybrid_alpha": 0.3,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 0,
+        "refs_per_seed": 4,
+        "semantic_k": 52,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "b529d02d0ccdbd1ad5b50bf3c15522c445b54d06af0b5b3cd19752c32b47a11f",
+      "parent_id": "panel_10_prometheus__prometheus_causal",
+      "parent_strategy": "causal",
+      "repository": "prometheus/prometheus",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6682"
+      ],
+      "sensor_shard_ordinal": 4,
+      "target_instance_ids": [
+        "prometheus__prometheus-10720",
+        "prometheus__prometheus-9248"
+      ]
+    },
+    {
+      "candidates": [
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 16,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8740e219df70a795162c883a975210e4efdaad7f26ff6d67d4f995cf1a292e72",
+          "candidate_id": "panel_11_candidate_00",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:06b582077d0292565242e10f8e91b1e08214dc16c67092f19d7b9aef83b7a9d4"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "181a6d6983edbd6ac995a312dfd5d48776159b5ffd0da334f133df0131bd3264",
+          "candidate_id": "panel_11_candidate_01",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:b5e878d48da202d8ee4b1888277e159703e037102bd3fcf04039f2831b2b3a81"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.55,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "f59677bf895a846508dc8144c7f866d6ecfc2e90dd48958b436dafd7c165978e",
+          "candidate_id": "panel_11_candidate_02",
+          "mutation": {
+            "gene": "hybrid_alpha",
+            "signed_step": 0.05
+          },
+          "mutation_id": "sha256:0518cd86a624d191f0e2b025877fa58ab0b9d35e485bf2edb89f4f14c6d4b771"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "181a6d6983edbd6ac995a312dfd5d48776159b5ffd0da334f133df0131bd3264",
+          "candidate_id": "panel_11_candidate_03",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:b5e878d48da202d8ee4b1888277e159703e037102bd3fcf04039f2831b2b3a81"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 282,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "5ab779229f869d7f7c4bfcba8f1852c4b053e9d7fe4dbea7fd33d620819f9de3",
+          "candidate_id": "panel_11_candidate_04",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": 32.0
+          },
+          "mutation_id": "sha256:588f23aee927db097af641ec532b295aeab9259b270ee68b912339a01eee630c"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 6,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "049bf3c7a360d938f277335021a3bd30d344dad3d8546c25c9d6d8bceab1fc99",
+          "candidate_id": "panel_11_candidate_05",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": 2.0
+          },
+          "mutation_id": "sha256:2c8c424978c30434ec30cc20068d1945385b84277489c9c0f9d4c45706ce8720"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 16,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "8740e219df70a795162c883a975210e4efdaad7f26ff6d67d4f995cf1a292e72",
+          "candidate_id": "panel_11_candidate_06",
+          "mutation": {
+            "gene": "graph_seed_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:06b582077d0292565242e10f8e91b1e08214dc16c67092f19d7b9aef83b7a9d4"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 234,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "dad6480ca0f1141951828fadb845bb9c24ba5416006ceec59ee9d718188d5761",
+          "candidate_id": "panel_11_candidate_07",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -16.0
+          },
+          "mutation_id": "sha256:978f7da32d55b0074625f2940644a5278f9e0acd441a3c51bb1ccef230d76dcd"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 186,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "e7ca966fb06d23bbd0363e1f3e8bf9502d84bbdd05759a4f6be923b013fd7de0",
+          "candidate_id": "panel_11_candidate_08",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -64.0
+          },
+          "mutation_id": "sha256:80d85ecc43ef8eac31d7a34e82e3416766532021bf11051caa830bf9c13d6486"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 234,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "dad6480ca0f1141951828fadb845bb9c24ba5416006ceec59ee9d718188d5761",
+          "candidate_id": "panel_11_candidate_09",
+          "mutation": {
+            "gene": "candidate_pool_limit",
+            "signed_step": -16.0
+          },
+          "mutation_id": "sha256:978f7da32d55b0074625f2940644a5278f9e0acd441a3c51bb1ccef230d76dcd"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 0,
+            "refs_per_seed": 8,
+            "semantic_k": 40,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "181a6d6983edbd6ac995a312dfd5d48776159b5ffd0da334f133df0131bd3264",
+          "candidate_id": "panel_11_candidate_10",
+          "mutation": {
+            "gene": "neighbors_k",
+            "signed_step": -4.0
+          },
+          "mutation_id": "sha256:b5e878d48da202d8ee4b1888277e159703e037102bd3fcf04039f2831b2b3a81"
+        },
+        {
+          "candidate_config": {
+            "body_snippet_mode": "signals_or_query_grep",
+            "budget_tokens": 12000,
+            "candidate_pool_limit": 250,
+            "edge_radius": 2,
+            "graph_expand": true,
+            "graph_seed_k": 20,
+            "hybrid_alpha": 0.5,
+            "lexical_k": 40,
+            "max_bodies": 2,
+            "neighbors_k": 4,
+            "refs_per_seed": 8,
+            "semantic_k": 38,
+            "support_enabled": false
+          },
+          "candidate_config_sha256": "777b81a5083954e32d600aeb2fa1c78e943d7a982bc9973e4da3b1ddc4b8455e",
+          "candidate_id": "panel_11_candidate_11",
+          "mutation": {
+            "gene": "semantic_k",
+            "signed_step": -2.0
+          },
+          "mutation_id": "sha256:55548f2b003a817365a2897bcdc004e83e4b51322e5dee878c5882a131a6c54b"
+        }
+      ],
+      "panel_index": 11,
+      "parent_config": {
+        "body_snippet_mode": "signals_or_query_grep",
+        "budget_tokens": 12000,
+        "candidate_pool_limit": 250,
+        "edge_radius": 2,
+        "graph_expand": true,
+        "graph_seed_k": 20,
+        "hybrid_alpha": 0.5,
+        "lexical_k": 40,
+        "max_bodies": 2,
+        "neighbors_k": 4,
+        "refs_per_seed": 8,
+        "semantic_k": 40,
+        "support_enabled": false
+      },
+      "parent_config_sha256": "44de6f363ea84a81ad76bacd1e6b43a118610482b36e54bd53ba2aee021c99df",
+      "parent_id": "panel_11_babel__babel_base",
+      "parent_strategy": "base",
+      "repository": "babel/babel",
+      "sensor_instance_ids": [
+        "uutils__coreutils-6731"
+      ],
+      "sensor_shard_ordinal": 5,
+      "target_instance_ids": [
+        "babel__babel-16130",
+        "babel__babel-15445",
+        "babel__babel-14532",
+        "babel__babel-15649"
+      ]
+    }
+  ],
+  "raw_model_id": "sha256:f86e3c74bc5de98229d3acb01ba7301c2c397872087c8664c89c485298b510e1",
+  "schema": "parity.e118a-candidate-plan.v1",
+  "source_e118_digest": "sha256:5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+  "stage_a_metric_id": "sha256:edc850fa0e78b1db8d0300784c97b35e30d0b5d2d3ea1ba7d9cd2cb85ef60740",
+  "transferred_sensor_id": "sha256:1a0e491bb00955bd9c26a360d5c9429125ce9822cf8b026b8dac6bee2321b698"
+}

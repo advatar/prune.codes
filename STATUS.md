@@ -6,6 +6,17 @@
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- E118a repository-ownership migration is independently verified on
+  `experiment/e118a-local-sensor-validity-migration`, based directly on frozen
+  E118 evidence commit `fcf7adf011a717e11adf5d55bc93016fb4fb6ef9`.
+  Byte-identical E118a protocol/evidence from the accidental Parity host is
+  archived under `prune/experiments/e118a_local_sensor_validity/`. The native
+  analyzer reproduces the frozen result byte-for-byte, and the independent
+  migration verifier reproduces all decision-bearing statistics, top-1/top-4
+  regret, repository partitions, and the unchanged
+  `FAIL_NO_PROSPECTIVE_INCREMENTAL_LOCAL_VALIDITY` verdict. No E118 or E118a
+  outcome was regenerated, E118b remains unauthorized, and E118c has not
+  started. Tracking: https://github.com/advatar/prune.codes/issues/34.
 - Completed and independently verified E118. The immutable result SHA-256 is `5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9`; the frozen decision is `SWE_BENCH_SPARSE_CAUSAL_NOT_SUPPORTED` (raw gain -0.0086608775, causal gain -0.0428504145, causal-minus-raw -0.0341895370, 1/4 causal repository wins, probe-cost ratio 0.11). All 57 exact-state index bindings and 829 unique packs verify independently, and eight representative corruptions are rejected. The negative report preserves the four-repository uncertainty, completes zero-call failure-mode analysis, and specifies but does not execute a prospective E118a sensor-transfer diagnostic. E119 was not authorized because the promotion gate failed.
 - The second E118 resume stopped fail-closed before replaying a pack because `ce pack` refreshes `meta.embeddings.updated_at_ms`, changing SQLite bytes despite an unchanged HNSW tree, exact clean checkout, valid SQLite, and matching repository/embedding state. Preserved the interruption in `E118-confirmation-interruption-2.json`. The prospective repair retains the original byte digest, hashes all application-table content while excluding only that timestamp, mechanically checks SQLite/HNSW state, and revalidates all exact-state bindings after the final pack access; no result, decision, or utility was inspected and no scientific policy changed.
 - First E118 confirmation attempt at source `ae6b560e254e1feba2c4d1ebfc9f1427c6fccc0a` completed all cached strategy measurements but stopped before writing a result because `repository_means` used the manifest dictionary as a dictionary key. Preserved the exact interruption in `E118-confirmation-interruption-1.json`; no decision or utility was inspected. The resume repair changes only that lookup, materializes the one selected-but-untriggered probe index required by the frozen plan, and includes the interruption in final cost/failure evidence.

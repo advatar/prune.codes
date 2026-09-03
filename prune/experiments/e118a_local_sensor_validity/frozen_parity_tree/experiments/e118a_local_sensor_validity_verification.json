@@ -1,0 +1,28 @@
+{
+  "analyzed_candidates": 121,
+  "candidate_plan_file_sha256": "35b415b29edeb017bb67bea3a4a6bb70ced8edad6b1691b99fe3a180ee5f2e4f",
+  "causal_incremental_permutation_p_one_sided": 0.138986101389861,
+  "causal_signal_permutation_p_one_sided": 0.16128387161283872,
+  "duplicate_config_rows_excluded": 20,
+  "eligible_parents": 12,
+  "freeze_commit": "aef5613e32cf0d8436d03d8557532a8bfe79c0cf",
+  "generated_candidates": 144,
+  "input_file_sha256": "25149dd3b80df49124affffb216b288707bfa7b2717526b392aa113748df7f58",
+  "mean_top1_regret": {
+    "causal": 0.023318223683796307,
+    "random": 0.019499789264260704,
+    "raw": 0.0034664952666666814
+  },
+  "no_op_rows_excluded": 3,
+  "permutation_scope": "strictly within each (repository, parent_id) group",
+  "pooled_causal_partial_rank_corr_given_raw": 0.10793451225738734,
+  "pooled_within_parent_causal_rank_corr": 0.09740982292363289,
+  "pooled_within_parent_raw_rank_corr": 0.08510711710997547,
+  "production_analyzer_imported": false,
+  "repositories": 6,
+  "result_canonical_sha256": "682fde0010d3f91adcaa68fe0dea06937b8192d78fdd5ecf0db4735c74cf52a9",
+  "result_file_sha256": "031483fe740ee77b64a921c3dc8344682a91ba832bb2b4dc961349e03c84f8fb",
+  "schema": "parity.e118a-independent-verification.v1",
+  "verdict": "FAIL_NO_PROSPECTIVE_INCREMENTAL_LOCAL_VALIDITY",
+  "verification": "VERIFIED"
+}
