@@ -28,3 +28,27 @@ supersedes or silently renames the other.
 
 Machine-readable provenance and byte hashes are in `migration_manifest.json`.
 
+## Prune-native verification plumbing
+
+The migrated analyzer is `prune/scripts/e118a_local_sensor_validity.py`; it
+contains the original artifact envelope locally instead of importing the
+unrelated `paritylab` package. The migrated collector is retained to verify the
+score-blind plan and historical generation path. It still writes outputs
+exclusively and must not be used to replace the frozen evidence.
+
+The independent verifier imports neither analyzer nor verdict logic. From the
+repository root, it verifies the frozen row/result bindings, all seven migrated
+file digests, E118 train/probe/quarantine membership, top-1 and top-4 regret,
+within-parent permutations, and the unchanged verdict:
+
+```sh
+python3 prune/scripts/verify_e118a_local_sensor_validity.py \
+  --config prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/configs/e118a_local_sensor_validity.json \
+  --input prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/e118a_local_sensor_validity_mutations.json \
+  --artifact prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/e118a_local_sensor_validity.json \
+  --plan prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/configs/e118a_candidate_plan.json \
+  --e118 prune/experiments/E118-swebench-sparse-causal-prune.json \
+  --manifest prune/experiments/e118a_local_sensor_validity/migration_manifest.json \
+  --repo-root . \
+  --out /tmp/e118a-migration-verification.json
+```

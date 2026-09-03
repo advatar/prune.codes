@@ -3,6 +3,7 @@
 .fastembed_cache/
 target/
 prune/.e118-cache/
+prune/.e118a-work/
 prune/.venv-e118/
 __pycache__/
 *.py[cod]
