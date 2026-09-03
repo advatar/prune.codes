@@ -64,40 +64,40 @@
       "role": "executed_protocol_report"
     },
     {
-      "adaptation_status": "planned_for_separate_commit",
+      "adaptation_status": "ported_in_separate_plumbing_commit",
       "byte_identical": false,
       "destination_path": "prune/scripts/e118a_local_sensor_validity.py",
-      "destination_sha256": null,
+      "destination_sha256": "daf3bcd4685c724710cf7a33a534c4982b14b7ef80ed7a605c2047e45a7cd4c2",
       "original_git_blob": "645405834c4e4c647684b4d6408de0df0c963572",
       "original_path": "src/paritylab/e118a_local_sensor_validity.py",
       "original_sha256": "443ed844b088a00423d047eb050bf23161d8ca109fb5ce1d4ff4fc60ecbe2b46",
       "role": "production_analyzer_source"
     },
     {
-      "adaptation_status": "planned_for_separate_commit",
+      "adaptation_status": "ported_in_separate_plumbing_commit",
       "byte_identical": false,
       "destination_path": "prune/scripts/run_e118a_local_sensor_validity.py",
-      "destination_sha256": null,
+      "destination_sha256": "1a03da6ca0f602847ff39ac150333ecff460b0772fcdadc7d4612510cae1c364",
       "original_git_blob": "9515a3a0031cd9c78d8338ff27fc7de9cf71224a",
       "original_path": "tools/run_e118a_local_sensor_validity.py",
       "original_sha256": "168f9e09a4135af75b3fe7e480f1d3066569bb79c6565b70c595fd41458cfd5f",
       "role": "collector_source"
     },
     {
-      "adaptation_status": "planned_for_separate_commit",
+      "adaptation_status": "ported_in_separate_plumbing_commit",
       "byte_identical": false,
       "destination_path": "prune/scripts/verify_e118a_local_sensor_validity.py",
-      "destination_sha256": null,
+      "destination_sha256": "b470a64036769c8e3dd917908eb68ef5cf30c133b190afecf0f2819e966249f9",
       "original_git_blob": "527e06b6e323385afaf35087356f6521d6fda97e",
       "original_path": "tools/validate_e118a_local_sensor_validity.py",
       "original_sha256": "1795f66b5399f4a4261fa93f0b482f62b855e348a6810604f6bc37a934494ccc",
       "role": "independent_verifier_source"
     },
     {
-      "adaptation_status": "planned_for_separate_commit",
+      "adaptation_status": "ported_in_separate_plumbing_commit",
       "byte_identical": false,
       "destination_path": "prune/tests/test_e118a_local_sensor_validity.py",
-      "destination_sha256": null,
+      "destination_sha256": "b22f237bcd3a76cdd326c105fe3b0d7df640babb5c46d72b79d061e2d18689a8",
       "original_git_blob": "1382c1f289b39ec89466b3b104c652af28f28e76",
       "original_path": "tests/test_e118a_local_sensor_validity.py",
       "original_sha256": "c99feba2c489796bfd592a7bea9873ed107750c3e82dc531c36eaf19d76a836f",
@@ -106,8 +106,9 @@
   ],
   "destination": {
     "e118_evidence_base_commit": "fcf7adf011a717e11adf5d55bc93016fb4fb6ef9",
-    "evidence_migration_commit": null,
+    "evidence_migration_commit": "cb1f11385b3dd174363ec9f421a39e2b404d3f4d",
     "migration_branch": "experiment/e118a-local-sensor-validity-migration",
+    "plumbing_commit": "9f59446018b1d91c26964e4badbe240a10742adb",
     "repository": "advatar/prune.codes"
   },
   "e118_source": {
@@ -143,6 +144,5 @@
     "same_experiment": false
   },
   "schema": "prune.e118a-repository-migration.v1",
-  "status": "IMMUTABLE_EVIDENCE_IMPORTED_PLUMBING_PENDING"
+  "status": "MIGRATION_VERIFIED"
 }
-

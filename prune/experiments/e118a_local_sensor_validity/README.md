@@ -1,6 +1,6 @@
 # E118a local sensor validity — repository migration
 
-Status: **frozen negative evidence migrated; no scientific outcome rerun**
+Status: **migration independently verified; no scientific outcome rerun**
 
 This directory makes `advatar/prune.codes` the canonical repository home for
 the completed E118a local sibling-ranking experiment. E118a was accidentally
