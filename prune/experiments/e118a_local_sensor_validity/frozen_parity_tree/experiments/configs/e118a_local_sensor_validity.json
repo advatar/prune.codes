@@ -1,0 +1,154 @@
+{
+  "schema": "parity.e118a-prospective-freeze.v1",
+  "protocol_frozen": true,
+  "freeze_status": "FROZEN_BEFORE_E118A_OUTCOME_GENERATION",
+  "source_e118_digest": "sha256:5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+  "transferred_sensor_id": "sha256:1a0e491bb00955bd9c26a360d5c9429125ce9822cf8b026b8dac6bee2321b698",
+  "stage_a_metric_id": "sha256:edc850fa0e78b1db8d0300784c97b35e30d0b5d2d3ea1ba7d9cd2cb85ef60740",
+  "raw_model_id": "sha256:f86e3c74bc5de98229d3acb01ba7301c2c397872087c8664c89c485298b510e1",
+  "candidate_plan_path": "experiments/configs/e118a_candidate_plan.json",
+  "candidate_plan_sha256": "sha256:35b415b29edeb017bb67bea3a4a6bb70ced8edad6b1691b99fe3a180ee5f2e4f",
+  "candidate_identity_sha256": "sha256:5e1d00fc516d081aef1227950bb8d159598b21b4d5187ce8876ce366f40ff7a5",
+  "e118_provenance": {
+    "repository": "advatar/prune.codes",
+    "local_worktree": "/Users/johansellstrom/dev/advatar/Prune/prune.codes-e118-proof",
+    "evidence_branch": "experiment/e118-swebench-sparse-causal-prune-proof",
+    "evidence_commit": "fcf7adf011a717e11adf5d55bc93016fb4fb6ef9",
+    "execution_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+    "artifact_path": "prune/experiments/E118-swebench-sparse-causal-prune.json",
+    "artifact_sha256": "5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+    "scope_sha256": "9a58e75d1e642528e73e7c9992653d26a98355854b38fbabced82d330907c1e1",
+    "manifest_sha256": "ccfbe787573dd51c688a92945d923f8d95c73e4811a78f35f9a8c6b1710075ce",
+    "runner_path": "prune/scripts/run_e118_swebench_sparse_causal_prune.py",
+    "runner_sha256": "0b1910b41c42ca5073e8dfed1a5371f9cb4b190739b6b7baabe971b43786aaff",
+    "base_strategy_path": "prune/experiments/E118-base-strategy.json",
+    "base_strategy_sha256": "fb9bc7bb162a6613beb5f56a96810efd819b42bae72bab04c4484221da13f571",
+    "ce_sha256": "c75dd2d140d6a89f1f7d3740816c8f3fa57c06f245c413ee3b0f26df3fb07ac7",
+    "dataset_revision": "846e647b9f33c0b51b739d005d13d85493c9af09",
+    "dataset_parquet_sha256": "92abca7cb527b41a9f66d03a26ce441ff7319e3a49f985998fd56be4bb9b08b2"
+  },
+  "contracts": {
+    "source_function_sha256": {
+      "feature": "1c28e7a5bc4b9e68110c81b5a61097bd28981f2be58541ca0af531478791a358",
+      "normalize_path": "c1d74f6e5af4b64c0d9c9058007f4442e239a84d40dbd9e94bfde5c981e138dc",
+      "predict": "19118e4e549e8ffcd299dda38349191c506e9f0154fa889b4dd44009c9c867da",
+      "score_measurement": "d73ad28eab4547c9e8df6a7e0bade8f76ae795e7c5bb2e0ab89fd69e0141a052",
+      "split_shards": "77a83d2f64fa92c95c831e9bca5c78873732d352722f8e014ba3bb64d6e3c3b3"
+    },
+    "stage_a_metric": {
+      "schema": "parity.e118a-stage-a-metric-contract.v1",
+      "e118_source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+      "e118_runner_sha256": "0b1910b41c42ca5073e8dfed1a5371f9cb4b190739b6b7baabe971b43786aaff",
+      "budget_tokens": 12000,
+      "normalize_path_source_sha256": "c1d74f6e5af4b64c0d9c9058007f4442e239a84d40dbd9e94bfde5c981e138dc",
+      "score_measurement_source_sha256": "d73ad28eab4547c9e8df6a7e0bade8f76ae795e7c5bb2e0ab89fd69e0141a052",
+      "equation": "0.70*path_recall+0.10*clamp(connectivity,0,1)+0.10*(1-min(tokens/budget,1))-0.10*min(unbound/10,1)"
+    },
+    "raw_model": {
+      "schema": "parity.e118a-raw-model-contract.v1",
+      "e118_source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+      "e118_runner_sha256": "0b1910b41c42ca5073e8dfed1a5371f9cb4b190739b6b7baabe971b43786aaff",
+      "artifact_pointer": "bootstrap.ridge",
+      "ridge_sha256": "f7db4e49411adbc1c266337cc98614f57d66a57a47321964a6a12604e80221b4",
+      "feature_source_sha256": "1c28e7a5bc4b9e68110c81b5a61097bd28981f2be58541ca0af531478791a358",
+      "predict_source_sha256": "19118e4e549e8ffcd299dda38349191c506e9f0154fa889b4dd44009c9c867da",
+      "genes_sha256": "f4984441e3ea21778a03b5397c30dcbe1c34aab6eabbce49bea626f007e9c61c",
+      "bounds_sha256": "279860966ad3ad00e46917d2e16bb2b7adb0b47cc042777907a20463b06fdb3b"
+    },
+    "transferred_sensor": {
+      "schema": "parity.e118a-transferred-sensor-contract.v1",
+      "e118_source_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+      "e118_runner_sha256": "0b1910b41c42ca5073e8dfed1a5371f9cb4b190739b6b7baabe971b43786aaff",
+      "split_shards_source_sha256": "77a83d2f64fa92c95c831e9bca5c78873732d352722f8e014ba3bb64d6e3c3b3",
+      "stage_a_metric_id": "sha256:edc850fa0e78b1db8d0300784c97b35e30d0b5d2d3ea1ba7d9cd2cb85ef60740",
+      "probe_manifest_sha256": "6459aeffba646d5e3df70ad2090b061b79ca86e27ca1c6f7f0224a2118409d80",
+      "probe_shard_count": 8,
+      "score_definition": "mean Stage-A utility(candidate, frozen rotating probe shard) minus mean Stage-A utility(parent, same shard)"
+    }
+  },
+  "e118_repository_split": {
+    "train": [
+      "tokio-rs/tokio",
+      "sharkdp/bat",
+      "tokio-rs/axum",
+      "vuejs/core",
+      "prometheus/prometheus",
+      "babel/babel"
+    ],
+    "probe": [
+      "burntsushi/ripgrep",
+      "uutils/coreutils",
+      "axios/axios"
+    ],
+    "evaluation": [
+      "astral-sh/ruff",
+      "nushell/nushell",
+      "preactjs/preact",
+      "facebook/docusaurus"
+    ]
+  },
+  "evaluation_repositories": [
+    "tokio-rs/tokio",
+    "sharkdp/bat",
+    "tokio-rs/axum",
+    "vuejs/core",
+    "prometheus/prometheus",
+    "babel/babel"
+  ],
+  "sensor_source_repositories": [
+    "burntsushi/ripgrep",
+    "uutils/coreutils",
+    "axios/axios"
+  ],
+  "excluded_repositories": [
+    "astral-sh/ruff",
+    "nushell/nushell",
+    "preactjs/preact",
+    "facebook/docusaurus"
+  ],
+  "candidate_generation_seed": 11802037,
+  "candidate_generation": "exact frozen E118 mutation_spec/apply_mutation; generated without scores or outcomes",
+  "siblings_generated_per_parent": 12,
+  "panel_design": {
+    "target_repository_order": [
+      "tokio-rs/tokio",
+      "sharkdp/bat",
+      "tokio-rs/axum",
+      "vuejs/core",
+      "prometheus/prometheus",
+      "babel/babel",
+      "tokio-rs/tokio",
+      "sharkdp/bat",
+      "tokio-rs/axum",
+      "vuejs/core",
+      "prometheus/prometheus",
+      "babel/babel"
+    ],
+    "parent_strategy_order": [
+      "base",
+      "raw",
+      "causal",
+      "base",
+      "raw",
+      "causal",
+      "raw",
+      "causal",
+      "base",
+      "raw",
+      "causal",
+      "base"
+    ],
+    "sensor_shard_ordinal_order": [0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5]
+  },
+  "sensor_target_separation": "causal_score uses only E118 probe rows; actual_gain uses all frozen E118 train rows for the target repository; the sets are disjoint",
+  "min_siblings_per_parent": 8,
+  "min_eligible_parents": 12,
+  "min_evaluation_repositories": 6,
+  "top_k": 4,
+  "permutations": 10000,
+  "alpha": 0.05,
+  "permutation_seed": 20260902118,
+  "candidate_generation_depends_on_scores": false,
+  "outcome_labels_used_for_sensor_or_thresholds": false,
+  "held_out_e118_repositories_permitted": false
+}

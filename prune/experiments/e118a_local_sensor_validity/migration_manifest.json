@@ -1,0 +1,148 @@
+{
+  "artifacts": [
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/configs/e118a_candidate_plan.json",
+      "destination_sha256": "35b415b29edeb017bb67bea3a4a6bb70ced8edad6b1691b99fe3a180ee5f2e4f",
+      "original_git_blob": "c3ca8e30d502656f9efc3e71a43f997e9da40af7",
+      "original_path": "experiments/configs/e118a_candidate_plan.json",
+      "original_sha256": "35b415b29edeb017bb67bea3a4a6bb70ced8edad6b1691b99fe3a180ee5f2e4f",
+      "role": "frozen_candidate_plan"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/configs/e118a_local_sensor_validity.json",
+      "destination_sha256": "e61de46fa715b5fce015cb92784d697f0a390ce840d827d513313079cb130fda",
+      "original_git_blob": "bd02ff49cc0e20d8ca1040ea3c69d1ce52a28a89",
+      "original_path": "experiments/configs/e118a_local_sensor_validity.json",
+      "original_sha256": "e61de46fa715b5fce015cb92784d697f0a390ce840d827d513313079cb130fda",
+      "role": "frozen_protocol"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/configs/e118a_local_sensor_validity.template.json",
+      "destination_sha256": "5ff8fbed4d8a555d6066e3f08901f896419545364b4ad0ac3545f617ee537e5e",
+      "original_git_blob": "875d78271ed9fb0af69258be71c5c41652668857",
+      "original_path": "experiments/configs/e118a_local_sensor_validity.template.json",
+      "original_sha256": "5ff8fbed4d8a555d6066e3f08901f896419545364b4ad0ac3545f617ee537e5e",
+      "role": "protocol_template"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/e118a_local_sensor_validity.json",
+      "destination_sha256": "031483fe740ee77b64a921c3dc8344682a91ba832bb2b4dc961349e03c84f8fb",
+      "original_git_blob": "7e0145865793b7d34566a4660a8047a167554ad5",
+      "original_path": "experiments/e118a_local_sensor_validity.json",
+      "original_sha256": "031483fe740ee77b64a921c3dc8344682a91ba832bb2b4dc961349e03c84f8fb",
+      "role": "frozen_result"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/e118a_local_sensor_validity_mutations.json",
+      "destination_sha256": "25149dd3b80df49124affffb216b288707bfa7b2717526b392aa113748df7f58",
+      "original_git_blob": "e7835fdb142dd54d8e0560e68c0082b495b34ea8",
+      "original_path": "experiments/e118a_local_sensor_validity_mutations.json",
+      "original_sha256": "25149dd3b80df49124affffb216b288707bfa7b2717526b392aa113748df7f58",
+      "role": "frozen_144_candidate_rows"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/experiments/e118a_local_sensor_validity_verification.json",
+      "destination_sha256": "1de09bf46d85888267acf96cca54b765a78a71586778f8141eec9563038f1e60",
+      "original_git_blob": "7dbd15abb8437385ee6566bef63db2a18293b21c",
+      "original_path": "experiments/e118a_local_sensor_validity_verification.json",
+      "original_sha256": "1de09bf46d85888267acf96cca54b765a78a71586778f8141eec9563038f1e60",
+      "role": "frozen_independent_verification"
+    },
+    {
+      "byte_identical": true,
+      "destination_path": "prune/experiments/e118a_local_sensor_validity/frozen_parity_tree/research/E118a-prospective-local-sensor-validity.md",
+      "destination_sha256": "89d7d66cf3def91f3ce2d8d02d70a0111f904ba680855e8ae2a6434d2d4308e0",
+      "original_git_blob": "cd83ff66ac042ad0560595e8a3257b857c314083",
+      "original_path": "research/E118a-prospective-local-sensor-validity.md",
+      "original_sha256": "89d7d66cf3def91f3ce2d8d02d70a0111f904ba680855e8ae2a6434d2d4308e0",
+      "role": "executed_protocol_report"
+    },
+    {
+      "adaptation_status": "planned_for_separate_commit",
+      "byte_identical": false,
+      "destination_path": "prune/scripts/e118a_local_sensor_validity.py",
+      "destination_sha256": null,
+      "original_git_blob": "645405834c4e4c647684b4d6408de0df0c963572",
+      "original_path": "src/paritylab/e118a_local_sensor_validity.py",
+      "original_sha256": "443ed844b088a00423d047eb050bf23161d8ca109fb5ce1d4ff4fc60ecbe2b46",
+      "role": "production_analyzer_source"
+    },
+    {
+      "adaptation_status": "planned_for_separate_commit",
+      "byte_identical": false,
+      "destination_path": "prune/scripts/run_e118a_local_sensor_validity.py",
+      "destination_sha256": null,
+      "original_git_blob": "9515a3a0031cd9c78d8338ff27fc7de9cf71224a",
+      "original_path": "tools/run_e118a_local_sensor_validity.py",
+      "original_sha256": "168f9e09a4135af75b3fe7e480f1d3066569bb79c6565b70c595fd41458cfd5f",
+      "role": "collector_source"
+    },
+    {
+      "adaptation_status": "planned_for_separate_commit",
+      "byte_identical": false,
+      "destination_path": "prune/scripts/verify_e118a_local_sensor_validity.py",
+      "destination_sha256": null,
+      "original_git_blob": "527e06b6e323385afaf35087356f6521d6fda97e",
+      "original_path": "tools/validate_e118a_local_sensor_validity.py",
+      "original_sha256": "1795f66b5399f4a4261fa93f0b482f62b855e348a6810604f6bc37a934494ccc",
+      "role": "independent_verifier_source"
+    },
+    {
+      "adaptation_status": "planned_for_separate_commit",
+      "byte_identical": false,
+      "destination_path": "prune/tests/test_e118a_local_sensor_validity.py",
+      "destination_sha256": null,
+      "original_git_blob": "1382c1f289b39ec89466b3b104c652af28f28e76",
+      "original_path": "tests/test_e118a_local_sensor_validity.py",
+      "original_sha256": "c99feba2c489796bfd592a7bea9873ed107750c3e82dc531c36eaf19d76a836f",
+      "role": "unit_tests_source"
+    }
+  ],
+  "destination": {
+    "e118_evidence_base_commit": "fcf7adf011a717e11adf5d55bc93016fb4fb6ef9",
+    "evidence_migration_commit": null,
+    "migration_branch": "experiment/e118a-local-sensor-validity-migration",
+    "repository": "advatar/prune.codes"
+  },
+  "e118_source": {
+    "artifact_path": "prune/experiments/E118-swebench-sparse-causal-prune.json",
+    "artifact_sha256": "5fb25a49aa4fda4cd0c5ea145ffb2a7480e10eeb1f2e63d5d046fb8b0f1ad1c9",
+    "evidence_commit": "fcf7adf011a717e11adf5d55bc93016fb4fb6ef9",
+    "execution_commit": "998a3fc927c6d7beb74d1cb3f2a079ea768b5b6f",
+    "runner_path": "prune/scripts/run_e118_swebench_sparse_causal_prune.py",
+    "runner_sha256": "0b1910b41c42ca5073e8dfed1a5371f9cb4b190739b6b7baabe971b43786aaff"
+  },
+  "migration_assertions": {
+    "e118_outcome_regenerated": false,
+    "e118a_outcome_regenerated": false,
+    "e118b_authorized": false,
+    "e118c_started": false,
+    "repository_ownership_only": true,
+    "scientific_evidence_changed": false
+  },
+  "original_host": {
+    "branch": "research/e118a-local-sensor-validity",
+    "evidence_commit": "593e78e470cd5a03ffea6d82e7ef2fb9faf3b61f",
+    "freeze_commit": "aef5613e32cf0d8436d03d8557532a8bfe79c0cf",
+    "implementation_commit": "e9d74ef985c4a57c8dc118c8a76f54d50aeae32e",
+    "pull_request": "https://github.com/advatar/parity/pull/10",
+    "repository": "advatar/parity"
+  },
+  "predecessor_distinction": {
+    "executed_local_ranking_experiment": "frozen_parity_tree/research/E118a-prospective-local-sensor-validity.md",
+    "executed_verdict": "FAIL_NO_PROSPECTIVE_INCREMENTAL_LOCAL_VALIDITY",
+    "old_cross_probe_spec_commit": "b10d0ded147621beea7708a85a1b6e2350e32d3f",
+    "old_cross_probe_spec_path": "prune/experiments/E118a-prospective-sensor-transfer-spec.md",
+    "old_cross_probe_spec_status": "UNEXECUTED_DIFFERENT_DESIGN",
+    "same_experiment": false
+  },
+  "schema": "prune.e118a-repository-migration.v1",
+  "status": "IMMUTABLE_EVIDENCE_IMPORTED_PLUMBING_PENDING"
+}
+

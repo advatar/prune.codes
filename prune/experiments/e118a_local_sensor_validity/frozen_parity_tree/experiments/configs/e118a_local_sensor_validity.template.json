@@ -1,0 +1,19 @@
+{
+  "protocol_frozen": false,
+  "source_e118_digest": "REPLACE_WITH_FROZEN_E118_ARTIFACT_DIGEST",
+  "transferred_sensor_id": "REPLACE_WITH_FROZEN_E118_SENSOR_HASH_OR_ID",
+  "stage_a_metric_id": "REPLACE_WITH_FROZEN_STAGE_A_METRIC_HASH_OR_ID",
+  "raw_model_id": "REPLACE_WITH_FROZEN_RAW_MODEL_HASH_OR_ID",
+  "candidate_plan_sha256": "REPLACE_WITH_COMMITTED_SCORE_BLIND_PLAN_DIGEST",
+  "candidate_identity_sha256": "REPLACE_WITH_CANDIDATE_IDENTITY_DIGEST",
+  "evaluation_repositories": [
+    "REPLACE_WITH_PROSPECTIVE_PRUNE_TRAINING_REPOSITORY_IDS"
+  ],
+  "min_siblings_per_parent": 4,
+  "min_eligible_parents": 12,
+  "min_evaluation_repositories": 3,
+  "top_k": 4,
+  "permutations": 10000,
+  "alpha": 0.05,
+  "permutation_seed": 20260902118
+}
