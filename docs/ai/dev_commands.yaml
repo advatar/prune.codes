@@ -1,5 +1,8 @@
 version: 1
 commands:
+  - name: agent-integration-tests
+    command: cd prune && cargo test --locked -p ce-cli --lib --test integrations
+    description: Verify client skill installation, config preservation, dry runs, and idempotency.
   - name: engine-tests
     command: cd prune && cargo test
     description: Run the embedded Prune Rust workspace tests.
