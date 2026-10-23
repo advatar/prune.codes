@@ -166,17 +166,52 @@ impl PlannedWrite {
                 .ok_or_else(|| anyhow!("missing parent directory"))?,
         )?;
         safe_destination(&self.root, &self.relative)?;
-        let mut options = fs::OpenOptions::new();
-        options.write(true);
-        if self.before.is_none() {
-            options.create_new(true);
-        } else {
-            options.truncate(true);
-        }
-        options.open(&path)?.write_all(self.contents.as_bytes())?;
+        write_atomically(&path, self.before.as_deref(), |file| {
+            file.write_all(self.contents.as_bytes())
+        })?;
         println!("Wrote {}", path.display());
         Ok(())
     }
+}
+
+// Keep the previous config intact if writing or syncing the new contents fails.
+// Each replacement is atomic; an entire multi-client installation is not.
+fn write_atomically(
+    path: &Path,
+    expected: Option<&str>,
+    write_contents: impl FnOnce(&mut fs::File) -> std::io::Result<()>,
+) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("missing parent directory"))?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    if expected.is_some() {
+        let permissions = fs::metadata(path)?.permissions();
+        if permissions.readonly() {
+            return Err(anyhow!(
+                "refusing to replace read-only config: {}",
+                path.display()
+            ));
+        }
+        temporary.as_file().set_permissions(permissions)?;
+    }
+    write_contents(temporary.as_file_mut())?;
+    temporary.as_file().sync_all()?;
+    if read_optional(path)?.as_deref() != expected {
+        return Err(anyhow!(
+            "{} changed during integration; retry after reviewing it",
+            path.display()
+        ));
+    }
+    let result = if expected.is_some() {
+        temporary.persist(path)
+    } else {
+        temporary.persist_noclobber(path)
+    };
+    result
+        .map_err(|error| error.error)
+        .with_context(|| format!("cannot install {}", path.display()))?;
+    Ok(())
 }
 
 // A project-relative symlink must not redirect installer writes outside the repo.
@@ -386,6 +421,41 @@ fn plan_claude(repo: &Path, writes: &mut Vec<PlannedWrite>) -> Result<()> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn interrupted_write_preserves_original_and_removes_temporary_file() {
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("config.json");
+        let original = "{\"mcpServers\":{\"other\":{\"command\":\"user-tool\"}}}";
+        fs::write(&path, original).unwrap();
+        let result = write_atomically(&path, Some(original), |file| {
+            file.write_all(b"partial replacement")?;
+            Err(std::io::Error::other("injected write failure"))
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_replacement_retains_private_permissions_and_respects_readonly() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = TempDir::new().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        write_atomically(&path, Some("old"), |file| file.write_all(b"new")).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        assert!(write_atomically(&path, Some("new"), |file| file.write_all(b"forbidden")).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn global_toml_preserves_comments_and_escapes_repo_paths() {

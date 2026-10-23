@@ -45,8 +45,11 @@ verify that the selected host lists the skill and the Prune MCP tools.
 - Existing MCP servers and Prune-specific settings are preserved. JSON files
   are parsed and merged; they may be reformatted when a new entry is added.
 - Invalid JSON/TOML, wrong configuration types, and symlinked destinations are
-  rejected during planning, before installation writes begin. This is not a
-  transactional installer; later filesystem errors can still require a retry.
+  rejected during planning, before installation writes begin. Each file is
+  written to a same-directory temporary file and installed after the complete
+  write succeeds. Existing permission bits are retained and read-only configs
+  are refused. This is not a multi-file transaction; later filesystem errors
+  can still leave an incomplete installation that requires a retry.
 - `--dry-run` validates and reports planned writes without creating directories
   or changing files. Repeated installation preserves identical file contents.
 
