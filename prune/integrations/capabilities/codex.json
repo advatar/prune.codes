@@ -2,6 +2,7 @@
   "agent": "codex",
   "instructions": ["AGENTS.md"],
   "mcp_config": "~/.codex/config.toml",
-  "supports_skills": false,
-  "notes": ["Codex reads AGENTS.md and supports MCP servers via config.toml"]
+  "supports_skills": true,
+  "skills_dir": ".agents/skills",
+  "notes": ["Codex reads AGENTS.md, discovers project Agent Skills in .agents/skills, and supports MCP servers via config.toml. Integration preserves existing instructions, skills, and Prune server settings."]
 }

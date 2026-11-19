@@ -1,11 +1,15 @@
 # Status
 
 ## Current Task
+- Review the AAIF Agent Skills distribution change and qualify skill discovery in installed clients before release.
 - Finish release readiness work for signing/notarization secrets, GitHub Release publishing, and end-to-end install verification.
 - Complete TS/TSX language-pack integration: parser coverage, import graph alias resolution, JSX edges, CLI/DB updates, README, and validation steps.
 - Extend PruneApp A2UI diagnostics beyond fixture rendering into JSONL load and live stream ingestion.
 
 ## Progress
+- 2026-10-23: closed the installer write-failure finding from independent draft review. Files are now written through a same-directory temporary file, synced, and replaced after successful writing; existing permission bits are preserved and read-only configs refused. The existing `tempfile` crate moved from dev-only to a runtime dependency without changing dependency versions or the lockfile. All 16 Linux installer tests pass, including injected partial-write failure and permission preservation; the compiled CLI dry-run/install/repeat smoke also passes.
+- 2026-10-23: completed the bundled `prune-context` skill and Codex `.agents/skills/` installation/doctor metadata. Integration now plans all writes first, preserves existing instructions/skills/Prune settings, merges other MCP servers, rejects malformed configs and symlinked destinations, and quotes global TOML paths. Corrected install examples to use the CLI's `--agent` flag and made hosted freshness/sync guidance conditional on advertised tools. Eight new regression failures were reproduced before the fix. Verification: full `ce-cli` build and `cargo test --locked -p ce-cli --lib --test integrations` pass (14 tests), as do a compiled-CLI all-client dry run/install/repeat, metadata checks, targeted rustfmt, and `git diff --check`. Linux verification used explicit existing OpenSSL paths and the matching ONNX Runtime 1.23.2 shared library after the default binary host returned 403; no repository dependency changes were needed. Existing Rust warnings remain. macOS builds, live MCP, and installed-client skill discovery were not run.
+- 2026-10-23: began the isolated Agent Skills distribution update from `2d9e9a6`. Scope is the bundled skill, client installer/doctor metadata, and targeted preservation/idempotency checks; existing research branches and release work are untouched. Runtime/client discovery and full macOS app qualification remain separate from installer tests.
 - Audited local repo layout: `prune/` is the standalone engine repo (`advatar/prune.git`); `prune.codes/` is the product/distribution repo (`advatar/prune.codes.git`) containing PruneApp, release docs/workflows, and a nested `prune/` engine copy.
 - Created tracking issue for consolidation and production readiness: https://github.com/advatar/prune.codes/issues/21.
 - Compared tracked engine files: 60 shared paths between `prune/` and `prune.codes/prune/`, 49 byte-identical shared files, 11 drifted shared files, 8 files only in standalone `prune/`, and 35 engine files only in the nested `prune.codes/prune/` copy.
